@@ -26,6 +26,9 @@ module OpenTox
       end
     end
   
+    # Find and a dataset and load all data from the dataset service
+    # @param [String] uri Dataset URI
+    # @return [OpenTox::Dataset] Dataset object
     def self.find(uri, accept_header=nil) 
     
       unless accept_header
