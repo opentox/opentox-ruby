@@ -13,18 +13,18 @@ module OpenTox
 			OpenTox::Validation.new(uri)
 		end
 
-    def create_report
-			@report_uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-validation"],"/report/crossvalidation"), :validation_uris => @uri).to_s
+    def create_report(subjectid=nil)
+			@report_uri = OpenTox::RestClientWrapper.post(File.join(CONFIG[:services]["opentox-validation"],"/report/crossvalidation"), {:validation_uris => @uri, :subjectid => subjectid}).to_s
       @report_uri
     end
 
-    def create_qmrf_report
-      @qmrf_report_uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-validation"],"/reach_report/qmrf"), :model_uri => @uri).to_s
+    def create_qmrf_report(subjectid=nil)
+      @qmrf_report_uri = OpenTox::RestClientWrapper.post(File.join(CONFIG[:services]["opentox-validation"],"/reach_report/qmrf"), {:model_uri => @uri, :subjectid => subjectid}).to_s
       @qmrf_report_uri
     end
 
-    def summary(type)
-      v = YAML.load RestClientWrappper.get(File.join(@uri, 'statistics'),:accept => "application/x-yaml").to_s
+    def summary(type, subjectid=nil)
+      v = YAML.load OpenTox::RestClientWrapper.get(File.join(@uri, 'statistics'),{:accept => "application/x-yaml", :subjectid => subjectid}).to_s
 
       case type
       when "classification"
