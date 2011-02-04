@@ -16,13 +16,12 @@ before {
 # IMPT: set sinatra settings :show_exceptions + :raise_errors to false in config.ru, otherwise Rack::Showexceptions takes over
 error Exception do
   error = request.env['sinatra.error']
-  # log error to logfile
+  # log error message and backtrace to logfile
   LOGGER.error error.class.to_s+": "+error.message
-  # log backtrace only if code is 500 -> unwanted (Runtime)Exceptions and internal errors (see error.rb)
-  LOGGER.error ":\n"+error.backtrace.join("\n") if error.http_code==500
+  LOGGER.error ":\n"+error.backtrace.join("\n")
   
   actor = "#{request.env['rack.url_scheme']}://#{request.env['HTTP_HOST']}#{request.env['REQUEST_URI']}"
-  rep = OpenTox::ErrorReport.new(error, actor)
+  rep = OpenTox::ErrorReport.create(error, actor)
 
   case request.env['HTTP_ACCEPT']
   when /rdf/
@@ -34,6 +33,27 @@ error Exception do
   else
     content_type 'application/x-yaml'
     halt error.http_code,rep.to_yaml
+  end
+end
+
+class Sinatra::Base
+
+  def return_task( task )
+    code = task.running? ? 202 : 200
+    case request.env['HTTP_ACCEPT']
+    when /rdf/
+      response['Content-Type'] = "application/rdf+xml"
+      halt code,task.to_rdfxml
+    when /yaml/
+      response['Content-Type'] = "application/rdf+xml"
+      halt code,task.to_yaml # PENDING differs from task-webservice
+    when /html/
+      response['Content-Type'] = "text/html"
+      halt code,OpenTox.text_to_html(task.to_yaml)
+    else # default /uri-list/
+      response['Content-Type'] = "text/uri-list"
+      halt code,task.uri+"\n"
+    end
   end
 end
 

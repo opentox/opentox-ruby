@@ -17,7 +17,7 @@ module OpenTox
         end
       end
       LOGGER.info "running model "+@uri.to_s+", params: "+params.inspect+", accept: "+accept_header.to_s
-      RestClientWrapper.post(@uri,{:accept => accept_header},params,waiting_task).to_s
+      RestClientWrapper.post(@uri,params,{:accept => accept_header},waiting_task).to_s
     end
 
     # Generic OpenTox model class for all API compliant services
@@ -303,7 +303,7 @@ module OpenTox
 
       # Save model at model service
       def save(subjectid)
-        self.uri = RestClientWrapper.post(@uri,{:content_type =>  "application/x-yaml", :subjectid => subjectid},self.to_yaml)
+        self.uri = RestClientWrapper.post(@uri,self.to_yaml,{:content_type =>  "application/x-yaml", :subjectid => subjectid})
       end
 
       # Delete model at model service

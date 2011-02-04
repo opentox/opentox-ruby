@@ -285,7 +285,7 @@ module OpenTox
       @compounds.uniq!
       if @uri
         if (CONFIG[:yaml_hosts].include?(URI.parse(@uri).host))
-          RestClientWrapper.post(@uri,{:content_type =>  "application/x-yaml", :subjectid => subjectid},self.to_yaml)
+          RestClientWrapper.post(@uri,self.to_yaml,{:content_type =>  "application/x-yaml", :subjectid => subjectid})
         else
           File.open("ot-post-file.rdf","w+") { |f| f.write(self.to_rdfxml); @path = f.path }
           task_uri = RestClient.post(@uri, {:file => File.new(@path)},{:accept => "text/uri-list" , :subjectid => subjectid}).to_s.chomp

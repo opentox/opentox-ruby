@@ -9,7 +9,7 @@ Gem::Specification.new do |s|
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Christoph Helma, Martin Guetlein, Andreas Maunz, Micha Rautenberg, David Vorgrimmler"]
-  s.date = %q{2010-11-30}
+  s.date = %q{2011-01-27}
   s.description = %q{Ruby wrapper for the OpenTox REST API (http://www.opentox.org)}
   s.email = %q{helma@in-silico.ch}
   s.executables = ["opentox-install-ubuntu.sh", "opentox-install-debian.sh"]
@@ -25,23 +25,34 @@ Gem::Specification.new do |s|
      "bin/opentox-install-debian.sh",
      "bin/opentox-install-ubuntu.sh",
      "lib/algorithm.rb",
+     "lib/authorization.rb",
      "lib/compound.rb",
      "lib/config/config_ru.rb",
      "lib/dataset.rb",
      "lib/environment.rb",
+     "lib/error.rb",
      "lib/feature.rb",
      "lib/helper.rb",
      "lib/model.rb",
+     "lib/ontology_service.rb",
      "lib/opentox-ruby.rb",
      "lib/opentox.owl",
      "lib/opentox.rb",
      "lib/overwrite.rb",
+     "lib/owl.rb.RDF",
+     "lib/owl.rb.nt",
+     "lib/owl.rb.rdfxml.initial",
+     "lib/owl.rb.redland",
      "lib/parser.rb",
+     "lib/policy.rb",
      "lib/rest_client_wrapper.rb",
      "lib/serializer.rb",
      "lib/spork.rb",
      "lib/task.rb",
      "lib/templates/config.yaml",
+     "lib/templates/default_guest_policy.xml",
+     "lib/templates/default_policy.xml",
+     "lib/to-html.rb",
      "lib/validation.rb"
   ]
   s.homepage = %q{http://github.com/helma/opentox-ruby}

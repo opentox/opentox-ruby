@@ -33,7 +33,7 @@ module OpenTox
     def self.create( title=nil, creator=nil, max_duration=DEFAULT_TASK_MAX_DURATION, description=nil )
       
       params = {:title=>title, :creator=>creator, :max_duration=>max_duration, :description=>description }
-      task_uri = RestClientWrapper.post(CONFIG[:services]["opentox-task"], params, nil, false).to_s
+      task_uri = RestClientWrapper.post(CONFIG[:services]["opentox-task"], params, {}, nil, false).to_s
       task = Task.new(task_uri.chomp)
 
       # measure current memory consumption
@@ -64,9 +64,8 @@ module OpenTox
           task.completed(result)
         rescue => error
           LOGGER.error "task failed: "+error.class.to_s+": "+error.message
-          # log backtrace only if code is 500 -> unwanted (Runtime)Exceptions and internal errors (see error.rb)
-          LOGGER.error ":\n"+error.backtrace.join("\n") if error.http_code==500
-          task.error(OpenTox::ErrorReport.new(error, creator))
+          LOGGER.error ":\n"+error.backtrace.join("\n")
+          task.error(OpenTox::ErrorReport.create(error, creator))
         end
       end  
       task.pid = task_pid
@@ -188,7 +187,7 @@ module OpenTox
     
     # create is private now, use OpenTox::Task.as_task
     #def self.create( params )
-      #task_uri = RestClientWrapper.post(CONFIG[:services]["opentox-task"], params, nil, false).to_s
+      #task_uri = RestClientWrapper.post(CONFIG[:services]["opentox-task"], params, {}, false).to_s
       #Task.find(task_uri.chomp)
     #end
     
@@ -285,7 +284,6 @@ module OpenTox
         raise OpenTox::BadRequestError.new ex.message+" (task-uri:"+@uri+")" 
       end
     end
-
   end
 
   # Convenience class to split a (sub)task into subtasks

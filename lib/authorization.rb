@@ -195,7 +195,7 @@ module OpenTox
 #        resource = RestClient::Resource.new("#{AA_SERVER}/Pol/opensso-pol")
         LOGGER.debug "OpenTox::Authorization.create_policy policy: #{policy[168,43]} with token:" + subjectid.to_s + " length: " + subjectid.length.to_s 
 #        return true if resource.post(policy, :subjectid => subjectid, :content_type =>  "application/xml")
-        return true if RestClientWrapper.post("#{AA_SERVER}/pol", {:subjectid => subjectid, :content_type =>  "application/xml"}, policy)        
+        return true if RestClientWrapper.post("#{AA_SERVER}/pol", policy, {:subjectid => subjectid, :content_type =>  "application/xml"})        
       rescue
         return false
       end
@@ -380,5 +380,10 @@ module OpenTox
     
   end
 end
+
+# PENDING delete as soon as new free uri handling is merged
+# this allows GET access to all URIS that do NOT end with /<number> or /<number>/
+OpenTox::Authorization.whitelist( /\/[0-9]+(\/?)$/, "GET", true )
+OpenTox::Authorization.whitelist( /\/[0-9]+(\/?)$/, "POST", true )
 
 
