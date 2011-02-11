@@ -14,21 +14,21 @@ module OpenTox
     # @param [optional,OpenTox::Task] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @param [wait,Boolean] wait set to false to NOT wait for task if result is task
     # @return [OpenTox::WrapperResult] a String containing the result-body of the REST call
-    def self.get(uri, headers=nil, waiting_task=nil, wait=true )
-      execute( "get", uri, headers, nil, waiting_task, wait)
+    def self.get(uri, headers={}, waiting_task=nil, wait=true )
+      execute( "get", uri, nil, headers, waiting_task, wait)
     end
     
     # performs a POST REST call
     # raises OpenTox::Error if call fails (rescued in overwrite.rb -> halt 502)
     # per default: waits for Task to finish and returns result URI of Task
     # @param [String] uri destination URI
-    # @param [optional,Hash] headers contains params like accept-header
     # @param [optional,String] payload data posted to the service
+    # @param [optional,Hash] headers contains params like accept-header
     # @param [optional,OpenTox::Task] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @param [wait,Boolean] wait set to false to NOT wait for task if result is task
     # @return [OpenTox::WrapperResult] a String containing the result-body of the REST call
-    def self.post(uri, headers, payload=nil, waiting_task=nil, wait=true )
-      execute( "post", uri, headers, payload, waiting_task, wait )
+    def self.post(uri, payload=nil, headers={}, waiting_task=nil, wait=true )
+      execute( "post", uri, payload, headers, waiting_task, wait )
     end
     
     # performs a PUT REST call
@@ -37,8 +37,8 @@ module OpenTox
     # @param [optional,Hash] headers contains params like accept-header
     # @param [optional,String] payload data put to the service
     # @return [OpenTox::WrapperResult] a String containing the result-body of the REST call
-    def self.put(uri, headers, payload=nil )
-      execute( "put", uri, headers, payload )
+    def self.put(uri, payload=nil, headers={} )
+      execute( "put", uri, payload, headers )
     end
 
     # performs a DELETE REST call
@@ -47,28 +47,38 @@ module OpenTox
     # @param [optional,Hash] headers contains params like accept-header
     # @return [OpenTox::WrapperResult] a String containing the result-body of the REST call
     def self.delete(uri, headers=nil )
-      execute( "delete", uri, headers, nil)
+      execute( "delete", uri, nil, headers)
     end
 
     private
-    def self.execute( rest_call, uri, headers, payload=nil, waiting_task=nil, wait=true )
+    def self.execute( rest_call, uri, payload=nil, headers={}, waiting_task=nil, wait=true )
       
       raise OpenTox::BadRequestError.new "uri is null" unless uri
       raise OpenTox::BadRequestError.new "not a uri: "+uri.to_s unless uri.to_s.uri?
-      raise OpenTox::BadRequestError.new "headers are no hash: "+headers.inspect unless headers==nil or headers.is_a?(Hash)
-      raise OpenTox::BadRequestError.new "nil headers for post not allowed, use {}" if rest_call=="post" and headers==nil
+      raise "headers are no hash: "+headers.inspect unless headers==nil or headers.is_a?(Hash)
+      raise OpenTox::BadRequestError.new "accept should go into the headers" if payload and payload.is_a?(Hash) and payload[:accept] 
+      raise OpenTox::BadRequestError.new "content_type should go into the headers" if payload and payload.is_a?(Hash) and payload[:content_type]
+      raise "__waiting_task__ must be 'nil' or '(sub)task', is "+waiting_task.class.to_s if
+        waiting_task!=nil and !(waiting_task.is_a?(Task) || waiting_task.is_a?(SubTask))
       headers.each{ |k,v| headers.delete(k) if v==nil } if headers #remove keys with empty values, as this can cause problems
+      ## PENDING partner services accept subjectid only in header
+      headers = {} unless headers
+      headers[:subjectid] = payload.delete(:subjectid) if payload and payload.is_a?(Hash) and payload.has_key?(:subjectid) 
+      
+      # PENDING needed for NUTA, until we finally agree on how to send subjectid
+      headers[:subjectid] = payload.delete(:subjectid) if uri=~/ntua/ and payload and payload.is_a?(Hash) and payload.has_key?(:subjectid) 
       
       begin
         #LOGGER.debug "RestCall: "+rest_call.to_s+" "+uri.to_s+" "+headers.inspect+" "+payload.inspect
-        resource = RestClient::Resource.new(uri,{:timeout => 60}) 
-        if payload
+        resource = RestClient::Resource.new(uri,{:timeout => 60})
+        if rest_call=="post" || rest_call=="put"
           result = resource.send(rest_call, payload, headers)
-        elsif headers
-          result = resource.send(rest_call, headers)
         else
-          result = resource.send(rest_call)
+          result = resource.send(rest_call, headers)
         end
+        
+        # PENDING NTUA does return errors with 200
+        raise RestClient::ExceptionWithResponse.new(result) if uri=~/ntua/ and result.body =~ /about.*http:\/\/anonymous.org\/error/
         
         # result is a string, with the additional fields content_type and code
         res = WrapperResult.new(result.body)
@@ -76,7 +86,6 @@ module OpenTox
         raise "content-type not set" unless res.content_type
         res.code = result.code
         
-        #LOGGER.debug "RestCall result: "+res.to_s+" "+res.code.to_s+" "+res.content_type.to_s
         # TODO: Ambit returns task representation with 200 instead of result URI
         return res if res.code==200 || !wait
         
@@ -87,10 +96,12 @@ module OpenTox
         return res
         
       rescue RestClient::RequestTimeout => ex
-        received_error ex.message, 408, nil, {:rest_uri => uri, :headers => headers}
+        received_error ex.message, 408, nil, {:rest_uri => uri, :headers => headers, :payload => payload}
+      rescue Errno::ECONNREFUSED => ex
+        received_error ex.message, 500, nil, {:rest_uri => uri, :headers => headers, :payload => payload}
       rescue RestClient::ExceptionWithResponse => ex
         # error comming from a different webservice, 
-        received_error ex.http_body, ex.http_code, ex.response.net_http_res.content_type, {:rest_uri => uri, :headers => headers}
+        received_error ex.http_body, ex.http_code, ex.response.net_http_res.content_type, {:rest_uri => uri, :headers => headers, :payload => payload}
       rescue OpenTox::RestCallError => ex
         # already a rest-error, probably comes from wait_for_task, just pass through
         raise ex       
@@ -101,7 +112,9 @@ module OpenTox
     end
     
     def self.wait_for_task( res, base_uri, waiting_task=nil )
-                          
+      #TODO remove TUM hack
+      res.content_type = "text/uri-list" if base_uri =~/tu-muenchen/ and res.content_type == "application/x-www-form-urlencoded;charset=UTF-8"
+
       task = nil
       case res.content_type
       when /application\/rdf\+xml/
@@ -112,7 +125,7 @@ module OpenTox
         raise "uri list has more than one entry, should be a task" if res.content_type=~/text\/uri-list/ and res.split("\n").size > 1 #if uri list contains more then one uri, its not a task
         task = OpenTox::Task.find(res.to_s.chomp) if res.to_s.uri?
       else
-        raise "unknown content-type for task: '"+res.content_type.to_s+"'" #+"' content: "+res[0..200].to_s
+        raise "unknown content-type for task : '"+res.content_type.to_s+"'"+" base-uri: "+base_uri.to_s+" content: "+res[0..200].to_s
       end
       
       LOGGER.debug "result is a task '"+task.uri.to_s+"', wait for completion"

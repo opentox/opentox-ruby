@@ -17,25 +17,22 @@ module OpenTox
         end
       end
       LOGGER.info "running model "+@uri.to_s+", params: "+params.inspect+", accept: "+accept_header.to_s
-      RestClientWrapper.post(@uri,{:accept => accept_header},params,waiting_task).to_s
+      RestClientWrapper.post(@uri,params,{:accept => accept_header},waiting_task).to_s
     end
 
     # Generic OpenTox model class for all API compliant services
     class Generic
       include Model
       
-      # Find Generic Opentox Model via URI, and loads metadata
+      # Find Generic Opentox Model via URI, and loads metadata, could raise NotFound/NotAuthorized error 
       # @param [String] uri Model URI
-      # @return [OpenTox::Model::Generic] Model instance, nil if model was not found
+      # @return [OpenTox::Model::Generic] Model instance
       def self.find(uri,subjectid=nil)
         return nil unless uri
         model = Generic.new(uri)
         model.load_metadata(subjectid)
-        if model.metadata==nil or model.metadata.size==0
-          nil
-        else
-          model
-        end
+        raise "could not load model metadata '"+uri.to_s+"'" if model.metadata==nil or model.metadata.size==0
+        model
       end
     
        # provides feature type, possible types are "regression" or "classification"
@@ -46,9 +43,11 @@ module OpenTox
         
         @algorithm = OpenTox::Algorithm::Generic.find(@metadata[OT.algorithm], subjectid) unless @algorithm
         algorithm_title = @algorithm ? @algorithm.metadata[DC.title] : nil
+        algorithm_type = @algorithm ? @algorithm.metadata[OT.isA] : nil
         @dependentVariable = OpenTox::Feature.find( @metadata[OT.dependentVariables],subjectid ) unless @dependentVariable
-        
-        [@dependentVariable.feature_type, @metadata[OT.isA], @metadata[DC.title], @uri, algorithm_title].each do |type|
+        type_indicators = [@dependentVariable.feature_type, @metadata[OT.isA], @metadata[DC.title], 
+          @uri, algorithm_type, algorithm_title] 
+        type_indicators.each do |type|
           case type
           when /(?i)classification/
             return "classification"
@@ -56,8 +55,7 @@ module OpenTox
             return "regression"
           end
         end
-        raise "unknown model "+[@dependentVariable.feature_type, @metadata[OT.isA],
-          @metadata[DC.title], @uri, algorithm_title].inspect
+        raise "unknown model "+type_indicators.inspect
       end
       
     end
@@ -137,7 +135,7 @@ module OpenTox
           OT.parameters => [{DC.title => "dataset_uri", OT.paramValue => dataset_uri}]
         })
         d = Dataset.new(dataset_uri,subjectid)
-        d.load_compounds
+        d.load_compounds(subjectid)
         count = 0
         d.compounds.each do |compound_uri|
           begin
@@ -303,7 +301,7 @@ module OpenTox
 
       # Save model at model service
       def save(subjectid)
-        self.uri = RestClientWrapper.post(@uri,{:content_type =>  "application/x-yaml", :subjectid => subjectid},self.to_yaml)
+        self.uri = RestClientWrapper.post(@uri,self.to_yaml,{:content_type =>  "application/x-yaml", :subjectid => subjectid})
       end
 
       # Delete model at model service

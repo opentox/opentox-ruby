@@ -16,7 +16,7 @@ module OpenTox
     # @param [optional,OpenTox::Task] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @return [String] URI of new resource (dataset, model, ...)
     def run(params=nil, waiting_task=nil)
-      RestClientWrapper.post(@uri, {:accept => 'text/uri-list'}, params, waiting_task).to_s
+      RestClientWrapper.post(@uri, params, {:accept => 'text/uri-list'}, waiting_task).to_s
     end
     
     # Get OWL-DL representation in RDF/XML format
@@ -31,18 +31,15 @@ module OpenTox
     class Generic 
       include Algorithm
       
-      # Find Generic Opentox Algorithm via URI, and loads metadata
+      # Find Generic Opentox Algorithm via URI, and loads metadata, could raise NotFound/NotAuthorized error
       # @param [String] uri Algorithm URI
-      # @return [OpenTox::Algorithm::Generic] Algorithm instance, nil if alogrithm was not found
-      def self.find(uri, subjectid)
+      # @return [OpenTox::Algorithm::Generic] Algorithm instance
+      def self.find(uri, subjectid=nil)
         return nil unless uri
         alg = Generic.new(uri)
         alg.load_metadata( subjectid )
-        if alg.metadata==nil or alg.metadata.size==0
-          nil
-        else
-          alg
-        end
+        raise "cannot load algorithm metadata" if alg.metadata==nil or alg.metadata.size==0
+        alg
       end
       
     end

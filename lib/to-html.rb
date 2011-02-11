@@ -7,7 +7,7 @@ class String
   # encloses URI in text with with link tag
   # @return [String] new text with marked links
   def link_urls
-    self.gsub(/(?i)http:\/\/[^\r\n\s']*/, '<a href=\0>\0</a>')
+    self.gsub(/(?i)http(s?):\/\/[^\r\n\s']*/, '<a href=\0>\0</a>')
   end
 end
 

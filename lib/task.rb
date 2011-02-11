@@ -33,7 +33,7 @@ module OpenTox
     def self.create( title=nil, creator=nil, max_duration=DEFAULT_TASK_MAX_DURATION, description=nil )
       
       params = {:title=>title, :creator=>creator, :max_duration=>max_duration, :description=>description }
-      task_uri = RestClientWrapper.post(CONFIG[:services]["opentox-task"], params, nil, false).to_s
+      task_uri = RestClientWrapper.post(CONFIG[:services]["opentox-task"], params, {}, nil, false).to_s
       task = Task.new(task_uri.chomp)
 
       # measure current memory consumption
@@ -64,9 +64,8 @@ module OpenTox
           task.completed(result)
         rescue => error
           LOGGER.error "task failed: "+error.class.to_s+": "+error.message
-          # log backtrace only if code is 500 -> unwanted (Runtime)Exceptions and internal errors (see error.rb)
-          LOGGER.error ":\n"+error.backtrace.join("\n") if error.http_code==500
-          task.error(OpenTox::ErrorReport.new(error, creator))
+          LOGGER.error ":\n"+error.backtrace.join("\n")
+          task.error(OpenTox::ErrorReport.create(error, creator))
         end
       end  
       task.pid = task_pid
@@ -81,7 +80,18 @@ module OpenTox
       return nil unless uri
       task = Task.new(uri)
       task.load_metadata
+      raise "could not load task metadata" if task.metadata==nil or task.metadata.size==0
       task
+    end
+
+    # Find a task for querying, status changes
+    # @param [String] uri Task URI
+    # @return [OpenTox::Task] Task object
+    def self.exist?(uri)
+      begin
+        return find(uri)
+      rescue
+      end 
     end
 
     # Get a list of all tasks
@@ -94,23 +104,11 @@ module OpenTox
     def self.from_yaml(yaml)
       @metadata = YAML.load(yaml)
     end
-
     
     def self.from_rdfxml(rdfxml)
-      file = Tempfile.new("ot-rdfxml")
-      file.puts rdfxml
-      file.close
-      file = "file://"+file.path
-       
-      # PENDING
-      raise "Parse from file not working: what is the base-object-uri??? (omitted in triples)"    
-          
-      parser = Parser::Owl::Generic.new file
-      metadata = parser.load_metadata
-      puts metadata.inspect
-      
-      task = Task.new(uri)
-      task.add_metadata(metadata)
+      owl = OpenTox::Parser::Owl.from_rdf(rdfxml, OT.Task)
+      task = Task.new(owl.uri)
+      task.add_metadata(owl.metadata)
       task
     end
 
@@ -139,7 +137,7 @@ module OpenTox
     end
     
     def cancel
-      RestClientWrapper.put(File.join(@uri,'Cancelled'))
+      RestClientWrapper.put(File.join(@uri,'Cancelled'),{:cannot_be => "empty"})
       load_metadata
     end
 
@@ -176,7 +174,7 @@ module OpenTox
     end
 
     def load_metadata
-      if (CONFIG[:yaml_hosts].include?(URI.parse(uri).host))
+      if (CONFIG[:yaml_hosts].include?(URI.parse(@uri).host))
         result = RestClientWrapper.get(@uri, {:accept => 'application/x-yaml'}, nil, false)
         @metadata = YAML.load result.to_s
         @http_code = result.code
@@ -184,11 +182,12 @@ module OpenTox
         @metadata = Parser::Owl::Generic.new(@uri).load_metadata
         @http_code = RestClientWrapper.get(uri, {:accept => 'application/rdf+xml'}, nil, false).code
       end
+      raise "could not load task metadata for task "+@uri.to_s if @metadata==nil || @metadata.size==0
     end
     
     # create is private now, use OpenTox::Task.as_task
     #def self.create( params )
-      #task_uri = RestClientWrapper.post(CONFIG[:services]["opentox-task"], params, nil, false).to_s
+      #task_uri = RestClientWrapper.post(CONFIG[:services]["opentox-task"], params, {}, false).to_s
       #Task.find(task_uri.chomp)
     #end
     
@@ -237,6 +236,7 @@ module OpenTox
     # @param [optional,Numeric] dur seconds pausing before cheking again for completion
     def wait_for_completion( waiting_task=nil, dur=0.3)
       
+      waiting_task.waiting_for(self.uri) if waiting_task
       due_to_time = Time.new + DEFAULT_TASK_MAX_DURATION
       LOGGER.debug "start waiting for task "+@uri.to_s+" at: "+Time.new.to_s+", waiting at least until "+due_to_time.to_s
       
@@ -252,7 +252,7 @@ module OpenTox
           raise "max wait time exceeded ("+DEFAULT_TASK_MAX_DURATION.to_s+"sec), task: '"+@uri.to_s+"'"
         end
       end
-      
+      waiting_task.waiting_for(nil) if waiting_task
       LOGGER.debug "Task '"+@metadata[OT.hasStatus].to_s+"': "+@uri.to_s+", Result: "+@metadata[OT.resultURI].to_s
     end
     
@@ -268,12 +268,19 @@ module OpenTox
       end
     end
     
+    def waiting_for(task_uri)
+      RestClientWrapper.put(File.join(@uri,'Running'),{:waiting_for => task_uri})
+    end
+    
     private
+    VALID_TASK_STATES = ["Cancelled", "Completed", "Running", "Error"]
+    
     def check_state
       begin
+        raise "illegal task state, invalid status: '"+@metadata[OT.hasStatus].to_s+"'" unless 
+          @metadata[OT.hasStatus] unless VALID_TASK_STATES.include?(@metadata[OT.hasStatus])
         raise "illegal task state, task is completed, resultURI is no URI: '"+@metadata[OT.resultURI].to_s+
             "'" unless @metadata[OT.resultURI] and @metadata[OT.resultURI].to_s.uri? if completed?
-        
         if @http_code == 202
           raise "#{@uri}: illegal task state, code is 202, but hasStatus is not Running: '"+@metadata[OT.hasStatus]+"'" unless running?
         elsif @http_code == 201
@@ -285,7 +292,6 @@ module OpenTox
         raise OpenTox::BadRequestError.new ex.message+" (task-uri:"+@uri+")" 
       end
     end
-
   end
 
   # Convenience class to split a (sub)task into subtasks
@@ -304,7 +310,7 @@ module OpenTox
   class SubTask
     
     def initialize(task, min, max)
-      raise "not a task or subtask" unless task.is_a?(Task) or task.is_a?(SubTask) 
+      raise "not a task or subtask" if task!=nil and !(task.is_a?(Task) or task.is_a?(SubTask)) 
       raise "invalid max ("+max.to_s+"), min ("+min.to_s+") params" unless 
         min.is_a?(Numeric) and max.is_a?(Numeric) and min >= 0 and max <= 100 and max > min 
       @task = task
@@ -320,6 +326,10 @@ module OpenTox
       else
         nil
       end
+    end
+    
+    def waiting_for(task_uri)
+      @task.waiting_for(task_uri)
     end
     
     def progress(pct)

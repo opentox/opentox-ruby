@@ -30,21 +30,29 @@ module OpenTox
       # Read metadata from opentox service
       # @return [Hash] Object metadata
       def load_metadata(subjectid=nil)
-
-        if @dataset
-          uri = File.join(@uri,"metadata")
+        # avoid using rapper directly because of 2 reasons:
+        # * http errors wont be noticed
+        # * subjectid cannot be sent as header
+        ##uri += "?subjectid=#{CGI.escape(subjectid)}" if subjectid 
+        ## `rapper -i rdfxml -o ntriples #{uri} 2>/dev/null`.each_line do |line|
+        if File.exist?(@uri)
+          file = File.new(@uri)
         else
-          uri = @uri
+          file = Tempfile.new("ot-rdfxml")
+          uri = @dataset ? File.join(@uri,"metadata") : @uri
+          file.puts OpenTox::RestClientWrapper.get uri,{:subjectid => subjectid,:accept => "application/rdf+xml"},nil,false
+          file.close
+          to_delete = file.path
         end
-        uri += "?subjectid=#{CGI.escape(subjectid)}" if subjectid 
         statements = []
         parameter_ids = []
-        `rapper -i rdfxml -o ntriples #{uri} 2>/dev/null`.each_line do |line|
+        `rapper -i rdfxml -o ntriples #{file.path} 2>/dev/null`.each_line do |line|
           triple = line.to_triple
           @metadata[triple[1]] = triple[2].split('^^').first if triple[0] == @uri and triple[1] != RDF['type']
           statements << triple 
           parameter_ids << triple[2] if triple[1] == OT.parameters
         end
+        File.delete(to_delete) if to_delete
         unless parameter_ids.empty?
           @metadata[OT.parameters] = []
           parameter_ids.each do |p|
@@ -55,10 +63,45 @@ module OpenTox
         end
         @metadata
       end
-
+      
+      # creates owl object from rdf-data
+      # @param [String] rdf
+      # @param [String] type of the info (e.g. OT.Task, OT.ErrorReport) needed to get the subject-uri
+      # @return [Owl] with uri and metadata set 
+      def self.from_rdf( rdf, type )
+        # write to file and read convert with rapper into tripples
+        file = Tempfile.new("ot-rdfxml")
+        file.puts rdf
+        file.close
+        #puts "cmd: rapper -i rdfxml -o ntriples #{file} 2>/dev/null"
+        triples = `rapper -i rdfxml -o ntriples #{file.path} 2>/dev/null`
+        
+        # load uri via type
+        uri = nil
+        triples.each_line do |line|
+          triple = line.to_triple
+          if triple[1] == RDF['type'] and triple[2]==type
+             raise "uri already set, two uris found with type: "+type.to_s if uri
+             uri = triple[0]
+          end
+        end
+        File.delete(file.path)
+        # load metadata
+        metadata = {}
+        triples.each_line do |line|
+          triple = line.to_triple
+          metadata[triple[1]] = triple[2].split('^^').first if triple[0] == uri and triple[1] != RDF['type']
+        end
+        owl = Owl::Generic.new(uri)
+        owl.metadata = metadata
+        owl
+      end
+      
       # Generic parser for all OpenTox classes
       class Generic
         include Owl
+        
+        attr_accessor :uri, :metadata
       end
 
       # OWL-DL parser for datasets
@@ -88,13 +131,26 @@ module OpenTox
         #   dataset.save
         # @return [Hash] Internal dataset representation
         def load_uri(subjectid=nil)
-          uri = @uri
-          uri += "?subjectid=#{CGI.escape(subjectid)}" if subjectid
+          
+          # avoid using rapper directly because of 2 reasons:
+          # * http errors wont be noticed
+          # * subjectid cannot be sent as header
+          ##uri += "?subjectid=#{CGI.escape(subjectid)}" if subjectid
+          ##`rapper -i rdfxml -o ntriples #{file} 2>/dev/null`.each_line do |line| 
+          if File.exist?(@uri)
+            file = File.new(@uri)
+          else
+            file = Tempfile.new("ot-rdfxml")
+            file.puts OpenTox::RestClientWrapper.get @uri,{:subjectid => subjectid,:accept => "application/rdf+xml"},nil,false
+            file.close
+            to_delete = file.path
+          end
+          
           data = {}
           feature_values = {}
           feature = {}
           other_statements = {}
-          `rapper -i rdfxml -o ntriples #{uri} 2>/dev/null`.each_line do |line|
+          `rapper -i rdfxml -o ntriples #{file.path} 2>/dev/null`.each_line do |line|
             triple = line.chomp.split(' ',3)
             triple = triple[0..2].collect{|i| i.sub(/\s+.$/,'').gsub(/[<>"]/,'')}
             case triple[1] 
@@ -111,29 +167,46 @@ module OpenTox
             else 
             end
           end
+          File.delete(to_delete) if to_delete
           data.each do |id,entry|
             entry[:values].each do |value_id|
-              value = feature_values[value_id].split(/\^\^/).first # remove XSD.type
+              split = feature_values[value_id].split(/\^\^/)
+              case split[-1]
+              when XSD.double, XSD.float 
+                value = split.first.to_f
+              when XSD.boolean
+                value = split.first=~/(?i)true/ ? true : false                
+              else
+                value = split.first
+              end
               @dataset.add entry[:compound],feature[value_id],value
             end
           end
           load_features
-          @dataset.metadata = load_metadata
+          @dataset.metadata = load_metadata(subjectid)
           @dataset
         end
 
         # Read only features from a dataset service. 
         # @return [Hash] Internal features representation
         def load_features(subjectid=nil)
-          uri = File.join(@uri,"features")
-          uri += "?subjectid=#{CGI.escape(subjectid)}" if subjectid 
+          if File.exist?(@uri)
+            file = File.new(@uri)
+          else
+            file = Tempfile.new("ot-rdfxml")
+            uri = File.join(@uri,"features")
+            file.puts OpenTox::RestClientWrapper.get uri,{:subjectid => subjectid,:accept => "application/rdf+xml"},nil,false
+            file.close
+            to_delete = file.path
+          end
           statements = []
           features = Set.new
-          `rapper -i rdfxml -o ntriples #{uri} 2>/dev/null`.each_line do |line|
+          `rapper -i rdfxml -o ntriples #{file.path} 2>/dev/null`.each_line do |line|
             triple = line.chomp.split('> ').collect{|i| i.sub(/\s+.$/,'').gsub(/[<>"]/,'')}[0..2]
             statements << triple
-            features << triple[0] if triple[1] == RDF['type'] and triple[2] == OT.Feature
+            features << triple[0] if triple[1] == RDF['type'] and (triple[2] == OT.Feature || triple[2] == OT.NumericFeature) 
           end
+          File.delete(to_delete) if to_delete
           statements.each do |triple|
             if features.include? triple[0]
               @dataset.features[triple[0]] = {} unless @dataset.features[triple[0]] 

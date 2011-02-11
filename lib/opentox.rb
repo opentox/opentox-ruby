@@ -43,5 +43,10 @@ module OpenTox
     s.to_rdfxml
   end
 
+  # deletes the resource, deletion should have worked when no RestCallError raised
+  def delete(subjectid=nil)
+    RestClientWrapper.delete(uri,:subjectid => subjectid)
+  end
+
 end
 
