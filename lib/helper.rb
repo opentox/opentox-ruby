@@ -61,6 +61,26 @@ before do
     end
     @subjectid = subjectid
     protected!(subjectid)
+
+    extension = File.extname(request.path_info) # params[:id] is not yet available
+    unless extension.empty?
+     #request.path_info.sub!(/\.#{extension}$/,'')
+     case extension
+     when "html"
+       @accept = 'text/html'
+     when "yaml"
+       @accept = 'application/x-yaml'
+     when "csv"
+       @accept = 'text/csv'
+     when "rdfxml"
+       @accept = 'application/rdf+xml'
+     when "xls"
+       @accept = 'application/ms-excel'
+     else
+       halt 404, "File format #{extension} not supported."
+     end
+   end
+  
   end
 end
 
