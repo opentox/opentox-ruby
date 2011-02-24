@@ -237,7 +237,7 @@ module OpenTox
       @features[feature] = {}  unless @features[feature]
       @data_entries[compound] = {} unless @data_entries[compound]
       @data_entries[compound][feature] = [] unless @data_entries[compound][feature]
-      @data_entries[compound][feature] << value
+      @data_entries[compound][feature] << value if value!=nil
     end
 
     # Add/modify metadata, existing entries will be overwritten
@@ -283,8 +283,12 @@ module OpenTox
       else
         compounds.each do |c|
           features.each do |f|
-            @data_entries[c][f].each do |v|
-              dataset.add(c,f,v)
+            unless @data_entries[c][f]
+              dataset.add(c,f,nil)
+            else
+              @data_entries[c][f].each do |v|
+                dataset.add(c,f,v)
+              end
             end
           end
         end

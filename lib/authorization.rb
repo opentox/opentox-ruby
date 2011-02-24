@@ -334,15 +334,15 @@ module OpenTox
         true
       elsif CONFIG[:authorization][:authenticate_request].include?(request_method)
         ret = OpenTox::Authorization.is_token_valid(subjectid)
-        #LOGGER.debug "authorized? >>#{ret}<< (token is in/valid), method: #{request_method}, URI: #{uri}, subjectid: #{subjectid}"
+        LOGGER.debug "authorized? >>#{ret}<< (token is in/valid), method: #{request_method}, URI: #{uri}, subjectid: #{subjectid}" unless ret
         ret
       elsif OpenTox::Authorization.authorize_exception?(uri, request_method)
         ret = OpenTox::Authorization.is_token_valid(subjectid)
-        #LOGGER.debug "authorized? >>#{ret}<< (uris is authorize exception, token is in/valid), method: #{request_method}, URI: #{uri}, subjectid: #{subjectid}"
+        LOGGER.debug "authorized? >>#{ret}<< (uris is authorize exception, token is in/valid), method: #{request_method}, URI: #{uri}, subjectid: #{subjectid}" unless ret
         ret
       elsif CONFIG[:authorization][:authorize_request].include?(request_method)
         ret = OpenTox::Authorization.authorize(uri, request_method, subjectid)
-        LOGGER.debug "authorized? >>#{ret}<< (uri (not) authorized), method: #{request_method}, URI: #{uri}, subjectid: #{subjectid}"
+        LOGGER.debug "authorized? >>#{ret}<< (uri (not) authorized), method: #{request_method}, URI: #{uri}, subjectid: #{subjectid}" unless ret
         ret
       else 
         LOGGER.error "invalid request/uri method: #{request_method}, URI: #{uri}, subjectid: #{subjectid}"

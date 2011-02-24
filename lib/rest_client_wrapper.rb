@@ -76,7 +76,8 @@ module OpenTox
         else
           result = resource.send(rest_call, headers)
         end
-        
+        #LOGGER.debug "result body size: #{result.body.size}"
+
         # PENDING NTUA does return errors with 200
         raise RestClient::ExceptionWithResponse.new(result) if uri=~/ntua/ and result.body =~ /about.*http:\/\/anonymous.org\/error/
         

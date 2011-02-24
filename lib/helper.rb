@@ -19,8 +19,6 @@ helpers do
 
   #Check Authorization for URI with method and subjectid. 
   def authorized?(subjectid)
-    # hack for reports, address problem as soon as subjectid is not longer allowed as param 
-    return true if request.env['REQUEST_URI'] =~ /validation\/report\/.*svg$/
     request_method = request.env['REQUEST_METHOD']
     uri = clean_uri("#{request.env['rack.url_scheme']}://#{request.env['HTTP_HOST']}#{request.env['REQUEST_URI']}")
     request_method = "GET" if request_method == "POST" &&  uri =~ /\/model\/\d+\/?$/
@@ -34,8 +32,9 @@ helpers do
     uri = uri[0,uri.index("InChI=")] if uri.index("InChI=") 
     
     out = URI.parse(uri)
-    out.path = out.path[0, out.path.length - (out.path.reverse.rindex(/\/{1}\d+\/{1}/))] if out.path.index(/\/{1}\d+\/{1}/)  #cuts after /id/ for a&a 
-    "#{out.scheme}:" + (out.port != 80 ? out.port : "") + "//#{out.host}#{out.path.chomp('/')}"
+    out.path = out.path[0, out.path.length - (out.path.reverse.rindex(/\/{1}\d+\/{1}/))] if out.path.index(/\/{1}\d+\/{1}/)  #cuts after /id/ for a&a
+    port = (out.scheme=="http" && out.port==80)||(out.scheme=="https" && out.port==443) ? "" : ":#{out.port.to_s}" 
+    "#{out.scheme}://#{out.host}#{port}#{out.path.chomp("/")}" #"
   end
 
   #unprotected uri for login
@@ -52,6 +51,7 @@ before do
       subjectid = session[:subjectid] if session[:subjectid]
       subjectid = params[:subjectid]  if params[:subjectid] and !subjectid
       subjectid = request.env['HTTP_SUBJECTID'] if request.env['HTTP_SUBJECTID'] and !subjectid
+      subjectid = request.cookies["subjectid"] unless subjectid
       # see http://rack.rubyforge.org/doc/SPEC.html
       subjectid = CGI.unescape(subjectid) if subjectid.include?("%23")
       @subjectid = subjectid

@@ -38,24 +38,28 @@ module OpenTox
        # provides feature type, possible types are "regression" or "classification"
        # @return [String] feature type, "unknown" if type could not be estimated
       def feature_type(subjectid=nil)
+        return @feature_type if @feature_type
+        
         # dynamically perform restcalls if necessary
         load_metadata(subjectid) if @metadata==nil or @metadata.size==0 or (@metadata.size==1 && @metadata.values[0]==@uri)
-        
-        @algorithm = OpenTox::Algorithm::Generic.find(@metadata[OT.algorithm], subjectid) unless @algorithm
-        algorithm_title = @algorithm ? @algorithm.metadata[DC.title] : nil
-        algorithm_type = @algorithm ? @algorithm.metadata[OT.isA] : nil
-        @dependentVariable = OpenTox::Feature.find( @metadata[OT.dependentVariables],subjectid ) unless @dependentVariable
-        type_indicators = [@dependentVariable.feature_type, @metadata[OT.isA], @metadata[DC.title], 
+        algorithm = OpenTox::Algorithm::Generic.find(@metadata[OT.algorithm], subjectid)
+        algorithm_title = algorithm ? algorithm.metadata[DC.title] : nil
+        algorithm_type = algorithm ? algorithm.metadata[OT.isA] : nil
+        dependent_variable = OpenTox::Feature.find( @metadata[OT.dependentVariables],subjectid )
+        dependent_variable_type = dependent_variable ? dependent_variable.feature_type : nil
+        type_indicators = [dependent_variable_type, @metadata[OT.isA], @metadata[DC.title], 
           @uri, algorithm_type, algorithm_title] 
         type_indicators.each do |type|
           case type
           when /(?i)classification/
-            return "classification"
+            @feature_type =  "classification"
+            break
           when /(?i)regression/
-            return "regression"
+            @feature_type = "regression"
           end
         end
-        raise "unknown model "+type_indicators.inspect
+        raise "unknown model "+type_indicators.inspect unless @feature_type
+        @feature_type
       end
       
     end

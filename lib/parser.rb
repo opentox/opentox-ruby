@@ -39,7 +39,14 @@ module OpenTox
           file = File.new(@uri)
         else
           file = Tempfile.new("ot-rdfxml")
-          uri = @dataset ? File.join(@uri,"metadata") : @uri
+          if @dataset
+            # do not concat /metadata to uri string, this would not work for dataset/R401577?max=3 
+            uri = URI::parse(@uri)
+            uri.path = File.join(uri.path,"metadata")
+            uri = uri.to_s
+          else
+            uri = @uri
+          end
           file.puts OpenTox::RestClientWrapper.get uri,{:subjectid => subjectid,:accept => "application/rdf+xml"},nil,false
           file.close
           to_delete = file.path
@@ -163,26 +170,35 @@ module OpenTox
               data[triple[0]] = {:compound => "", :values => []} unless data[triple[0]]
               data[triple[0]][:compound] = triple[2]  
             when /#{OT.feature}/i
-              feature[triple[0]] = triple[2] 
+              feature[triple[0]] = triple[2]
+            when /#{RDF.type}/i
+              if triple[2]=~/#{OT.Compound}/i and !data[triple[0]]
+                data[triple[0]] = {:compound => triple[0], :values => []} 
+              end
             else 
             end
           end
           File.delete(to_delete) if to_delete
           data.each do |id,entry|
-            entry[:values].each do |value_id|
-              split = feature_values[value_id].split(/\^\^/)
-              case split[-1]
-              when XSD.double, XSD.float 
-                value = split.first.to_f
-              when XSD.boolean
-                value = split.first=~/(?i)true/ ? true : false                
-              else
-                value = split.first
+            if entry[:values].size==0
+              # no feature values add plain compounds
+              @dataset.add_compound(entry[:compound])
+            else
+              entry[:values].each do |value_id|
+                split = feature_values[value_id].split(/\^\^/)
+                case split[-1]
+                when XSD.double, XSD.float 
+                  value = split.first.to_f
+                when XSD.boolean
+                  value = split.first=~/(?i)true/ ? true : false                
+                else
+                  value = split.first
+                end
+                @dataset.add entry[:compound],feature[value_id],value
               end
-              @dataset.add entry[:compound],feature[value_id],value
             end
           end
-          load_features
+          load_features subjectid
           @dataset.metadata = load_metadata(subjectid)
           @dataset
         end
@@ -194,7 +210,10 @@ module OpenTox
             file = File.new(@uri)
           else
             file = Tempfile.new("ot-rdfxml")
-            uri = File.join(@uri,"features")
+            # do not concat /features to uri string, this would not work for dataset/R401577?max=3 
+            uri = URI::parse(@uri)
+            uri.path = File.join(uri.path,"features")
+            uri = uri.to_s
             file.puts OpenTox::RestClientWrapper.get uri,{:subjectid => subjectid,:accept => "application/rdf+xml"},nil,false
             file.close
             to_delete = file.path
