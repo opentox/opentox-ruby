@@ -25,11 +25,17 @@ end
 # database
 if CONFIG[:database]
 	['dm-core', 'dm-serializer', 'dm-timestamps', 'dm-types', 'dm-migrations', 'dm-validations' ].each{|lib| require lib }
+=begin
+=end
 	case CONFIG[:database][:adapter]
 	when /sqlite/i
 		db_dir = File.join(basedir, "db")
 		FileUtils.mkdir_p db_dir
 		DataMapper::setup(:default, "sqlite3://#{db_dir}/opentox.sqlite3")
+	#when /yaml/i
+		#db_dir = File.join(basedir, "db")
+		#FileUtils.mkdir_p db_dir
+		#DataMapper::setup(:default, {:adapter => "yaml", :directory => 'db'})
 	else
 		DataMapper.setup(:default, { 
 				:adapter  => CONFIG[:database][:adapter],
@@ -38,6 +44,14 @@ if CONFIG[:database]
 				:password => CONFIG[:database][:password],
 				:host     => CONFIG[:database][:host]})
 	end
+		#db_dir = File.join(basedir, "db")
+		#FileUtils.mkdir_p db_dir
+	#DataMapper::setup(:in_memory, "in_memory")
+   #require 'redis'
+
+       #DataMapper.setup(:default, {:adapter  => "redis"})
+
+	#DataMapper::Model.raise_on_save_failure = true
 end
 
 # load mail settings for error messages
