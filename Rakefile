@@ -27,6 +27,7 @@ begin
       "yajl-ruby",
       "tmail",
       "rinruby",
+      "ohm",
       "rjb"
     ].each { |dep| gem.add_dependency dep }
     [ "dm-core",

@@ -52,6 +52,8 @@ if CONFIG[:database]
        #DataMapper.setup(:default, {:adapter  => "redis"})
 
 	#DataMapper::Model.raise_on_save_failure = true
+  require 'ohm'
+  Ohm.connect :thread_safe => true
 end
 
 # load mail settings for error messages

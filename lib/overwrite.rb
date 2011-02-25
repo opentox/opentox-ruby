@@ -137,3 +137,9 @@ class OTLogger < Logger
 
 end
 
+# make migration from datamapper more straightforward
+class Ohm::Model
+  def self.get(id)
+    self[id]
+  end
+end
