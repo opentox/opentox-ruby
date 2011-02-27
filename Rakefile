@@ -30,6 +30,7 @@ begin
       "ohm",
       "rjb"
     ].each { |dep| gem.add_dependency dep }
+=begin
     [ "dm-core",
       'dm-serializer',
       'dm-timestamps',
@@ -38,6 +39,7 @@ begin
       "dm-mysql-adapter",
       "dm-validations",
     ].each {|dep| gem.add_dependency dep, ">= 1" }
+=end
     gem.add_dependency "haml", ">=3"
     ['jeweler'].each { |dep| gem.add_development_dependency dep }
     gem.files =  FileList["[A-Z]*", "{bin,generators,lib,test}/**/*", 'lib/jeweler/templates/.gitignore']

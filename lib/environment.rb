@@ -23,10 +23,9 @@ else
 end
 
 # database
+=begin
 if CONFIG[:database]
 	['dm-core', 'dm-serializer', 'dm-timestamps', 'dm-types', 'dm-migrations', 'dm-validations' ].each{|lib| require lib }
-=begin
-=end
 	case CONFIG[:database][:adapter]
 	when /sqlite/i
 		db_dir = File.join(basedir, "db")
@@ -52,9 +51,10 @@ if CONFIG[:database]
        #DataMapper.setup(:default, {:adapter  => "redis"})
 
 	#DataMapper::Model.raise_on_save_failure = true
-  require 'ohm'
-  Ohm.connect :thread_safe => true
 end
+=end
+require 'ohm'
+Ohm.connect :thread_safe => true
 
 # load mail settings for error messages
 load File.join config_dir,"mail.rb" if File.exists?(File.join config_dir,"mail.rb")
