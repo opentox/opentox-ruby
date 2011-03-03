@@ -83,6 +83,7 @@ module OpenTox
   end
 end
 
+=begin
 get '/logout/?' do
   response.set_cookie("subjectid",{:value=>nil})
   content_type "text/html"
@@ -107,4 +108,5 @@ post '/login/?' do
     OpenTox.login("Login failed, please try again")
   end
 end
+=end
 

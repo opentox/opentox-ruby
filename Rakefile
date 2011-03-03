@@ -28,6 +28,7 @@ begin
       "tmail",
       "rinruby",
       "ohm",
+      "SystemTimer",
       "rjb"
     ].each { |dep| gem.add_dependency dep }
 =begin
