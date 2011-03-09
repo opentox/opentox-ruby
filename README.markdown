@@ -32,7 +32,7 @@ This example shows how to create a lazar model and predict a compound, it assume
     prediction = OpenTox::LazarPrediction.find(prediction_uri, subjectid)
     puts prediction.to_yaml
 
-[API documentation](http://rdoc.info/gems/opentox-ruby/0.0.2/frames)
+[API documentation](http://rdoc.info/gems/opentox-ruby/1.0.0/frames)
 -------------------------------------------------------------------
 
 Copyright
