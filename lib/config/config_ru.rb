@@ -12,6 +12,7 @@ $stdout.sync = true
 $stderr.sync = true
 set :logging, false
 set :raise_errors, true 
+set :lock, true
 
 ['public','tmp'].each do |dir|
 	FileUtils.mkdir_p dir unless File.exists?(dir)

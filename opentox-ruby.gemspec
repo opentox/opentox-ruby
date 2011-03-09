@@ -4,15 +4,15 @@
 # -*- encoding: utf-8 -*-
 
 Gem::Specification.new do |s|
-  s.name = %q{opentox-ruby-api-wrapper}
-  s.version = "1.6.5"
+  s.name = %q{opentox-ruby}
+  s.version = "0.0.2"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
-  s.authors = ["Christoph Helma, Martin Guetlein"]
-  s.date = %q{2010-08-25}
+  s.authors = ["Christoph Helma, Martin Guetlein, Andreas Maunz, Micha Rautenberg, David Vorgrimmler"]
+  s.date = %q{2011-01-27}
   s.description = %q{Ruby wrapper for the OpenTox REST API (http://www.opentox.org)}
   s.email = %q{helma@in-silico.ch}
-  s.executables = ["opentox-install-ubuntu.sh", "yaml2owl.rb", "opentox-install-debian.sh"]
+  s.executables = ["opentox-install-ubuntu.sh", "opentox-install-debian.sh"]
   s.extra_rdoc_files = [
     "LICENSE",
      "README.rdoc"
@@ -24,30 +24,38 @@ Gem::Specification.new do |s|
      "VERSION",
      "bin/opentox-install-debian.sh",
      "bin/opentox-install-ubuntu.sh",
-     "bin/yaml2owl.rb",
      "lib/algorithm.rb",
      "lib/authorization.rb",
      "lib/compound.rb",
      "lib/config/config_ru.rb",
      "lib/dataset.rb",
      "lib/environment.rb",
-     "lib/features.rb",
+     "lib/error.rb",
+     "lib/feature.rb",
      "lib/helper.rb",
      "lib/model.rb",
-     "lib/opentox-ruby-api-wrapper.rb",
+     "lib/ontology_service.rb",
+     "lib/opentox-ruby.rb",
      "lib/opentox.owl",
-     "lib/ot-logger.rb",
+     "lib/opentox.rb",
      "lib/overwrite.rb",
-     "lib/owl.rb",
+     "lib/owl.rb.RDF",
+     "lib/owl.rb.nt",
+     "lib/owl.rb.rdfxml.initial",
+     "lib/owl.rb.redland",
+     "lib/parser.rb",
+     "lib/policy.rb",
      "lib/rest_client_wrapper.rb",
+     "lib/serializer.rb",
      "lib/spork.rb",
      "lib/task.rb",
      "lib/templates/config.yaml",
-     "lib/templates/users.yaml",
-     "lib/utils.rb",
+     "lib/templates/default_guest_policy.xml",
+     "lib/templates/default_policy.xml",
+     "lib/to-html.rb",
      "lib/validation.rb"
   ]
-  s.homepage = %q{http://github.com/helma/opentox-ruby-api-wrapper}
+  s.homepage = %q{http://github.com/helma/opentox-ruby}
   s.rdoc_options = ["--charset=UTF-8"]
   s.require_paths = ["lib"]
   s.rubygems_version = %q{1.3.7}
@@ -68,10 +76,10 @@ Gem::Specification.new do |s|
       s.add_runtime_dependency(%q<rack-flash>, [">= 0"])
       s.add_runtime_dependency(%q<nokogiri>, [">= 0"])
       s.add_runtime_dependency(%q<rubyzip>, [">= 0"])
-      s.add_runtime_dependency(%q<builder>, [">= 0"])
       s.add_runtime_dependency(%q<roo>, [">= 0"])
       s.add_runtime_dependency(%q<spreadsheet>, [">= 0"])
       s.add_runtime_dependency(%q<google-spreadsheet-ruby>, [">= 0"])
+      s.add_runtime_dependency(%q<yajl-ruby>, [">= 0"])
       s.add_runtime_dependency(%q<tmail>, [">= 0"])
       s.add_runtime_dependency(%q<rinruby>, [">= 0"])
       s.add_runtime_dependency(%q<rjb>, [">= 0"])
@@ -83,7 +91,6 @@ Gem::Specification.new do |s|
       s.add_runtime_dependency(%q<dm-mysql-adapter>, [">= 1"])
       s.add_runtime_dependency(%q<dm-validations>, [">= 1"])
       s.add_runtime_dependency(%q<haml>, [">= 3"])
-      s.add_development_dependency(%q<cucumber>, [">= 0"])
       s.add_development_dependency(%q<jeweler>, [">= 0"])
     else
       s.add_dependency(%q<sinatra>, [">= 0"])
@@ -96,10 +103,10 @@ Gem::Specification.new do |s|
       s.add_dependency(%q<rack-flash>, [">= 0"])
       s.add_dependency(%q<nokogiri>, [">= 0"])
       s.add_dependency(%q<rubyzip>, [">= 0"])
-      s.add_dependency(%q<builder>, [">= 0"])
       s.add_dependency(%q<roo>, [">= 0"])
       s.add_dependency(%q<spreadsheet>, [">= 0"])
       s.add_dependency(%q<google-spreadsheet-ruby>, [">= 0"])
+      s.add_dependency(%q<yajl-ruby>, [">= 0"])
       s.add_dependency(%q<tmail>, [">= 0"])
       s.add_dependency(%q<rinruby>, [">= 0"])
       s.add_dependency(%q<rjb>, [">= 0"])
@@ -111,7 +118,6 @@ Gem::Specification.new do |s|
       s.add_dependency(%q<dm-mysql-adapter>, [">= 1"])
       s.add_dependency(%q<dm-validations>, [">= 1"])
       s.add_dependency(%q<haml>, [">= 3"])
-      s.add_dependency(%q<cucumber>, [">= 0"])
       s.add_dependency(%q<jeweler>, [">= 0"])
     end
   else
@@ -125,10 +131,10 @@ Gem::Specification.new do |s|
     s.add_dependency(%q<rack-flash>, [">= 0"])
     s.add_dependency(%q<nokogiri>, [">= 0"])
     s.add_dependency(%q<rubyzip>, [">= 0"])
-    s.add_dependency(%q<builder>, [">= 0"])
     s.add_dependency(%q<roo>, [">= 0"])
     s.add_dependency(%q<spreadsheet>, [">= 0"])
     s.add_dependency(%q<google-spreadsheet-ruby>, [">= 0"])
+    s.add_dependency(%q<yajl-ruby>, [">= 0"])
     s.add_dependency(%q<tmail>, [">= 0"])
     s.add_dependency(%q<rinruby>, [">= 0"])
     s.add_dependency(%q<rjb>, [">= 0"])
@@ -140,7 +146,6 @@ Gem::Specification.new do |s|
     s.add_dependency(%q<dm-mysql-adapter>, [">= 1"])
     s.add_dependency(%q<dm-validations>, [">= 1"])
     s.add_dependency(%q<haml>, [">= 3"])
-    s.add_dependency(%q<cucumber>, [">= 0"])
     s.add_dependency(%q<jeweler>, [">= 0"])
   end
 end

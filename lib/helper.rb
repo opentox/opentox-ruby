@@ -1,26 +1,99 @@
 helpers do
 
-	# Authentification
-  def protected!
-    response['WWW-Authenticate'] = %(Basic realm="Testing HTTP Auth") and \
-    throw(:halt, [401, "Not authorized\n"]) and \
-    return unless authorized?
+  # Authentification
+  def protected!(subjectid)
+    if env["session"]
+      unless authorized?(subjectid)
+        flash[:notice] = "You don't have access to this section: "
+        redirect back
+      end
+    elsif !env["session"] && subjectid
+      unless authorized?(subjectid)
+        LOGGER.debug "URI not authorized: clean: " + clean_uri("#{request.env['rack.url_scheme']}://#{request.env['HTTP_HOST']}#{request.env['REQUEST_URI']}").to_s + " full: #{request.env['rack.url_scheme']}://#{request.env['HTTP_HOST']}#{request.env['REQUEST_URI']} with request: #{request.env['REQUEST_METHOD']}"
+        raise OpenTox::NotAuthorizedError.new "Not authorized" 
+      end
+    else
+      raise OpenTox::NotAuthorizedError.new "Not authorized" unless authorized?(subjectid)
+    end
   end
 
-  def authorized?
-    @auth ||=  Rack::Auth::Basic::Request.new(request.env)
-    @auth.provided? && @auth.basic? && @auth.credentials && @auth.credentials == ['api', API_KEY]
+  #Check Authorization for URI with method and subjectid. 
+  def authorized?(subjectid)
+    request_method = request.env['REQUEST_METHOD']
+    uri = clean_uri("#{request.env['rack.url_scheme']}://#{request.env['HTTP_HOST']}#{request.env['REQUEST_URI']}")
+    request_method = "GET" if request_method == "POST" &&  uri =~ /\/model\/\d+\/?$/
+    return OpenTox::Authorization.authorized?(uri, request_method, subjectid)
   end
 
-	    
-=begin
-	def xml(object)
-		builder do |xml| 
-			xml.instruct!
-			object.to_xml
-		end
-	end
-=end
+  #cleans URI from querystring and file-extension. Sets port 80 to emptystring
+  # @param [String] uri 
+  def clean_uri(uri)
+    uri = uri.sub(" ", "%20")          #dirty hacks => to fix
+    uri = uri[0,uri.index("InChI=")] if uri.index("InChI=") 
+    
+    out = URI.parse(uri)
+    out.path = out.path[0, out.path.length - (out.path.reverse.rindex(/\/{1}\d+\/{1}/))] if out.path.index(/\/{1}\d+\/{1}/)  #cuts after /id/ for a&a
+    port = (out.scheme=="http" && out.port==80)||(out.scheme=="https" && out.port==443) ? "" : ":#{out.port.to_s}" 
+    "#{out.scheme}://#{out.host}#{port}#{out.path.chomp("/")}" #"
+  end
 
+  #unprotected uri for login
+  def login_requests
+    return env['REQUEST_URI'] =~ /\/login$/ 
+   end
+
+  def uri_available?(urlStr)
+    url = URI.parse(urlStr)
+    unless @subjectid
+      Net::HTTP.start(url.host, url.port) do |http|
+        return http.head(url.request_uri).code == "200"
+      end
+    else
+      Net::HTTP.start(url.host, url.port) do |http|
+        return http.post(url.request_uri, "subjectid=#{@subjectid}").code == "202"
+      end
+    end
+  end
+
+end
+
+before do
+  unless !AA_SERVER or login_requests or CONFIG[:authorization][:free_request].include?(env['REQUEST_METHOD']) 
+    begin
+      subjectid = nil
+      subjectid = session[:subjectid] if session[:subjectid]
+      subjectid = params[:subjectid]  if params[:subjectid] and !subjectid
+      subjectid = request.env['HTTP_SUBJECTID'] if request.env['HTTP_SUBJECTID'] and !subjectid
+      subjectid = request.cookies["subjectid"] unless subjectid
+      # see http://rack.rubyforge.org/doc/SPEC.html
+      subjectid = CGI.unescape(subjectid) if subjectid.include?("%23")
+      @subjectid = subjectid
+    rescue
+      #LOGGER.debug "OpenTox ruby api wrapper: helper before filter: NO subjectid for URI: #{request.env['rack.url_scheme']}://#{request.env['HTTP_HOST']}#{request.env['REQUEST_URI']}"
+      subjectid = ""
+    end
+    @subjectid = subjectid
+    protected!(subjectid)
+
+    extension = File.extname(request.path_info) # params[:id] is not yet available
+    unless extension.empty?
+     #request.path_info.sub!(/\.#{extension}$/,'')
+     case extension
+     when "html"
+       @accept = 'text/html'
+     when "yaml"
+       @accept = 'application/x-yaml'
+     when "csv"
+       @accept = 'text/csv'
+     when "rdfxml"
+       @accept = 'application/rdf+xml'
+     when "xls"
+       @accept = 'application/ms-excel'
+     else
+       halt 404, "File format #{extension} not supported."
+     end
+   end
+  
+  end
 end
 
