@@ -42,6 +42,19 @@ helpers do
     return env['REQUEST_URI'] =~ /\/login$/ 
    end
 
+  def uri_available?(urlStr)
+    url = URI.parse(urlStr)
+    unless @subjectid
+      Net::HTTP.start(url.host, url.port) do |http|
+        return http.head(url.request_uri).code == "200"
+      end
+    else
+      Net::HTTP.start(url.host, url.port) do |http|
+        return http.post(url.request_uri, "subjectid=#{@subjectid}").code == "202"
+      end
+    end
+  end
+
 end
 
 before do
