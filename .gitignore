@@ -3,4 +3,7 @@
 coverage
 rdoc
 pkg
+.yardoc
+doc
+mysql-bak.rb
 *~
