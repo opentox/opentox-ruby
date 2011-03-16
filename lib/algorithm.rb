@@ -190,8 +190,7 @@ module OpenTox
             gram_matrix[i][i] = 1.0
           end
 
-          LOGGER.debug gram_matrix.to_yaml
-
+          #LOGGER.debug gram_matrix.to_yaml
           @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
           @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
           LOGGER.debug "Setting R data ..."
