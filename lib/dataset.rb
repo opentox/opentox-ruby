@@ -165,7 +165,8 @@ module OpenTox
 
     # Detect feature type(s) in the dataset
     # @return [String] `classification", "regression", "mixed" or unknown`
-    def feature_type
+    def feature_type(subjectid=nil)
+      load_features(subjectid)
       feature_types = @features.collect{|f,metadata| metadata[OT.isA]}.uniq
       if feature_types.size > 1
         "mixed"

@@ -2,6 +2,9 @@ module OpenTox
   class Feature
     include OpenTox
 
+    # Find a feature
+    # @param [String] uri Feature URI
+    # @return [OpenTox::Task] Feature object
     def self.find(uri, subjectid=nil)
       return nil unless uri   
       feature = Feature.new uri
