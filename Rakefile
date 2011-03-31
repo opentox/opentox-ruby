@@ -28,6 +28,7 @@ begin
       "tmail",
       "rinruby",
       "ohm",
+      "ohm-contrib",
       "SystemTimer",
       "rjb"
     ].each { |dep| gem.add_dependency dep }
@@ -44,8 +45,6 @@ begin
     gem.add_dependency "haml", ">=3"
     ['jeweler'].each { |dep| gem.add_development_dependency dep }
     gem.files =  FileList["[A-Z]*", "{bin,generators,lib,test}/**/*", 'lib/jeweler/templates/.gitignore']
-    #gem.files.include %w(lib/environment.rb, lib/algorithm.rb, lib/compound.rb, lib/dataset.rb, lib/model.rb, lib/validation.rb, lib/templates/*)
-    # gem is a Gem::Specification... see http://www.rubygems.org/read/chapter/20 for additional settings
   end
   Jeweler::GemcutterTasks.new
 rescue LoadError

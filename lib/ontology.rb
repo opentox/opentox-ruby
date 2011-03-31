@@ -1,6 +1,6 @@
 module OpenTox
-  module OntologyService
-    module Endpoints
+  module Ontology
+    module Echa
       require 'sparql/client'
       @sparql = SPARQL::Client.new("http://apps.ideaconsult.net:8080/ontology")
       def self.qs(classname="Endpoints")
@@ -12,11 +12,11 @@ module OpenTox
         PREFIX rdf:<http://www.w3.org/1999/02/22-rdf-syntax-ns#>
         PREFIX otee:<http://www.opentox.org/echaEndpoints.owl#>
         PREFIX toxcast:<http://www.opentox.org/toxcast.owl#>
-          select ?Endpoints ?title ?id
-          where {?Endpoints rdfs:subClassOf otee:#{classname}.
-          OPTIONAL {?Endpoints dc:title ?title}.
-          OPTIONAL {?Endpoints dc:identifier ?id}.}
-          ORDER BY ?title"
+        select *
+          where {
+            ?endpoint  rdfs:subClassOf  otee:#{classname}.
+            ?endpoint dc:title ?title.
+          }"
       end
       
       def self.make_option_list(endpoint="Endpoints", level=1)
@@ -38,6 +38,18 @@ module OpenTox
         out += "</select>\n"
         return out
       end
+
+      def self.endpoints#(endpoint="Endpoints")
+        endpoint_datasets = {}
+        RestClientWrapper.get("http://apps.ideaconsult.net:8080/ambit2/query/ndatasets_endpoint",:accept => "text/csv").each do |line|
+          if line.match(/^http/)
+            e = line.split(',')
+            endpoint_datasets["#{e.first} (#{e[1]})"] = RestClientWrapper.get(e.last, :accept => "text/uri-list").split("\n")#[0..e[1].to_i-1] # hack to get only the first count entries
+          end
+        end
+        endpoint_datasets
+      end
     end
+
   end
 end
