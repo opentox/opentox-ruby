@@ -55,7 +55,14 @@ module OpenTox
         parameter_ids = []
         `rapper -i rdfxml -o ntriples #{file.path} 2>/dev/null`.each_line do |line|
           triple = line.to_triple
-          @metadata[triple[1]] = triple[2].split('^^').first if triple[0] == @uri and triple[1] != RDF['type']
+          if triple[0] == @uri
+            if triple[1] == RDF.type # allow multiple types
+              @metadata[triple[1]] = [] unless @metadata[triple[1]]
+              @metadata[triple[1]] << triple[2].split('^^').first
+            else
+              @metadata[triple[1]] = triple[2].split('^^').first
+            end
+          end
           statements << triple 
           parameter_ids << triple[2] if triple[1] == OT.parameters
         end
@@ -289,7 +296,7 @@ module OpenTox
           else
             type = types.first
           end
-          @dataset.add_feature_metadata(feature,{OT.isA => type})
+          @dataset.add_feature_metadata(feature,{RDF.type => [type]})
           info += "\"#{@dataset.feature_name(feature)}\" detected as #{type.split('#').last}."
 
           # TODO: rewrite feature values

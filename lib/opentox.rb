@@ -31,7 +31,14 @@ module OpenTox
   end
 
   def add_metadata(metadata)
-    metadata.each { |k,v| @metadata[k] = v }
+    metadata.each do |k,v|
+      if v.is_a? Array
+        @metadata[k] = [] unless @metadata[k]
+        @metadata[k] << v
+      else
+        @metadata[k] = v 
+      end
+    end
   end
 
   # Get OWL-DL representation in RDF/XML format
