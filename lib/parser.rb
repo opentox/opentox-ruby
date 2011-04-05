@@ -230,7 +230,7 @@ module OpenTox
           `rapper -i rdfxml -o ntriples #{file.path} 2>/dev/null`.each_line do |line|
             triple = line.chomp.split('> ').collect{|i| i.sub(/\s+.$/,'').gsub(/[<>"]/,'')}[0..2]
             statements << triple
-            features << triple[0] if triple[1] == RDF['type'] and (triple[2] == OT.Feature || triple[2] == OT.NumericFeature) 
+            features << triple[0] if triple[1] == RDF.type and (triple[2] =~ /Feature|Substructure/) 
           end
           File.delete(to_delete) if to_delete
           statements.each do |triple|
