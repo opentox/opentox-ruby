@@ -69,7 +69,7 @@ module OpenTox
     
     def rdf_content()
       c = {
-        RDF.type => OT.ErrorReport,
+        RDF.type => [OT.ErrorReport],
         OT.statusCode => @http_code,
         OT.message => @message,
         OT.actor => @actor,

@@ -163,24 +163,33 @@ module OpenTox
       @features
     end
 
+    def feature_classes(feature)
+      if Feature.find(feature).feature_type == "classification"
+        classes = []
+        @data_entries.each do |c,e|
+          e[feature].each { |v| classes << v.to_s }
+        end
+        classes.uniq.sort
+      else
+        nil
+      end
+    end
+
+=begin
     # Detect feature type(s) in the dataset
     # @return [String] `classification", "regression", "mixed" or unknown`
     def feature_type(subjectid=nil)
       load_features(subjectid)
-      feature_types = @features.collect{|f,metadata| metadata[OT.isA]}.uniq
-      if feature_types.size > 1
-        "mixed"
+      feature_types = @features.collect{|f,metadata| metadata[RDF.type]}.flatten.uniq
+      if feature_types.include?(OT.NominalFeature)
+        "classification"
+      elsif feature_types.include?(OT.NumericFeature)
+        "regression"
       else
-        case feature_types.first
-        when /NominalFeature/
-          "classification"
-        when /NumericFeature/
-          "regression"
-        else
-          "unknown"
-        end
+        "unknown"
       end
     end
+=end
 
     # Get Spreadsheet representation
     # @return [Spreadsheet::Workbook] Workbook which can be written with the spreadsheet gem (data_entries only, metadata will will be discarded))

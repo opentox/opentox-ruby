@@ -1,6 +1,7 @@
 module OpenTox
   module Ontology
     module Echa
+=begin
       require 'sparql/client'
       @sparql = SPARQL::Client.new("http://apps.ideaconsult.net:8080/ontology")
       def self.qs(classname="Endpoints")
@@ -38,17 +39,16 @@ module OpenTox
         out += "</select>\n"
         return out
       end
+=end
 
-      def self.endpoints#(endpoint="Endpoints")
-        endpoint_datasets = {}
-        RestClientWrapper.get("http://apps.ideaconsult.net:8080/ambit2/query/ndatasets_endpoint",:accept => "text/csv").each do |line|
-          if line.match(/^http/)
-            e = line.split(',')
-            endpoint_datasets["#{e.first} (#{e[1]})"] = RestClientWrapper.get(e.last, :accept => "text/uri-list").split("\n")#[0..e[1].to_i-1] # hack to get only the first count entries
-          end
-        end
-        endpoint_datasets
+      def self.endpoints
+        RestClientWrapper.get("http://apps.ideaconsult.net:8080/ambit2/query/ndatasets_endpoint",:accept => "text/csv").collect { |line| line.split(',').first if line.match(/^http/) }.compact
       end
+
+      def self.datasets(endpoint)
+        RestClientWrapper.get("http://apps.ideaconsult.net:8080/ambit2/dataset?feature_sameas=#{URI.encode endpoint}", :accept => "text/uri-list").split("\n")
+      end
+
     end
 
   end
