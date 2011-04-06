@@ -55,10 +55,7 @@ helpers do
     end
   end
 
-end
-
-before do
-  unless !AA_SERVER or login_requests or CONFIG[:authorization][:free_request].include?(env['REQUEST_METHOD']) 
+  def get_subjectid
     begin
       subjectid = nil
       subjectid = session[:subjectid] if session[:subjectid]
@@ -69,31 +66,37 @@ before do
       subjectid = CGI.unescape(subjectid) if subjectid.include?("%23")
       @subjectid = subjectid
     rescue
-      #LOGGER.debug "OpenTox ruby api wrapper: helper before filter: NO subjectid for URI: #{request.env['rack.url_scheme']}://#{request.env['HTTP_HOST']}#{request.env['REQUEST_URI']}"
-      subjectid = ""
+      subjectid = nil
     end
-    @subjectid = subjectid
-    protected!(subjectid)
-
-    extension = File.extname(request.path_info) # params[:id] is not yet available
+  end
+  def get_extension
+    extension = File.extname(request.path_info)
     unless extension.empty?
-     #request.path_info.sub!(/\.#{extension}$/,'')
-     case extension
-     when "html"
-       @accept = 'text/html'
-     when "yaml"
-       @accept = 'application/x-yaml'
-     when "csv"
-       @accept = 'text/csv'
-     when "rdfxml"
-       @accept = 'application/rdf+xml'
-     when "xls"
-       @accept = 'application/ms-excel'
-     else
-       halt 404, "File format #{extension} not supported."
-     end
-   end
-  
+      case extension.gsub(".","")
+      when "html"
+        @accept = 'text/html'
+      when "yaml"
+        @accept = 'application/x-yaml'
+      when "csv"
+         @accept = 'text/csv'
+      when "rdfxml"
+        @accept = 'application/rdf+xml'
+      when "xls"
+        @accept = 'application/ms-excel'
+      when "css"
+        @accept = 'text/css'
+      else
+        # halt 404, "File format #{extension} not supported."
+      end
+    end
+  end
+end
+
+before do 
+  @subjectid = get_subjectid()
+  @accept = get_extension()
+  unless !AA_SERVER or login_requests or CONFIG[:authorization][:free_request].include?(env['REQUEST_METHOD'])
+    protected!(@subjectid)
   end
 end
 

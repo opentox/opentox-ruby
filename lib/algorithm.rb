@@ -246,7 +246,7 @@ module OpenTox
     # Gauss kernel
     # @return [Float] 
     def self.gauss(x, sigma = 0.3) 
-      d = 1.0 - x
+      d = 1.0 - x.to_f
       Math.exp(-(d*d)/(2*sigma*sigma))
     end
     
