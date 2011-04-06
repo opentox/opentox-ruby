@@ -32,7 +32,16 @@ module OpenTox
     # provides feature type, possible types are "regression" or "classification"
     # @return [String] feature type, unknown if OT.isA property is unknown/ not set
     def feature_type
-      case metadata[OT.isA]
+      if metadata[RDF.type].flatten.include?(OT.NominalFeature)
+        "classification"
+      elsif metadata[RDF.type].flatten.include?(OT.NumericFeature)
+        "regression"
+      else
+        #"unknown"
+        metadata[RDF.type].inspect
+      end
+=begin
+      case metadata[RDF.type]
       when /NominalFeature/
         "classification"
       when /NumericFeature/
@@ -40,6 +49,7 @@ module OpenTox
       else
         "unknown"
       end
+=end
     end    
     
   end

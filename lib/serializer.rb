@@ -67,7 +67,7 @@ module OpenTox
           DC.creator => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           DC.description => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           DC.date => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
-          OT.isA => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
+          #OT.isA => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.Warnings => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           XSD.anyURI => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.hasStatus => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
