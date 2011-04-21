@@ -52,9 +52,9 @@ module OpenTox
       class BBRC
         include Fminer
         # Initialize bbrc algorithm
-        def initialize
+        def initialize(subjectid=nil)
           super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/bbrc")
-          load_metadata
+          load_metadata(subjectid)
         end
       end
 
@@ -62,9 +62,9 @@ module OpenTox
       class LAST
         include Fminer
         # Initialize last algorithm
-        def initialize
+        def initialize(subjectid=nil)
           super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/last")
-          load_metadata
+          load_metadata(subjectid)
         end
       end
 
@@ -74,9 +74,9 @@ module OpenTox
     class Lazar
       include Algorithm
       # Initialize lazar algorithm
-      def initialize
+      def initialize(subjectid=nil)
         super File.join(CONFIG[:services]["opentox-algorithm"], "lazar")
-        load_metadata
+        load_metadata(subjectid)
       end
     end
 
