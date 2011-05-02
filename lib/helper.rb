@@ -90,7 +90,7 @@ before do
      when "xls"
        @accept = 'application/ms-excel'
      else
-       halt 404, "File format #{extension} not supported."
+       #halt 404, "File format #{extension} not supported."
      end
    end
   
