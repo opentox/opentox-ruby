@@ -30,7 +30,16 @@ begin
       "ohm",
       "ohm-contrib",
       "SystemTimer",
-      "rjb"
+      "rjb",
+      #valiation-gems
+      "dm-core", 
+      "dm-serializer", 
+      "dm-timestamps",
+      "dm-types", 
+      "dm-migrations", 
+      "dm-validations", 
+      "dm-sqlite-adapter", 
+      "benchmark"      
     ].each { |dep| gem.add_dependency dep }
 =begin
     [ "dm-core",
@@ -42,7 +51,10 @@ begin
       "dm-validations",
     ].each {|dep| gem.add_dependency dep, ">= 1" }
 =end
+    #valiation-gem
     gem.add_dependency "haml", ">=3"
+    # validation-gems
+    gem.add_dependency "ruby-plot", "=0.0.2"
     ['jeweler'].each { |dep| gem.add_development_dependency dep }
     gem.files =  FileList["[A-Z]*", "{bin,generators,lib,test}/**/*", 'lib/jeweler/templates/.gitignore']
   end
