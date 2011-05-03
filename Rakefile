@@ -38,8 +38,7 @@ begin
       "dm-types", 
       "dm-migrations", 
       "dm-validations", 
-      "dm-sqlite-adapter", 
-      "benchmark"      
+      "dm-sqlite-adapter"
     ].each { |dep| gem.add_dependency dep }
 =begin
     [ "dm-core",
