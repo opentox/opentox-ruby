@@ -137,15 +137,22 @@ module OpenTox
     # Lists policies alongside with affected uris
     # @param [String] subjectid
     # @return [Hash] keys: all policies of the subjectid owner, values: uris affected by those policies
-    def self.list_policy_uris( subjectid )
+    def self.list_policies_uris( subjectid )
       names = list_policies(subjectid)
       policies = {}
       names.each do |n|
-        p = OpenTox::Policies.new
-        p.load_xml( list_policy(n, subjectid) )
-        policies[n] = p.uris
+        policies[n] = list_policy_uris( n, subjectid )
       end
       policies
+    end
+
+    # Lists policies alongside with affected uris
+    # @param [String] subjectid
+    # @return [Hash] keys: all policies of the subjectid owner, values: uris affected by those policies
+    def self.list_policy_uris( policy, subjectid )
+      p = OpenTox::Policies.new
+      p.load_xml( list_policy(policy, subjectid) )
+      p.uris
     end
     
     #Returns the owner (who created the first policy) of an URI

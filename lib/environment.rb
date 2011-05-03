@@ -23,7 +23,7 @@ else
 end
 
 # database
-`redis-server /opt/redis/redis.conf` unless File.exists? "/var/run/redis.pid"
+#`redis-server /opt/redis/redis.conf` unless File.exists? "/var/run/redis.pid" # removed by AM
 Ohm.connect :thread_safe => true
 
 # load mail settings for error messages

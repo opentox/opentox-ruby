@@ -163,8 +163,8 @@ module OpenTox
       @features
     end
 
-    def feature_classes(feature)
-      if Feature.find(feature).feature_type == "classification"
+    def feature_classes(feature, subjectid=nil)
+      if Feature.find(feature, subjectid).feature_type == "classification"
         classes = []
         @data_entries.each do |c,e|
           e[feature].each { |v| classes << v.to_s }
