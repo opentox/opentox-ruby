@@ -8,6 +8,7 @@ module OpenTox
     
     def initialize(uri=nil)
       super uri
+      @http_code = 202
       @metadata = {
         DC.title => "",
         DC.date => "",
@@ -154,6 +155,7 @@ module OpenTox
     
     # not stored just for to_rdf
     def add_error_report( error_report )
+      raise "not an error report: "+error_report.class.to_s unless error_report.is_a?(ErrorReport)
       @error_report = error_report
     end
     
