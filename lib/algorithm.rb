@@ -215,7 +215,7 @@ module OpenTox
           LOGGER.debug "Predicting ..."
           @r.eval "p<-predict(model,sims)[1,1]"
           prediction = 10**(@r.p.to_f)
-          LOGGER.debug "Prediction is: '" + @prediction.to_s + "'."
+          LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           @r.quit # free R
         end
         confidence = conf/neighbors.size if neighbors.size > 0
