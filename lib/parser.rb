@@ -163,6 +163,7 @@ module OpenTox
           data = {}
           feature_values = {}
           feature = {}
+          feature_accept_values = {}
           other_statements = {}
           `rapper -i rdfxml -o ntriples #{file.path} 2>/dev/null`.each_line do |line|
             triple = line.chomp.split(' ',3)
@@ -182,6 +183,9 @@ module OpenTox
               if triple[2]=~/#{OT.Compound}/i and !data[triple[0]]
                 data[triple[0]] = {:compound => triple[0], :values => []} 
               end
+            when /#{OT.acceptValue}/i # acceptValue in ambit datasets is only provided in dataset/<id> no in dataset/<id>/features  
+              feature_accept_values[triple[0]] = [] unless feature_accept_values[triple[0]]
+              feature_accept_values[triple[0]] << triple[2]
             else 
             end
           end
@@ -192,20 +196,25 @@ module OpenTox
               @dataset.add_compound(entry[:compound])
             else
               entry[:values].each do |value_id|
-                split = feature_values[value_id].split(/\^\^/)
-                case split[-1]
-                when XSD.double, XSD.float 
-                  value = split.first.to_f
-                when XSD.boolean
-                  value = split.first=~/(?i)true/ ? true : false                
-                else
-                  value = split.first
+                if feature_values[value_id]
+                  split = feature_values[value_id].split(/\^\^/)
+                  case split[-1]
+                  when XSD.double, XSD.float 
+                    value = split.first.to_f
+                  when XSD.boolean
+                    value = split.first=~/(?i)true/ ? true : false                
+                  else
+                    value = split.first
+                  end
                 end
                 @dataset.add entry[:compound],feature[value_id],value
               end
             end
           end
           load_features subjectid
+          feature_accept_values.each do |feature, values|
+            @dataset.features[feature][OT.acceptValue] = values
+          end
           @dataset.metadata = load_metadata(subjectid)
           @dataset
         end
@@ -348,15 +357,22 @@ module OpenTox
           when OT.NominalFeature
             case value.to_s
             when TRUE_REGEXP
-              @dataset.add(compound.uri, feature, true )
+              val = true
             when FALSE_REGEXP
-              @dataset.add(compound.uri, feature, false )
+              val = false
             end
           when OT.NumericFeature
-            @dataset.add compound.uri, feature, value.to_f
+            val = value.to_f
           when OT.StringFeature
-            @dataset.add compound.uri, feature, value.to_s
+            val = value.to_s
             @activity_errors << smiles+", "+row.join(", ")
+          end
+          if val!=nil
+            @dataset.add(compound.uri, feature, val)
+            if type!=OT.NumericFeature
+              @dataset.features[feature][OT.acceptValue] = [] unless @dataset.features[feature][OT.acceptValue]
+              @dataset.features[feature][OT.acceptValue] << val.to_s unless @dataset.features[feature][OT.acceptValue].include?(val.to_s)
+            end
           end
         end
       end

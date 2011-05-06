@@ -16,19 +16,6 @@ module OpenTox
       feature
     end
     
-    # provides domain (possible target values) of classification feature 
-    # @return [Array] list with possible target values
-    def domain
-      if metadata[OT.acceptValue]
-        raise "accept value found, remove hack and implement correctly"
-      else
-      if @uri=~/feature\/26221/ || @uri=~/feature\/221726/ 
-        return ["mutagen" , "nonmutagen"]
-      end
-        return [true, false]
-      end
-    end
-    
     # provides feature type, possible types are "regression" or "classification"
     # @return [String] feature type, unknown if OT.isA property is unknown/ not set
     def feature_type
