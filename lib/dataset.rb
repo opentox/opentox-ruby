@@ -293,7 +293,7 @@ module OpenTox
       else
         compounds.each do |c|
           features.each do |f|
-            unless @data_entries[c][f]
+            if @data_entries[c]==nil or @data_entries[c][f]==nil
               dataset.add(c,f,nil)
             else
               @data_entries[c][f].each do |v|
