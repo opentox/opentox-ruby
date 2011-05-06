@@ -74,7 +74,7 @@ module OpenTox
     # @param [optional,String] uri URI of the dataset service, defaults to service specified in configuration
     # @return [Array] Array of dataset object without data (use one of the load_* methods to pull data from the server)
     def self.all(uri=CONFIG[:services]["opentox-dataset"], subjectid=nil)
-      RestClientWrapper.get(uri,{:accept => "text/uri-list",:subjectid => subjectid}).to_s.each_line.collect{|u| Dataset.new(u, subjectid)}
+      RestClientWrapper.get(uri,{:accept => "text/uri-list",:subjectid => subjectid}).to_s.each_line.collect{|u| Dataset.new(u.chomp, subjectid)}
     end
 
     # Load YAML representation into the dataset
@@ -158,8 +158,12 @@ module OpenTox
     # Load and return only features from the dataset service
     # @return [Hash]  Features of the dataset
     def load_features(subjectid=nil)
-      parser = Parser::Owl::Dataset.new(@uri, subjectid)
-      @features = parser.load_features(subjectid)
+      if (CONFIG[:yaml_hosts].include?(URI.parse(@uri).host))
+        @features = YAML.load(RestClientWrapper.get(File.join(@uri,"features"), {:accept => "application/x-yaml", :subjectid => subjectid}))
+      else
+        parser = Parser::Owl::Dataset.new(@uri, subjectid)
+        @features = parser.load_features(subjectid)
+      end
       @features
     end
 
