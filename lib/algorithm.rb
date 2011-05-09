@@ -165,7 +165,7 @@ module OpenTox
       # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
       # @return [Hash] Hash with keys `:prediction, :confidence`
       def self.local_svm_regression(neighbors,params )
-        sims = neighbors.collect{ |n| n[:similarity] } # similarity values between query and neighbors
+        sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values between query and neighbors
         conf = sims.inject{|sum,x| sum + x }
         acts = neighbors.collect do |n|
           act = n[:activity] 
