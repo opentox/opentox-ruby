@@ -12,6 +12,18 @@ module OpenTox
       val
     end
     
+    # returns a filtered list of validation uris
+    # @param [Hash,optional] params, validation-params to filter the uris (could be model, training_dataset, ..)  
+    # @return [Array]    
+    def self.list( params={} )
+      filter_string = ""
+      params.each do |k,v|
+        filter_string = "?" if filter_string.length==0 
+        filter_string += k.to_s+"="+v
+      end
+      (OpenTox::RestClientWrapper.get(CONFIG[:services]["opentox-validation"]+filter_string).split("\n"))
+    end
+    
     # creates a training test split validation, waits until it finishes, may take some time
     # @param [Hash] params (required:algorithm_uri,dataset_uri,prediction_feature, optional:algorithm_params,split_ratio(0.67),random_seed(1))
     # @param [String,optional] subjectid
@@ -94,6 +106,18 @@ module OpenTox
       cv = Crossvalidation.new(uri)
       cv.load_metadata( subjectid )
       cv
+    end
+    
+    # returns a filtered list of crossvalidation uris
+    # @param [Hash,optional] params, crossvalidation-params to filter the uris (could be algorithm, dataset, ..)  
+    # @return [Array]    
+    def self.list( params={} )
+      filter_string = ""
+      params.each do |k,v|
+        filter_string = "?" if filter_string.length==0 
+        filter_string += k.to_s+"="+v
+      end
+      (OpenTox::RestClientWrapper.get(File.join(CONFIG[:services]["opentox-validation"],"crossvalidation")+filter_string).split("\n"))
     end
 		
     # creates a crossvalidations, waits until it finishes, may take some time
