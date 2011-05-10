@@ -46,7 +46,6 @@ module OpenTox
       @report.uri
     end
     
-    
     # creates a validation object from crossvaldiation statistics, raise error if not found
     # (as crossvaldiation statistics are returned as an average valdidation over all folds)
     # @param [String] crossvalidation uri
@@ -162,9 +161,10 @@ module OpenTox
     # @param [String,optional] subjectid
     # @return [OpenTox::ValidationReport]
     def self.find( uri, subjectid=nil )
-      # PENDING load report data?
       OpenTox::RestClientWrapper.get(uri,{:subjectid => subjectid})
-      ValidationReport.new(uri)
+      rep = ValidationReport.new(uri)
+      rep.load_metadata( subjectid )
+      rep
     end
     
     # finds ValidationReport for a particular validation
@@ -200,7 +200,9 @@ module OpenTox
     def self.find( uri, subjectid=nil )
       # PENDING load report data?
       OpenTox::RestClientWrapper.get(uri,{:subjectid => subjectid})
-      CrossvalidationReport.new(uri)
+      rep = CrossvalidationReport.new(uri)
+      rep.load_metadata( subjectid )
+      rep
     end
     
     # finds CrossvalidationReport for a particular crossvalidation
