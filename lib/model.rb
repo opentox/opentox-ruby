@@ -219,7 +219,7 @@ module OpenTox
           LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
           neighbors(s, l, position, lr_size) # get ratio fraction of larger part
           prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
-          if prediction[:confidence].abs > prediction_best[:confidence].abs || prediction_best.nil?
+          if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
             prediction_best=prediction 
             neighbors_best=@neighbors
           end
