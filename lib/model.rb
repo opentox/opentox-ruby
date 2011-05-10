@@ -210,27 +210,27 @@ module OpenTox
         position = 0
         predictions = Array.new
 
-        @collect_neighbors = {}
-        predictions = []
+        prediction_best=nil
+        neighbors_best=nil
+
+        begin
         for i in 1..modulo[0] do
           (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
           LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
           neighbors(s, l, position, lr_size) # get ratio fraction of larger part
-          predictions << eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
+          prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
+          if prediction[:confidence].abs > prediction_best[:confidence].abs || prediction_best.nil?
+            prediction_best=prediction 
+            neighbors_best=@neighbors
+          end
           position = position + lr_size
         end
-        @neighbors = @collect_neighbors.values # AM: get all neighbors
-
-        prediction={}
-        begin
-          p_sum=0.0
-          predictions.each do |p|
-            p[:prediction] == false ? p_sum = p_sum - p[:confidence].to_f : p_sum = p_sum + p[:confidence].to_f
-          end
-          prediction = { :prediction => (p_sum<0.0 ? false : true), :confidence => p_sum.abs/predictions.size } # AM: get mean
         rescue Exception => e
           LOGGER.error "BLAZAR failed in prediction: "+e.class.to_s+": "+e.message
         end
+
+        prediction=prediction_best
+        @neighbors=neighbors_best
 
         prediction_feature_uri = File.join( @prediction_dataset.uri, "feature", "prediction", File.basename(@metadata[OT.dependentVariables]),@prediction_dataset.compounds.size.to_s)
         # TODO: fix dependentVariable
@@ -338,7 +338,6 @@ module OpenTox
                   :activity => act
                 }
                 @neighbors << this_neighbor
-                @collect_neighbors[training_compound] = this_neighbor
               end
             end
           end
