@@ -348,16 +348,27 @@ module OpenTox
           when OT.NominalFeature
             case value.to_s
             when TRUE_REGEXP
-              @dataset.add(compound.uri, feature, true )
+              #@dataset.add(compound.uri, feature, true )
+              val=true
             when FALSE_REGEXP
-              @dataset.add(compound.uri, feature, false )
+              #@dataset.add(compound.uri, feature, false )
+              val=false
             end
           when OT.NumericFeature
-            @dataset.add compound.uri, feature, value.to_f
+            #@dataset.add compound.uri, feature, value.to_f
+            val = value.to_f
           when OT.StringFeature
-            @dataset.add compound.uri, feature, value.to_s
+            #@dataset.add compound.uri, feature, value.to_s
+            val = value.to_s
             @activity_errors << smiles+", "+row.join(", ")
           end
+            if val!=nil
+              @dataset.add(compound.uri, feature, val)
+              if type!=OT.NumericFeature
+                @dataset.features[feature][OT.acceptValue] = [] unless @dataset.features[feature][OT.acceptValue]
+                @dataset.features[feature][OT.acceptValue] << val.to_s unless @dataset.features[feature][OT.acceptValue].include?(val.to_s)
+              end
+           end
         end
       end
 
