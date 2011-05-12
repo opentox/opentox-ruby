@@ -8,6 +8,7 @@ before {
   $url_provider = self
   # stupid internet explorer does not ask for text/html, add this manually 
   request.env['HTTP_ACCEPT'] += ";text/html" if request.env["HTTP_USER_AGENT"]=~/MSIE/
+  request.env['HTTP_ACCEPT']=request.params["media"] if request.params["media"]
 }
 
 # Error handling
