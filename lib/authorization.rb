@@ -286,10 +286,12 @@ module OpenTox
     # @return [Boolean]
     def self.delete_policies_from_uri(uri, subjectid)
       policies = list_uri_policies(uri, subjectid)
-      policies.each do |policy|
-        ret = delete_policy(policy, subjectid)
-        LOGGER.debug "OpenTox::Authorization delete policy: #{policy} - with result: #{ret}"
-      end    
+      if policies
+        policies.each do |policy|
+          ret = delete_policy(policy, subjectid)
+          LOGGER.debug "OpenTox::Authorization delete policy: #{policy} - with result: #{ret}"
+        end
+      end
       return true
     end
 
