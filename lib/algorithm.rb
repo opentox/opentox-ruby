@@ -167,9 +167,17 @@ module OpenTox
       def self.local_svm_regression(neighbors,params )
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values between query and neighbors
         conf = sims.inject{|sum,x| sum + x }
+
+        # AM: Control log taking
+        take_logs=true
+        neighbors.each do |n| 
+          if (! n[:activity].nil?) && (n[:activity].to_f < 0.0)
+            take_logs = false
+          end
+        end
         acts = neighbors.collect do |n|
           act = n[:activity] 
-          Math.log10(act.to_f)
+          take_logs ? Math.log10(act.to_f) : act.to_f
         end # activities of neighbors for supervised learning
 
         neighbor_matches = neighbors.collect{ |n| n[:features] } # as in classification: URIs of matches
