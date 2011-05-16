@@ -44,14 +44,8 @@ helpers do
 
   def uri_available?(urlStr)
     url = URI.parse(urlStr)
-    unless @subjectid
-      Net::HTTP.start(url.host, url.port) do |http|
-        return http.head(url.request_uri).code == "200"
-      end
-    else
-      Net::HTTP.start(url.host, url.port) do |http|
-        return http.post(url.request_uri, "subjectid=#{@subjectid}").code == "202"
-      end
+    Net::HTTP.start(url.host, url.port) do |http|
+      return http.head("#{url.request_uri}?subjectid=#{CGI.escape @subjectid}").code == "200"
     end
   end
 
