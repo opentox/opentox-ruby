@@ -222,7 +222,7 @@ module OpenTox
           @r.eval "sims<-as.kernelMatrix(matrix(sims,1))"
           LOGGER.debug "Predicting ..."
           @r.eval "p<-predict(model,sims)[1,1]"
-          prediction = 10**(@r.p.to_f)
+          prediction = 10**(@r.p.to_f) if take_logs
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           @r.quit # free R
         end
