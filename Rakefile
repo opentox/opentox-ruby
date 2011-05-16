@@ -53,7 +53,7 @@ begin
     #valiation-gem
     gem.add_dependency "haml", ">=3"
     # validation-gems
-    gem.add_dependency "ruby-plot", "~>0.3.0"
+    gem.add_dependency "ruby-plot", "~>0.4.0"
     ['jeweler'].each { |dep| gem.add_development_dependency dep }
     gem.files =  FileList["[A-Z]*", "{bin,generators,lib,test}/**/*", 'lib/jeweler/templates/.gitignore']
   end
