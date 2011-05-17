@@ -164,11 +164,7 @@ module OpenTox
       # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
       # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
       # @return [Hash] Hash with keys `:prediction, :confidence`
-      def self.local_svm_regression(neighbors,params )
-        sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values between query and neighbors
-        conf = sims.inject{|sum,x| sum + x }
-
-        # AM: Control log taking
+      def self.local_svm_regression(neighbors, params)
         take_logs=true
         neighbors.each do |n| 
           if (! n[:activity].nil?) && (n[:activity].to_f < 0.0)
@@ -180,10 +176,51 @@ module OpenTox
           take_logs ? Math.log10(act.to_f) : act.to_f
         end # activities of neighbors for supervised learning
 
-        neighbor_matches = neighbors.collect{ |n| n[:features] } # as in classification: URIs of matches
+        sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
+        prediction = local_sv_machine (neighbors, acts, sims, "svr", params)
+        prediction = take_logs ? 10**(prediction.to_f) : prediction.to_f
+        LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
+
+        conf = sims.inject{|sum,x| sum + x }
+        confidence = conf/neighbors.size if neighbors.size > 0
+        {:prediction => prediction, :confidence => confidence}
+        
+      end
+
+      # Local support vector classification from neighbors 
+      # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
+      # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
+      # @return [Hash] Hash with keys `:prediction, :confidence`
+      def self.local_svm_classification(neighbors, params)
+        acts = neighbors.collect do |n|
+          act = n[:activity]
+        end # activities of neighbors for supervised learning
+
+        sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
+        prediction = local_sv_machine (neighbors, acts, sims, "svc", params)
+        prediction = prediction.to_f
+        LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
+
+        conf = sims.inject{|sum,x| sum + x }
+        confidence = conf/neighbors.size if neighbors.size > 0
+        {:prediction => prediction, :confidence => confidence}
+        
+      end
+
+    end
+
+    # Local support vector prediction. Not to be called directly (use local_svm_regression or local_svm_classification.
+    # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
+    # @param [Array] acts, activities for neighbors.
+    # @param [Array] sims, similarities for neighbors.
+    # @param [String] type, one of "svr" (regression) or "svc" (classification).
+    # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
+    # @return [Numeric] A prediction value.
+    def self.local_sv_machine(neighbors, acts, sims, type, params)
+        neighbor_matches = neighbors.collect{ |n| n[:features] } # URIs of matches
         gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
         if neighbor_matches.size == 0
-          raise "No neighbors found"
+          raise "No neighbors found."
         else
           # gram matrix
           (0..(neighbor_matches.length-1)).each do |i|
@@ -216,21 +253,16 @@ module OpenTox
           
           # model + support vectors
           LOGGER.debug "Creating SVM model ..."
-          @r.eval "model<-ksvm(gram_matrix, y, kernel=matrix, type=\"nu-svr\", nu=0.8)"
+          @r.eval "model<-ksvm(gram_matrix, y, kernel=matrix, type=\"nu-#{type}\", nu=0.5)"
           @r.eval "sv<-as.vector(SVindex(model))"
           @r.eval "sims<-sims[sv]"
           @r.eval "sims<-as.kernelMatrix(matrix(sims,1))"
           LOGGER.debug "Predicting ..."
           @r.eval "p<-predict(model,sims)[1,1]"
-          prediction = 10**(@r.p.to_f) if take_logs
-          LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
+          prediction = @r.p
           @r.quit # free R
         end
-        confidence = conf/neighbors.size if neighbors.size > 0
-        {:prediction => prediction, :confidence => confidence}
-        
-      end
-
+        prediction
     end
 
     module Substructure
