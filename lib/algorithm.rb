@@ -178,7 +178,8 @@ module OpenTox
 
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
         prediction = local_svm(neighbors, acts, sims, "svr", params)
-        prediction = take_logs ? 10**(prediction.to_f) : prediction.to_f
+        LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
+        prediction = (take_logs ? 10**(prediction.to_f) : prediction.to_f)
         LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
 
         conf = sims.inject{|sum,x| sum + x }
