@@ -58,15 +58,15 @@ module OpenTox
       datestring = Time.now.strftime("%Y-%m-%d-%H-%M-%S-x") + rand(1000).to_s
        
       @policies["policy_user"].name = "policy_user_#{user}_#{datestring}"
-      @policies["policy_user"].rules["rule_user"].uri = uri
-      @policies["policy_user"].rules["rule_user"].name = "rule_user_#{user}_#{datestring}"
+      @policies["policy_user"].rule.uri = uri
+      @policies["policy_user"].rule.name = "rule_user_#{user}_#{datestring}"
       @policies["policy_user"].subjects["subject_user"].name = "subject_user_#{user}_#{datestring}"
       @policies["policy_user"].subjects["subject_user"].value = "uid=#{user},ou=people,dc=opentox,dc=org"
       @policies["policy_user"].subject_group = "subjects_user_#{user}_#{datestring}"
             
       @policies["policy_group"].name = "policy_group_#{group}_#{datestring}" 
-      @policies["policy_group"].rules["rule_group"].uri = uri
-      @policies["policy_group"].rules["rule_group"].name = "rule_group_#{group}_#{datestring}"
+      @policies["policy_group"].rule.uri = uri
+      @policies["policy_group"].rule.name = "rule_group_#{group}_#{datestring}"
       @policies["policy_group"].subjects["subject_group"].name = "subject_group_#{group}_#{datestring}"
       @policies["policy_group"].subjects["subject_group"].value = "cn=#{group},ou=groups,dc=opentox,dc=org"
       @policies["policy_group"].subject_group = "subjects_#{group}_#{datestring}" 
@@ -83,7 +83,7 @@ module OpenTox
         rexml.elements.each("Policies/Policy[@name='#{policy_name}']/Rule") do |r|    #Rules
           rule_name = r.attributes["name"]        
           uri = rexml.elements["Policies/Policy[@name='#{policy_name}']/Rule[@name='#{rule_name}']/ResourceName"].attributes["name"]
-          @policies[policy_name].rules[rule_name] = @policies[policy_name].new_rule(rule_name, uri)
+          @policies[policy_name].rule = @policies[policy_name].new_rule(rule_name, uri)
           rexml.elements.each("Policies/Policy[@name='#{policy_name}']/Rule[@name='#{rule_name}']/AttributeValuePair") do |attribute_pairs|
             action=nil; value=nil;
             attribute_pairs.each_element do |elem|
@@ -93,13 +93,13 @@ module OpenTox
             if action and value
               case action
               when "GET"
-                @policies[policy_name].rules[rule_name].get    = value
+                @policies[policy_name].rule.get    = value
               when "POST"
-                @policies[policy_name].rules[rule_name].post   = value
+                @policies[policy_name].rule.post   = value
               when "PUT"
-                @policies[policy_name].rules[rule_name].put    = value
+                @policies[policy_name].rule.put    = value
               when "DELETE"    
-                @policies[policy_name].rules[rule_name].delete = value
+                @policies[policy_name].rule.delete = value
               end
             end
           end        
@@ -127,32 +127,30 @@ module OpenTox
         policy.attributes["name"] = pol.name
         policy.attributes["referralPolicy"] = false
         policy.attributes["active"] = true
-        @policies[name].rules.each do |r,rl|
-          rule = @policies[name].rules[r]
-          out_rule = REXML::Element.new("Rule")
-          out_rule.attributes["name"] = rule.name
-          servicename = REXML::Element.new("ServiceName")
-          servicename.attributes["name"]="iPlanetAMWebAgentService"
-          out_rule.add_element(servicename)
-          rescourcename = REXML::Element.new("ResourceName")
-          rescourcename.attributes["name"] = rule.uri
-          out_rule.add_element(rescourcename)
-          
-          ["get","post","delete","put"].each do |act|
-            if rule.method(act).call
-              attribute = REXML::Element.new("Attribute") 
-              attribute.attributes["name"] = act.upcase
-              attributevaluepair = REXML::Element.new("AttributeValuePair")
-              attributevaluepair.add_element(attribute)
-              attributevalue = REXML::Element.new("Value")
-              attributevaluepair.add_element(attributevalue)
-              attributevalue.add_text REXML::Text.new(rule.method(act).call)
-              out_rule.add_element(attributevaluepair)
-              
-            end
+        rule = @policies[name].rule
+        out_rule = REXML::Element.new("Rule")
+        out_rule.attributes["name"] = rule.name
+        servicename = REXML::Element.new("ServiceName")
+        servicename.attributes["name"]="iPlanetAMWebAgentService"
+        out_rule.add_element(servicename)
+        rescourcename = REXML::Element.new("ResourceName")
+        rescourcename.attributes["name"] = rule.uri
+        out_rule.add_element(rescourcename)
+        
+        ["get","post","delete","put"].each do |act|
+          if rule.method(act).call
+            attribute = REXML::Element.new("Attribute") 
+            attribute.attributes["name"] = act.upcase
+            attributevaluepair = REXML::Element.new("AttributeValuePair")
+            attributevaluepair.add_element(attribute)
+            attributevalue = REXML::Element.new("Value")
+            attributevaluepair.add_element(attributevalue)
+            attributevalue.add_text REXML::Text.new(rule.method(act).call)
+            out_rule.add_element(attributevaluepair)
+            
           end
-          policy.add_element(out_rule)
-        end      
+        end
+        policy.add_element(out_rule)
 
         subjects = REXML::Element.new("Subjects")
         subjects.attributes["name"] = pol.subject_group
@@ -185,35 +183,39 @@ module OpenTox
   #single policy in a policies instance
   class Policy 
   
-    attr_accessor :name, :rules, :subject_group, :subjects
+    attr_accessor :name, :rule, :subject_group, :subjects, :value, :type
   
     def initialize(name)
       @name = name
-      @rules = {}
+      @rule = nil 
       @subject_group = ""
       @subjects = {}
+      @value = ""
+      @type = ""
     end
     
     #create a new rule instance for the policy
     def new_rule(name, uri)
-      @rules[name] = Rule.new(name, uri)
+      @rule = Rule.new(name, uri)
     end
-    
+
     #create a new subject instance for the policy 
     def new_subject(name, type, value)
       @subjects[name] = Subject.new(name, type, value)
+      @value = value
+      @type  = type
     end
-    
+
     # @return [Array] set of uris affected by policy
     def uris
       @rules.collect{ |k,v| v.uri }.uniq
     end
-    
+
     #rule inside a policy
     class Rule
-      
+
       attr_accessor :name, :uri, :get, :post, :put, :delete
-      
+
       def initialize(name, uri)
         @name = name
         @uri = uri
