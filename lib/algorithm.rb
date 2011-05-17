@@ -254,7 +254,7 @@ module OpenTox
             
             # model + support vectors
             LOGGER.debug "Creating SVM model ..."
-            @r.eval "model<-ksvm(gram_matrix, y, kernel=matrix, type=\"nu-#{type}\", nu=0.5)"
+            @r.eval "model<-ksvm(gram_matrix, y, kernel=matrix, type=\"nu-#{type}\", nu=0.8)"
             @r.eval "sv<-as.vector(SVindex(model))"
             @r.eval "sims<-sims[sv]"
             @r.eval "sims<-as.kernelMatrix(matrix(sims,1))"
