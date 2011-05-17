@@ -177,7 +177,7 @@ module OpenTox
         end # activities of neighbors for supervised learning
 
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
-        prediction = local_sv_machine (neighbors, acts, sims, "svr", params)
+        prediction = local_svm(neighbors, acts, sims, "svr", params)
         prediction = take_logs ? 10**(prediction.to_f) : prediction.to_f
         LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
 
@@ -197,7 +197,7 @@ module OpenTox
         end # activities of neighbors for supervised learning
 
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
-        prediction = local_sv_machine (neighbors, acts, sims, "svc", params)
+        prediction = local_svm (neighbors, acts, sims, "svc", params)
         prediction = prediction.to_f
         LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
 
@@ -207,62 +207,64 @@ module OpenTox
         
       end
 
-    end
 
-    # Local support vector prediction. Not to be called directly (use local_svm_regression or local_svm_classification.
-    # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
-    # @param [Array] acts, activities for neighbors.
-    # @param [Array] sims, similarities for neighbors.
-    # @param [String] type, one of "svr" (regression) or "svc" (classification).
-    # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
-    # @return [Numeric] A prediction value.
-    def self.local_sv_machine(neighbors, acts, sims, type, params)
-        neighbor_matches = neighbors.collect{ |n| n[:features] } # URIs of matches
-        gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
-        if neighbor_matches.size == 0
-          raise "No neighbors found."
-        else
-          # gram matrix
-          (0..(neighbor_matches.length-1)).each do |i|
-            gram_matrix[i] = [] unless gram_matrix[i]
-            # upper triangle
-            ((i+1)..(neighbor_matches.length-1)).each do |j|
-              sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values])")
-              gram_matrix[i][j] = Algorithm.gauss(sim)
-              gram_matrix[j] = [] unless gram_matrix[j] 
-              gram_matrix[j][i] = gram_matrix[i][j] # lower triangle
+      # Local support vector prediction from neighbors. 
+      # Not to be called directly (use local_svm_regression or local_svm_classification.
+      # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
+      # @param [Array] acts, activities for neighbors.
+      # @param [Array] sims, similarities for neighbors.
+      # @param [String] type, one of "svr" (regression) or "svc" (classification).
+      # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
+      # @return [Numeric] A prediction value.
+      def self.local_svm(neighbors, acts, sims, type, params)
+          neighbor_matches = neighbors.collect{ |n| n[:features] } # URIs of matches
+          gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
+          if neighbor_matches.size == 0
+            raise "No neighbors found."
+          else
+            # gram matrix
+            (0..(neighbor_matches.length-1)).each do |i|
+              gram_matrix[i] = [] unless gram_matrix[i]
+              # upper triangle
+              ((i+1)..(neighbor_matches.length-1)).each do |j|
+                sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values])")
+                gram_matrix[i][j] = Algorithm.gauss(sim)
+                gram_matrix[j] = [] unless gram_matrix[j] 
+                gram_matrix[j][i] = gram_matrix[i][j] # lower triangle
+              end
+              gram_matrix[i][i] = 1.0
             end
-            gram_matrix[i][i] = 1.0
+
+            #LOGGER.debug gram_matrix.to_yaml
+            @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
+            @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
+            LOGGER.debug "Setting R data ..."
+            # set data
+            @r.gram_matrix = gram_matrix.flatten
+            @r.n = neighbor_matches.size
+            @r.y = acts
+            @r.sims = sims
+
+            LOGGER.debug "Preparing R data ..."
+            # prepare data
+            @r.eval "y<-as.vector(y)"
+            @r.eval "gram_matrix<-as.kernelMatrix(matrix(gram_matrix,n,n))"
+            @r.eval "sims<-as.vector(sims)"
+            
+            # model + support vectors
+            LOGGER.debug "Creating SVM model ..."
+            @r.eval "model<-ksvm(gram_matrix, y, kernel=matrix, type=\"nu-#{type}\", nu=0.5)"
+            @r.eval "sv<-as.vector(SVindex(model))"
+            @r.eval "sims<-sims[sv]"
+            @r.eval "sims<-as.kernelMatrix(matrix(sims,1))"
+            LOGGER.debug "Predicting ..."
+            @r.eval "p<-predict(model,sims)[1,1]"
+            prediction = @r.p
+            @r.quit # free R
           end
+          prediction
+      end
 
-          #LOGGER.debug gram_matrix.to_yaml
-          @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
-          @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
-          LOGGER.debug "Setting R data ..."
-          # set data
-          @r.gram_matrix = gram_matrix.flatten
-          @r.n = neighbor_matches.size
-          @r.y = acts
-          @r.sims = sims
-
-          LOGGER.debug "Preparing R data ..."
-          # prepare data
-          @r.eval "y<-as.vector(y)"
-          @r.eval "gram_matrix<-as.kernelMatrix(matrix(gram_matrix,n,n))"
-          @r.eval "sims<-as.vector(sims)"
-          
-          # model + support vectors
-          LOGGER.debug "Creating SVM model ..."
-          @r.eval "model<-ksvm(gram_matrix, y, kernel=matrix, type=\"nu-#{type}\", nu=0.5)"
-          @r.eval "sv<-as.vector(SVindex(model))"
-          @r.eval "sims<-sims[sv]"
-          @r.eval "sims<-as.kernelMatrix(matrix(sims,1))"
-          LOGGER.debug "Predicting ..."
-          @r.eval "p<-predict(model,sims)[1,1]"
-          prediction = @r.p
-          @r.quit # free R
-        end
-        prediction
     end
 
     module Substructure
