@@ -65,7 +65,7 @@ module OpenTox
     def summary
       if @metadata[OT.classificationStatistics]
         res = {
-          :nr_predictions => @metadata[OT.numInstances] - @metadata[OT.numUnpredicted],
+          :nr_predictions => @metadata[OT.numInstances].to_i - @metadata[OT.numUnpredicted].to_i,
           :correct_predictions => @metadata[OT.classificationStatistics][OT.percentCorrect],
           :weighted_area_under_roc => @metadata[OT.classificationStatistics][OT.weightedAreaUnderRoc],
         }
@@ -83,7 +83,7 @@ module OpenTox
         res
       elsif @metadata[OT.regressionStatistics]
         {
-          :nr_predictions => @metadata[OT.numInstances] - @metadata[OT.numUnpredicted],
+          :nr_predictions => @metadata[OT.numInstances].to_i - @metadata[OT.numUnpredicted].to_i,
           :r_square => @metadata[OT.regressionStatistics][OT.rSquare],
           :root_mean_squared_error => @metadata[OT.regressionStatistics][OT.rootMeanSquaredError],
           :mean_absolute_error => @metadata[OT.regressionStatistics][OT.meanAbsoluteError],
