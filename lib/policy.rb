@@ -35,10 +35,11 @@ module OpenTox
     
     # @return [Array] set of arrays affected by policies
     def uris
-      @policies.collect{ |k,v| v.uris }.flatten.uniq
+      @policies.collect{ |k,v| v.uri }.flatten.uniq
     end
 
-        #drop all policies in a policies instance
+    #list all policy names in a policies instance
+    # @return [Array]
     def names
       out = []
       @policies.each do |name, policy|
@@ -47,7 +48,7 @@ module OpenTox
       return out
     end
 
-    #loads a default policy template in policies instance
+    #loads a default policy template in a policies instance
     def load_default_policy(user, uri, group="member")    
       template = case user
         when "guest", "anonymous" then "default_guest_policy"
@@ -60,15 +61,15 @@ module OpenTox
       @policies["policy_user"].name = "policy_user_#{user}_#{datestring}"
       @policies["policy_user"].rule.uri = uri
       @policies["policy_user"].rule.name = "rule_user_#{user}_#{datestring}"
-      @policies["policy_user"].subjects["subject_user"].name = "subject_user_#{user}_#{datestring}"
-      @policies["policy_user"].subjects["subject_user"].value = "uid=#{user},ou=people,dc=opentox,dc=org"
+      @policies["policy_user"].subject.name = "subject_user_#{user}_#{datestring}"
+      @policies["policy_user"].subject.value = "uid=#{user},ou=people,dc=opentox,dc=org"
       @policies["policy_user"].subject_group = "subjects_user_#{user}_#{datestring}"
             
       @policies["policy_group"].name = "policy_group_#{group}_#{datestring}" 
       @policies["policy_group"].rule.uri = uri
       @policies["policy_group"].rule.name = "rule_group_#{group}_#{datestring}"
-      @policies["policy_group"].subjects["subject_group"].name = "subject_group_#{group}_#{datestring}"
-      @policies["policy_group"].subjects["subject_group"].value = "cn=#{group},ou=groups,dc=opentox,dc=org"
+      @policies["policy_group"].subject.name = "subject_group_#{group}_#{datestring}"
+      @policies["policy_group"].subject.value = "cn=#{group},ou=groups,dc=opentox,dc=org"
       @policies["policy_group"].subject_group = "subjects_#{group}_#{datestring}" 
       return true
     end    
@@ -136,7 +137,7 @@ module OpenTox
         rescourcename = REXML::Element.new("ResourceName")
         rescourcename.attributes["name"] = rule.uri
         out_rule.add_element(rescourcename)
-        
+
         ["get","post","delete","put"].each do |act|
           if rule.method(act).call
             attribute = REXML::Element.new("Attribute") 
@@ -147,7 +148,6 @@ module OpenTox
             attributevaluepair.add_element(attributevalue)
             attributevalue.add_text REXML::Text.new(rule.method(act).call)
             out_rule.add_element(attributevaluepair)
-            
           end
         end
         policy.add_element(out_rule)
@@ -155,21 +155,21 @@ module OpenTox
         subjects = REXML::Element.new("Subjects")
         subjects.attributes["name"] = pol.subject_group
         subjects.attributes["description"] = ""
-        @policies[name].subjects.each do |subj, subjs|
-          subject = REXML::Element.new("Subject")
-          subject.attributes["name"] = pol.subjects[subj].name
-          subject.attributes["type"] = pol.subjects[subj].type
-          subject.attributes["includeType"] = "inclusive"
-          attributevaluepair = REXML::Element.new("AttributeValuePair")
-          attribute = REXML::Element.new("Attribute") 
-          attribute.attributes["name"] = "Values"
-          attributevaluepair.add_element(attribute)
-          attributevalue = REXML::Element.new("Value")
-          attributevalue.add_text REXML::Text.new(pol.subjects[subj].value)
-          attributevaluepair.add_element(attributevalue)
-          subject.add_element(attributevaluepair)
-          subjects.add_element(subject)
-        end
+        subj = @policies[name].subject.name
+        subject = REXML::Element.new("Subject")
+        subject.attributes["name"] = pol.subject.name
+        subject.attributes["type"] = pol.subject.type
+        subject.attributes["includeType"] = "inclusive"
+        attributevaluepair = REXML::Element.new("AttributeValuePair")
+        attribute = REXML::Element.new("Attribute") 
+        attribute.attributes["name"] = "Values"
+        attributevaluepair.add_element(attribute)
+        attributevalue = REXML::Element.new("Value")
+        attributevalue.add_text REXML::Text.new(pol.subject.value)
+        attributevaluepair.add_element(attributevalue)
+        subject.add_element(attributevaluepair)
+        subjects.add_element(subject)
+        
         policy.add_element(subjects)
         doc.root.add_element(policy)
       end    
@@ -183,32 +183,56 @@ module OpenTox
   #single policy in a policies instance
   class Policy 
   
-    attr_accessor :name, :rule, :subject_group, :subjects, :value, :type
+    attr_accessor :name, :rule, :subject_group, :subject, :value, :type, :uri
   
     def initialize(name)
       @name = name
       @rule = nil 
       @subject_group = ""
-      @subjects = {}
-      @value = ""
-      @type = ""
+      @subject = nil
     end
     
-    #create a new rule instance for the policy
+    # Create a new rule instance for the policy.
+    # @param [String]name
+    # @param [String]uri URI that is affected by the policy 
     def new_rule(name, uri)
       @rule = Rule.new(name, uri)
     end
 
-    #create a new subject instance for the policy 
+    # Create a new subject instance for the policy. 
+    # @param [String]name
+    # @param [String]type LDAPUsers, LDAPGroups
+    # @param [String]value e.G. 'uid=guest,ou=people,dc=opentox,dc=org'
     def new_subject(name, type, value)
-      @subjects[name] = Subject.new(name, type, value)
-      @value = value
-      @type  = type
+      @subject = Subject.new(name, type, value)
     end
 
-    # @return [Array] set of uris affected by policy
-    def uris
-      @rules.collect{ |k,v| v.uri }.uniq
+    # Subject type LDAPUsers or LDAPGroups
+    def type
+      @subject.type
+    end
+
+    def type=(type)
+      @subject.type = type
+    end
+
+    def value
+      @subject.value
+    end
+
+    def value=(value)
+      @subject.value = value
+    end
+
+    # @return uri affected by policy
+    def uri
+      @rule.uri
+    end
+    
+    # @return uri affected by policy
+    # @param [String] set URI 
+    def uri=(uri)
+      @rule.uri = uri
     end
 
     #rule inside a policy
@@ -220,30 +244,33 @@ module OpenTox
         @name = name
         @uri = uri
       end
-      
-      def rename(new, old)
-        self[new] = self.delete(old)
-        self[new].name = new
-      end
-      
+
+      #Set Rule attribute for request-method GET
+      # @param [String]value (allow,deny,nil)
       def get=(value)
         @get = check_value(value, @get)
       end
-    
+
+      #Set Rule attribute for request-method POST
+      # @param [String]value (allow,deny,nil)
       def post=(value)
         @post = check_value(value, @post)
       end
-          
+
+      #Set Rule attribute for request-method DELETE
+      # @param [String]value (allow,deny,nil)
       def delete=(value)
         @delete = check_value(value, @delete)
       end
-      
+
+      #Set Rule attribute for request-method PUT
+      # @param [String]value (allow,deny,nil)
       def put=(value)
         @put = check_value(value, @put)
       end
           
       private
-      #checks if value is allow or deny. returns old value if not valid. 
+      #checks if value is allow, deny or nil. returns old value if not valid. 
       def check_value(new_value, old_value)
         return (new_value=="allow" || new_value=="deny" || new_value==nil) ? new_value : old_value 
       end
