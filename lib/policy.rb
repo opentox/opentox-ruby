@@ -189,7 +189,7 @@ module OpenTox
   #single policy in a {Policies Policies} instance
   class Policy 
   
-    attr_accessor :name, :rule, :subject_group, :subject, :value, :type, :uri
+    attr_accessor :name, :rule, :subject_group, :subject, :value, :type, :uri, :group
 
     def initialize(name)
       @name = name
@@ -240,6 +240,11 @@ module OpenTox
     # @param [String] set URI 
     def uri=(uri)
       @rule.uri = uri
+    end
+
+    def group
+      return false if !value && type != "LDAPGroups" 
+      value.split(",").each{|part| return part.gsub("cn=","") if part.match("cn=")}
     end
 
     #rule inside a policy
