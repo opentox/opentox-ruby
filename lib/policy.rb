@@ -189,7 +189,7 @@ module OpenTox
   #single policy in a {Policies Policies} instance
   class Policy 
   
-    attr_accessor :name, :rule, :subject_group, :subject, :value, :type, :uri, :group
+    attr_accessor :name, :rule, :subject_group, :subject, :value, :type, :uri, :group, :user
 
     def initialize(name)
       @name = name
@@ -242,9 +242,16 @@ module OpenTox
       @rule.uri = uri
     end
 
+    # Get the groupname from within the LDAPstring
     def group
-      return false if !value && type != "LDAPGroups" 
+      return false if !value && type != "LDAPGroups"
       value.split(",").each{|part| return part.gsub("cn=","") if part.match("cn=")}
+    end
+
+    # Get the username from within the LDAPstring
+    def user
+      return false if !value && type != "LDAPUsers"
+      value.split(",").each{|part| return part.gsub("uid=","") if part.match("uid=")}
     end
 
     #rule inside a policy
@@ -280,7 +287,7 @@ module OpenTox
       def put=(value)
         @put = check_value(value, @put)
       end
-      
+
       def read
         return true if @get == "allow" && (@put == "deny" || !@put) && (@post == "deny" || !@post) 
       end
@@ -288,8 +295,23 @@ module OpenTox
       def readwrite
         return true if @get == "allow" && @put == "allow" && @post == "allow" 
       end
-      
-      
+
+      def read=(value)
+        if value
+          @get = "allow"; @put = nil; @post = nil
+        else
+          @get = nil; @put = nil; @post = nil
+        end
+      end
+
+      def readwrite=(value)
+        if value
+          @get = "allow"; @put = "allow"; @post = "allow"
+        else
+          @get = "allow"; @put = nil; @post = nil
+        end
+      end
+
       private
       #checks if value is allow, deny or nil. returns old value if not valid. 
       def check_value(new_value, old_value)
