@@ -5,9 +5,12 @@ module OpenTox
   # @see also http://www.opentox.org/dev/apis/api-1.2/AA for opentox API specs
   # Class Policies corresponds to <policies> container of an xml-policy-fle
   class Policies 
-  
-    attr_accessor :name, :policies
+
+    #Hash for policy objects see {Policy Policy}
+    attr_accessor :policies
     
+    attr_accessor :name
+
     def initialize()
       @policies = {}
     end
@@ -48,7 +51,10 @@ module OpenTox
       return out
     end
 
-    #loads a default policy template in a policies instance
+    # Loads a default policy template in a policies instance
+    # @param [String]user username in LDAP string of user policy: 'uid=<user>,ou=people,dc=opentox,dc=org'
+    # @param [String]uri URI 
+    # @param [String]group groupname in LDAP string of group policy: 'cn=<group>,ou=groups,dc=opentox,dc=org'
     def load_default_policy(user, uri, group="member")    
       template = case user
         when "guest", "anonymous" then "default_guest_policy"
@@ -84,7 +90,7 @@ module OpenTox
         rexml.elements.each("Policies/Policy[@name='#{policy_name}']/Rule") do |r|    #Rules
           rule_name = r.attributes["name"]        
           uri = rexml.elements["Policies/Policy[@name='#{policy_name}']/Rule[@name='#{rule_name}']/ResourceName"].attributes["name"]
-          @policies[policy_name].rule = @policies[policy_name].new_rule(rule_name, uri)
+          @policies[policy_name].rule = @policies[policy_name].set_rule(rule_name, uri)
           rexml.elements.each("Policies/Policy[@name='#{policy_name}']/Rule[@name='#{rule_name}']/AttributeValuePair") do |attribute_pairs|
             action=nil; value=nil;
             attribute_pairs.each_element do |elem|
@@ -111,7 +117,7 @@ module OpenTox
             subject_name  = s.attributes["name"]
             subject_type  = s.attributes["type"]
             subject_value = rexml.elements["Policies/Policy[@name='#{policy_name}']/Subjects[@name='#{@policies[policy_name].subject_group}']/Subject[@name='#{subject_name}']/AttributeValuePair/Value"].text
-            @policies[policy_name].new_subject(subject_name, subject_type, subject_value) if subject_name and subject_type and subject_value
+            @policies[policy_name].set_subject(subject_name, subject_type, subject_value) if subject_name and subject_type and subject_value
           end
         end      
       end    
@@ -180,11 +186,11 @@ module OpenTox
     
   end
   
-  #single policy in a policies instance
+  #single policy in a {Policies Policies} instance
   class Policy 
   
     attr_accessor :name, :rule, :subject_group, :subject, :value, :type, :uri
-  
+
     def initialize(name)
       @name = name
       @rule = nil 
@@ -192,18 +198,18 @@ module OpenTox
       @subject = nil
     end
     
-    # Create a new rule instance for the policy.
+    # Sets rule instance for the policy.
     # @param [String]name
     # @param [String]uri URI that is affected by the policy 
-    def new_rule(name, uri)
+    def set_rule(name, uri)
       @rule = Rule.new(name, uri)
     end
 
-    # Create a new subject instance for the policy. 
+    # Sets subject instance for the policy. 
     # @param [String]name
     # @param [String]type LDAPUsers, LDAPGroups
     # @param [String]value e.G. 'uid=guest,ou=people,dc=opentox,dc=org'
-    def new_subject(name, type, value)
+    def set_subject(name, type, value)
       @subject = Subject.new(name, type, value)
     end
 
@@ -212,6 +218,7 @@ module OpenTox
       @subject.type
     end
 
+    # Set subject type <LDAPUsers, LDAPGroups>
     def type=(type)
       @subject.type = type
     end
@@ -238,7 +245,7 @@ module OpenTox
     #rule inside a policy
     class Rule
 
-      attr_accessor :name, :uri, :get, :post, :put, :delete
+      attr_accessor :name, :uri, :get, :post, :put, :delete, :read, :readwrite
 
       def initialize(name, uri)
         @name = name
@@ -268,7 +275,16 @@ module OpenTox
       def put=(value)
         @put = check_value(value, @put)
       end
-          
+      
+      def read
+        return true if @get == "allow" && (@put == "deny" || !@put) && (@post == "deny" || !@post) 
+      end
+
+      def readwrite
+        return true if @get == "allow" && @put == "allow" && @post == "allow" 
+      end
+      
+      
       private
       #checks if value is allow, deny or nil. returns old value if not valid. 
       def check_value(new_value, old_value)

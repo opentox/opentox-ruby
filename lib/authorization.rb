@@ -6,7 +6,7 @@ module OpenTox
   #  OpenTox::Authorization::AA_SERVER = "https://opensso.in-silico.ch" #if not set in .opentox/conf/[environment].yaml 
   #  token = OpenTox::Authorization.authenticate("benutzer", "passwort") 
   #@see http://www.opentox.org/dev/apis/api-1.2/AA OpenTox A&A API 1.2 specification
-   
+
   module Authorization
 
     #Helper Class AA to create and send default policies out of xml templates
@@ -14,10 +14,10 @@ module OpenTox
     #  aa=OpenTox::Authorization::AA.new(tok)  
     #  xml=aa.get_xml('http://uri....')
     #  OpenTox::Authorization.create_policy(xml,tok)   
-    
+
     class AA
       attr_accessor :user, :subjectid, :policy  
-      
+
       #Generates AA object - requires subjectid
       # @param [String] subjectid  
       def initialize(subjectid)
@@ -25,7 +25,7 @@ module OpenTox
         @subjectid = subjectid
         @policy = Policies.new()
       end
-      
+
       #Cleans AA Policies and loads default xml file into policy attribute
       #set uri and user, returns Policyfile(XML) for open-sso 
       # @param [String] URI to create a policy for
@@ -34,7 +34,7 @@ module OpenTox
         @policy.load_default_policy(@user, uri)
         return @policy.to_xml
       end   
-      
+
       #Loads and sends Policyfile(XML) to open-sso server
       # @param [String] URI to create a policy for      
       def send(uri)    
@@ -45,9 +45,9 @@ module OpenTox
         LOGGER.warn "Not created Policy is: #{xml}" if !ret
         ret  
       end
-      
+
     end
-    
+
     #Returns the open-sso server set in the config file .opentox/config/[environment].yaml
     # @return [String, nil] the openSSO server URI or nil
     def self.server
@@ -67,7 +67,7 @@ module OpenTox
         return nil
       end
     end
-    
+
     #Logout on opensso. Make token invalid. Requires token
     # @param [String]subjectid the subjectid 
     # @return [Boolean] true if logout is OK
@@ -80,7 +80,7 @@ module OpenTox
         return false
       end
     end    
-    
+
     #Authorization against OpenSSO for a URI with request-method (action) [GET/POST/PUT/DELETE]
     # @param [String,String,String]uri,action,subjectid
     # @return [Boolean, nil]  returns true, false or nil (if authorization-request fails).
@@ -106,7 +106,7 @@ module OpenTox
         return false
       end
     end
- 
+
     #Returns array with all policies of the token owner
     # @param [String]subjectid requires subjectid
     # @return [Array, nil] returns an Array of policy names or nil if request fails
@@ -133,7 +133,7 @@ module OpenTox
         return nil
       end
     end
-    
+
     # Lists policies alongside with affected uris
     # @param [String] subjectid
     # @return [Hash] keys: all policies of the subjectid owner, values: uris affected by those policies
@@ -154,7 +154,7 @@ module OpenTox
       p.load_xml( list_policy(policy, subjectid) )
       p.uris
     end
-    
+
     #Returns the owner (who created the first policy) of an URI
     # @param [String, String]uri,subjectid
     # return [String, nil]owner,nil returns owner of the URI
@@ -166,7 +166,7 @@ module OpenTox
         return nil
       end      
     end    
-    
+
     #Checks if a policy exists to a URI. Requires URI and token.
     # @param [String, String]uri,subjectid
     # return [Boolean] 
@@ -175,7 +175,7 @@ module OpenTox
       return true if owner and owner != "null"
       false
     end
-    
+
     #List all policynames for a URI. Requires URI and token.
     # @param [String, String]uri,subjectid
     # return [Array, nil] returns an Array of policy names or nil if request fails   
