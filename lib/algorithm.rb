@@ -177,9 +177,13 @@ module OpenTox
         end # activities of neighbors for supervised learning
 
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
-        prediction = local_svm(neighbors, acts, sims, "nu-svr", params)
-        prediction = (take_logs ? 10**(prediction.to_f) : prediction.to_f)
-        LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
+        begin
+          prediction = local_svm(neighbors, acts, sims, "nu-svr", params)
+          prediction = (take_logs ? 10**(prediction.to_f) : prediction.to_f)
+          LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
+        rescue Exception => e
+          LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
+        end
 
         conf = sims.inject{|sum,x| sum + x }
         confidence = conf/neighbors.size if neighbors.size > 0
@@ -195,16 +199,13 @@ module OpenTox
         acts = neighbors.collect do |n|
           act = n[:activity]
         end # activities of neighbors for supervised learning
-
-        sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
-
-
         acts_f = acts.collect {|v| v == true ? 1.0 : 0.0}
+        sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
         begin 
           prediction = local_svm (neighbors, acts_f, sims, "C-bsvc", params)
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
         rescue Exception => e
-          LOGGER.debug "Prediction failed."
+          LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
         end
 
         conf = sims.inject{|sum,x| sum + x }
