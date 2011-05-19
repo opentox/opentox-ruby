@@ -216,7 +216,7 @@ module OpenTox
           for i in 1..modulo[0] do
             (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
             LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
-            neighbors(s, l, position, lr_size) # get ratio fraction of larger part
+            neighbors_balanced(s, l, position, lr_size) # get ratio fraction of larger part
             prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
             if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
               prediction_best=prediction 
@@ -325,7 +325,7 @@ module OpenTox
       end
 
       # Find neighbors and store them as object variable
-      def neighbors(s=nil, l=nil, start=nil, offset=nil)
+      def neighbors_balanced(s, l, start, offset)
         @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
 
         @neighbors = []
