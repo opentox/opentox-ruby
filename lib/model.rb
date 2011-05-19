@@ -179,10 +179,10 @@ module OpenTox
         return @prediction_dataset if database_activity(subjectid)
 
 
-        # AM: Balancing, see http://www.maunz.de/wordpress/opentox/2011/balanced-lazar
-        l = Array.new # larger 
-        s = Array.new # smaller fraction
-        if metadata[RDF.type] == [OTA.ClassificationLazySingleTarget]
+       if metadata[RDF.type] == [OTA.ClassificationLazySingleTarget]
+          # AM: Balancing, see http://www.maunz.de/wordpress/opentox/2011/balanced-lazar
+          l = Array.new # larger 
+          s = Array.new # smaller fraction
           @fingerprints.each do |training_compound,training_features|
             @activities[training_compound].each do |act|
               case act.to_s
@@ -202,36 +202,41 @@ module OpenTox
           # determine ratio
           modulo = l.size.divmod(s.size)# modulo[0]=ratio, modulo[1]=rest
           LOGGER.info "BLAZAR: Balance: #{modulo[0]}, rest #{modulo[1]}."
-        end
 
-        # AM: Balanced predictions
-        addon = (modulo[1].to_f/modulo[0]).ceil # what will be added in each round 
-        slack = modulo[1].divmod(addon)[1] # what remains for the last round
-        position = 0
-        predictions = Array.new
+          # AM: Balanced predictions
+          addon = (modulo[1].to_f/modulo[0]).ceil # what will be added in each round 
+          slack = modulo[1].divmod(addon)[1] # what remains for the last round
+          position = 0
+          predictions = Array.new
 
-        prediction_best=nil
-        neighbors_best=nil
+          prediction_best=nil
+          neighbors_best=nil
 
-        begin
-        for i in 1..modulo[0] do
-          (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
-          LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
-          neighbors(s, l, position, lr_size) # get ratio fraction of larger part
-          prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
-          if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
-            prediction_best=prediction 
-            neighbors_best=@neighbors
+          begin
+          for i in 1..modulo[0] do
+            (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
+            LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
+            neighbors(s, l, position, lr_size) # get ratio fraction of larger part
+            prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
+            if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
+              prediction_best=prediction 
+              neighbors_best=@neighbors
+            end
+            position = position + lr_size
           end
-          position = position + lr_size
-        end
-        rescue Exception => e
-          LOGGER.error "BLAZAR failed in prediction: "+e.class.to_s+": "+e.message
-        end
+          rescue Exception => e
+            LOGGER.error "BLAZAR failed in prediction: "+e.class.to_s+": "+e.message
+          end
 
-        prediction=prediction_best
-        @neighbors=neighbors_best
+          prediction=prediction_best
+          @neighbors=neighbors_best
+          ### END AM balanced predictions
 
+        else # regression case: no balancing
+          neighbors
+          prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
+        end
+        
         prediction_feature_uri = File.join( @prediction_dataset.uri, "feature", "prediction", File.basename(@metadata[OT.dependentVariables]),@prediction_dataset.compounds.size.to_s)
         # TODO: fix dependentVariable
         @prediction_dataset.metadata[OT.dependentVariables] = prediction_feature_uri
@@ -345,6 +350,28 @@ module OpenTox
           LOGGER.error "BLAZAR failed in neighbors: "+e.class.to_s+": "+e.message
         end
 
+      end
+
+
+      # Find neighbors and store them as object variable
+      def neighbors
+      
+      @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
+   
+      @neighbors = []
+      @fingerprints.each do |training_compound,training_features|
+      sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values)")
+          if sim > @min_sim
+                @activities[training_compound].each do |act|
+                   @neighbors << {
+                     :compound => training_compound,
+                     :similarity => sim,
+                     :features => training_features,
+                     :activity => act
+                   }
+            end
+          end
+         end
       end
 
       # Find database activities and store them in @prediction_dataset
