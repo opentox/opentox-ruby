@@ -198,7 +198,6 @@ module OpenTox
     # @param [String,optional] subjectid
     # @return [OpenTox::CrossvalidationReport]
     def self.find( uri, subjectid=nil )
-      # PENDING load report data?
       OpenTox::RestClientWrapper.get(uri,{:subjectid => subjectid})
       rep = CrossvalidationReport.new(uri)
       rep.load_metadata( subjectid )
@@ -226,6 +225,54 @@ module OpenTox
       CrossvalidationReport.new(uri)
     end
   end
+  
+  
+  class AlgorithmComparisonReport
+    include OpenTox
+    
+    # finds AlgorithmComparisonReport via uri, raises error if not found
+    # @param [String] uri
+    # @param [String,optional] subjectid
+    # @return [OpenTox::CrossvalidationReport]
+    def self.find( uri, subjectid=nil )
+      OpenTox::RestClientWrapper.get(uri,{:subjectid => subjectid})
+      rep = AlgorithmComparisonReport.new(uri)
+      rep.load_metadata( subjectid )
+      rep
+    end
+    
+    # finds AlgorithmComparisonReport for a particular crossvalidation
+    # @param [String] crossvalidation uri 
+    # @param [String,optional] subjectid
+    # @return [OpenTox::AlgorithmComparisonReport] nil if no report found
+    def self.find_for_crossvalidation( crossvalidation_uri, subjectid=nil )
+      uris = RestClientWrapper.get(File.join(CONFIG[:services]["opentox-validation"],
+        "/report/algorithm_comparison?crossvalidation="+crossvalidation_uri), {:subjectid => subjectid}).chomp.split("\n")
+      uris.size==0 ? nil : AlgorithmComparisonReport.new(uris[-1])
+    end
+    
+    # creates a crossvalidation report via crossvalidation
+    # @param [Hash] crossvalidation uri_hash, see example 
+    # @param [String,optional] subjectid
+    # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
+    # @return [OpenTox::AlgorithmComparisonReport]
+    # example for hash:
+    # { :lazar-bbrc => [ http://host/validation/crossvalidation/x1, http://host/validation/crossvalidation/x2 ],
+    #   :lazar-last => [ http://host/validation/crossvalidation/xy, http://host/validation/crossvalidation/xy ] }
+    def self.create( crossvalidation_uri_hash, subjectid=nil, waiting_task=nil )
+      identifier = []
+      validation_uris = []
+      crossvalidation_uri_hash.each do |id, uris|
+        uris.each do |uri|
+          identifier << id
+          validation_uris << uri
+        end
+      end
+      uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-validation"],"/report/algorithm_comparison"),
+        { :validation_uris => validation_uris.join(","), :identifier => identifier.join(","), :subjectid => subjectid }, {}, waiting_task )
+      AlgorithmComparisonReport.new(uri)
+    end
+  end  
   
   class QMRFReport
     include OpenTox
