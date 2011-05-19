@@ -177,7 +177,7 @@ module OpenTox
         end # activities of neighbors for supervised learning
 
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
-        prediction = local_svm(neighbors, acts, sims, "svr", params)
+        prediction = local_svm(neighbors, acts, sims, "nu-svr", params)
         prediction = (take_logs ? 10**(prediction.to_f) : prediction.to_f)
         LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
 
@@ -197,9 +197,15 @@ module OpenTox
         end # activities of neighbors for supervised learning
 
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
-        prediction = local_svm (neighbors, acts, sims, "svc", params)
-        prediction = prediction.to_f
-        LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
+
+
+        acts_f = acts.collect {|v| v == true ? 1.0 : 0.0}
+        begin 
+          prediction = local_svm (neighbors, acts_f, sims, "C-bsvc", params)
+          LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
+        rescue Exception => e
+          LOGGER.debug "Prediction failed."
+        end
 
         conf = sims.inject{|sum,x| sum + x }
         confidence = conf/neighbors.size if neighbors.size > 0
@@ -213,7 +219,7 @@ module OpenTox
       # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
       # @param [Array] acts, activities for neighbors.
       # @param [Array] sims, similarities for neighbors.
-      # @param [String] type, one of "svr" (regression) or "svc" (classification).
+      # @param [String] type, one of "nu-svr" (regression) or "C-bsvc" (classification).
       # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
       # @return [Numeric] A prediction value.
       def self.local_svm(neighbors, acts, sims, type, params)
@@ -245,22 +251,35 @@ module OpenTox
             @r.y = acts
             @r.sims = sims
 
-            LOGGER.debug "Preparing R data ..."
-            # prepare data
-            @r.eval "y<-as.vector(y)"
-            @r.eval "gram_matrix<-as.kernelMatrix(matrix(gram_matrix,n,n))"
-            @r.eval "sims<-as.vector(sims)"
-            
-            # model + support vectors
-            LOGGER.debug "Creating SVM model ..."
-            @r.eval "model<-ksvm(gram_matrix, y, kernel=matrix, type=\"nu-#{type}\", nu=0.5)"
-            @r.eval "sv<-as.vector(SVindex(model))"
-            @r.eval "sims<-sims[sv]"
-            @r.eval "sims<-as.kernelMatrix(matrix(sims,1))"
-            LOGGER.debug "Predicting ..."
-            @r.eval "p<-predict(model,sims)[1,1]"
-            prediction = @r.p
-            @r.quit # free R
+            begin
+              LOGGER.debug "Preparing R data ..."
+              # prepare data
+              @r.eval "y<-as.vector(y)"
+              @r.eval "gram_matrix<-as.kernelMatrix(matrix(gram_matrix,n,n))"
+              @r.eval "sims<-as.vector(sims)"
+              
+              # model + support vectors
+              LOGGER.debug "Creating SVM model ..."
+              @r.eval "model<-ksvm(gram_matrix, y, kernel=matrix, type=\"#{type}\", nu=0.5)"
+              @r.eval "sv<-as.vector(SVindex(model))"
+              @r.eval "sims<-sims[sv]"
+              @r.eval "sims<-as.kernelMatrix(matrix(sims,1))"
+              LOGGER.debug "Predicting ..."
+              if type == "nu-svr" 
+                @r.eval "p<-predict(model,sims)[1,1]"
+              elsif type == "C-bsvc"
+                @r.eval "p<-predict(model,sims)"
+              end
+              if type == "nu-svr"
+                prediction = @r.p
+              elsif type == "C-bsvc"
+                prediction = (@r.p.to_f == 1.0 ? true : false)
+              end
+              @r.quit # free R
+            rescue Exception => e
+              LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
+            end
+
           end
           prediction
       end
