@@ -23,7 +23,7 @@ module OpenTox
     # Generic OpenTox model class for all API compliant services
     class Generic
       include Model
-      
+
       # Find Generic Opentox Model via URI, and loads metadata, could raise NotFound/NotAuthorized error 
       # @param [String] uri Model URI
       # @return [OpenTox::Model::Generic] Model instance
@@ -34,12 +34,12 @@ module OpenTox
         raise "could not load model metadata '"+uri.to_s+"'" if model.metadata==nil or model.metadata.size==0
         model
       end
-    
-       # provides feature type, possible types are "regression" or "classification"
-       # @return [String] feature type, "unknown" if type could not be estimated
+
+      # provides feature type, possible types are "regression" or "classification"
+      # @return [String] feature type, "unknown" if type could not be estimated
       def feature_type(subjectid=nil)
         return @feature_type if @feature_type
-        
+
         # dynamically perform restcalls if necessary
         load_metadata(subjectid) if @metadata==nil or @metadata.size==0 or (@metadata.size==1 && @metadata.values[0]==@uri)
         algorithm = OpenTox::Algorithm::Generic.find(@metadata[OT.algorithm], subjectid)
@@ -60,9 +60,9 @@ module OpenTox
         raise "unknown model "+type_indicators.inspect unless @feature_type
         @feature_type
       end
-      
+
     end
-    
+
     # Lazy Structure Activity Relationship class
     class Lazar
 
@@ -78,7 +78,7 @@ module OpenTox
         else
           super CONFIG[:services]["opentox-model"]
         end
-        
+
         @metadata[OT.algorithm] = File.join(CONFIG[:services]["opentox-algorithm"],"lazar")
 
         @features = []
@@ -178,8 +178,59 @@ module OpenTox
 
         return @prediction_dataset if database_activity(subjectid)
 
-        neighbors
-        prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
+
+        # AM: Balancing, see http://www.maunz.de/wordpress/opentox/2011/balanced-lazar
+        l = Array.new # larger 
+        s = Array.new # smaller fraction
+        if metadata[RDF.type] == [OTA.ClassificationLazySingleTarget]
+          @fingerprints.each do |training_compound,training_features|
+            @activities[training_compound].each do |act|
+              case act.to_s
+              when "false" 
+                l << training_compound
+              when "true"  
+                s << training_compound
+              else
+                LOGGER.warn "BLAZAR: Activity #{act.to_s} should not be reached."
+              end
+            end
+          end
+          if s.size > l.size then 
+            l,s = s,l # happy swapping
+            LOGGER.info "BLAZAR: |s|=#{s.size}, |l|=#{l.size}."
+          end
+          # determine ratio
+          modulo = l.size.divmod(s.size)# modulo[0]=ratio, modulo[1]=rest
+          LOGGER.info "BLAZAR: Balance: #{modulo[0]}, rest #{modulo[1]}."
+        end
+
+        # AM: Balanced predictions
+        addon = (modulo[1].to_f/modulo[0]).ceil # what will be added in each round 
+        slack = modulo[1].divmod(addon)[1] # what remains for the last round
+        position = 0
+        predictions = Array.new
+
+        prediction_best=nil
+        neighbors_best=nil
+
+        begin
+        for i in 1..modulo[0] do
+          (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
+          LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
+          neighbors(s, l, position, lr_size) # get ratio fraction of larger part
+          prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
+          if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
+            prediction_best=prediction 
+            neighbors_best=@neighbors
+          end
+          position = position + lr_size
+        end
+        rescue Exception => e
+          LOGGER.error "BLAZAR failed in prediction: "+e.class.to_s+": "+e.message
+        end
+
+        prediction=prediction_best
+        @neighbors=neighbors_best
 
         prediction_feature_uri = File.join( @prediction_dataset.uri, "feature", "prediction", File.basename(@metadata[OT.dependentVariables]),@prediction_dataset.compounds.size.to_s)
         # TODO: fix dependentVariable
@@ -269,23 +320,29 @@ module OpenTox
       end
 
       # Find neighbors and store them as object variable
-      def neighbors
-
+      def neighbors(s=nil, l=nil, start=nil, offset=nil)
         @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
 
         @neighbors = []
-        @fingerprints.each do |training_compound,training_features|
-          sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values)")
-          if sim > @min_sim
-            @activities[training_compound].each do |act|
-              @neighbors << {
-                :compound => training_compound,
-                :similarity => sim,
-                :features => training_features,
-                :activity => act
-              }
+        begin
+          #@fingerprints.each do |training_compound,training_features| # AM: this is original by CH
+          [ l[start, offset ] , s ].flatten.each do |training_compound| # AM: access only a balanced subset
+            training_features = @fingerprints[training_compound]
+            sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values)")
+            if sim > @min_sim
+              @activities[training_compound].each do |act|
+                this_neighbor = {
+                  :compound => training_compound,
+                  :similarity => sim,
+                  :features => training_features,
+                  :activity => act
+                }
+                @neighbors << this_neighbor
+              end
             end
           end
+        rescue Exception => e
+          LOGGER.error "BLAZAR failed in neighbors: "+e.class.to_s+": "+e.message
         end
 
       end
