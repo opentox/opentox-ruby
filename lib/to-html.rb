@@ -1,5 +1,5 @@
 
-OT_LOGO = "http://opentox.informatik.uni-freiburg.de/ot-logo.png"
+OT_LOGO = File.join(CONFIG[:services]["opentox-validation"],"resources/ot-logo.png")
 
 class String
   
