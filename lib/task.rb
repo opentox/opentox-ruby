@@ -38,6 +38,7 @@ module OpenTox
       task = Task.new(task_uri.chomp)
 
       # measure current memory consumption
+=begin
       memory = `free -m|sed -n '2p'`.split
       free_memory = memory[3].to_i + memory[6].to_i # include cache
       if free_memory < 20 # require at least 200 M free memory
@@ -56,6 +57,7 @@ module OpenTox
       #  return task
       #  #raise "Server too busy to start a new task"
       #end
+=end
 
       task_pid = Spork.spork(:logger => LOGGER) do
         LOGGER.debug "Task #{task.uri} started #{Time.now}"
