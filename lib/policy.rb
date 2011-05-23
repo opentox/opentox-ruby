@@ -308,7 +308,7 @@ module OpenTox
         if value
           @get = "allow"; @put = "allow"; @post = "allow"
         else
-          @get = "allow"; @put = nil; @post = nil
+          @get = nil; @put = nil; @post = nil
         end
       end
 
