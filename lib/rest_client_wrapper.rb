@@ -98,6 +98,8 @@ module OpenTox
         
       rescue RestClient::RequestTimeout => ex
         received_error ex.message, 408, nil, {:rest_uri => uri, :headers => headers, :payload => payload}
+      rescue Errno::ETIMEDOUT => ex
+        received_error ex.message, 408, nil, {:rest_uri => uri, :headers => headers, :payload => payload}
       rescue Errno::ECONNREFUSED => ex
         received_error ex.message, 500, nil, {:rest_uri => uri, :headers => headers, :payload => payload}
       rescue RestClient::ExceptionWithResponse => ex

@@ -9,6 +9,6 @@ rescue LoadError
 end
 
 ['opentox', 'compound','dataset', 'parser','serializer', 'algorithm','model','task','validation','feature', 
- 'rest_client_wrapper', 'authorization', 'policy', 'helper', 'to-html' ].each do |lib|
+ 'rest_client_wrapper', 'authorization', 'policy', 'helper', 'to-html', 'ontology' ].each do |lib|
 	require lib
 end

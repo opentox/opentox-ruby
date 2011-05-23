@@ -8,6 +8,7 @@ before {
   $url_provider = self
   # stupid internet explorer does not ask for text/html, add this manually 
   request.env['HTTP_ACCEPT'] += ";text/html" if request.env["HTTP_USER_AGENT"]=~/MSIE/
+  request.env['HTTP_ACCEPT']=request.params["media"] if request.params["media"]
 }
 
 # Error handling
@@ -39,20 +40,24 @@ end
 class Sinatra::Base
 
   def return_task( task )
-    code = task.running? ? 202 : 200
+    raise "http_code == nil" unless task.http_code!=nil
     case request.env['HTTP_ACCEPT']
     when /rdf/
       response['Content-Type'] = "application/rdf+xml"
-      halt code,task.to_rdfxml
+      halt task.http_code,task.to_rdfxml
     when /yaml/
       response['Content-Type'] = "application/x-yaml"
-      halt code,task.to_yaml # PENDING differs from task-webservice
+      halt task.http_code,task.to_yaml # PENDING differs from task-webservice
     when /html/
       response['Content-Type'] = "text/html"
-      halt code,OpenTox.text_to_html(task.to_yaml, @subjectid)
+      halt task.http_code,OpenTox.text_to_html(task.to_yaml, @subjectid)
     else # default /uri-list/
       response['Content-Type'] = "text/uri-list"
-      halt code,task.uri+"\n"
+      if task.completed?
+        halt task.http_code,task.resultURI+"\n"
+      else
+        halt task.http_code,task.uri+"\n"
+      end
     end
   end
 end

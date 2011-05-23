@@ -26,6 +26,8 @@ module OpenTox
           OT.Algorithm => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.Parameter => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.Task => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
+          OTA.PatternMiningSupervised => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
+
           #classes for validation
           OT.Validation => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.ClassificationStatistics => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
@@ -40,10 +42,10 @@ module OpenTox
           OT.compound => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
           OT.feature => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
           OT.dataEntry => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
-          OT.acceptValue => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
           OT.values => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
           OT.algorithm => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
           OT.parameters => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
+
           #object props for validation#           
           OT.model => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
           OT.trainingDataset => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
@@ -67,12 +69,14 @@ module OpenTox
           DC.creator => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           DC.description => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           DC.date => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
-          OT.isA => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
+          #OT.isA => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.Warnings => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           XSD.anyURI => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.hasStatus => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.resultURI => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.percentageCompleted => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
+          OT.acceptValue => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
+
           # annotation props for validation        
           OT.numUnpredicted => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.crossvalidationFold => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
@@ -256,7 +260,8 @@ module OpenTox
       def add_metadata(uri,metadata)
         id = 0
         metadata.each do |u,v|
-          if v.is_a? Array and u == OT.parameters
+          #if v.is_a? Array and (u == OT.parameters or u == RDF.type)
+          if v.is_a? Array and u == OT.parameters#or u == RDF.type)
             @object[uri][u] = [] unless @object[uri][u]
             v.each do |value|
               id+=1
@@ -267,7 +272,13 @@ module OpenTox
                 @object[genid][name] = [{"type" => type(entry), "value" => entry }]
               end
             end
-          else # v.is_a? String
+          elsif v.is_a? Array and u == RDF.type
+            @object[uri] = {} unless @object[uri]
+            v.each do |value|
+              @object[uri][u] = [] unless @object[uri][u]
+              @object[uri][u] << {"type" => type(value), "value" => value }
+            end
+          elsif v.is_a? String
             @object[uri] = {} unless @object[uri]
             @object[uri][u] = [{"type" => type(v), "value" => v }]
           end
@@ -309,6 +320,7 @@ module OpenTox
           OT.value => v
         }
         @object[feature][RDF["type"]] << { "type" => "uri", "value" => featuretype(value) }
+        #@object[feature][RDF["type"]] = { "type" => "uri", "value" => featuretype(value) }
       end
 
       # Serializers

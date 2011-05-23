@@ -1,6 +1,7 @@
 module OpenTox
-  module OntologyService
-    module Endpoints
+  module Ontology
+    module Echa
+=begin
       require 'sparql/client'
       @sparql = SPARQL::Client.new("http://apps.ideaconsult.net:8080/ontology")
       def self.qs(classname="Endpoints")
@@ -12,11 +13,11 @@ module OpenTox
         PREFIX rdf:<http://www.w3.org/1999/02/22-rdf-syntax-ns#>
         PREFIX otee:<http://www.opentox.org/echaEndpoints.owl#>
         PREFIX toxcast:<http://www.opentox.org/toxcast.owl#>
-          select ?Endpoints ?title ?id
-          where {?Endpoints rdfs:subClassOf otee:#{classname}.
-          OPTIONAL {?Endpoints dc:title ?title}.
-          OPTIONAL {?Endpoints dc:identifier ?id}.}
-          ORDER BY ?title"
+        select *
+          where {
+            ?endpoint  rdfs:subClassOf  otee:#{classname}.
+            ?endpoint dc:title ?title.
+          }"
       end
       
       def self.make_option_list(endpoint="Endpoints", level=1)
@@ -38,6 +39,17 @@ module OpenTox
         out += "</select>\n"
         return out
       end
+=end
+
+      def self.endpoints
+        RestClientWrapper.get("http://apps.ideaconsult.net:8080/ambit2/query/ndatasets_endpoint",:accept => "text/csv").collect { |line| line.split(',').first if line.match(/^http/) }.compact
+      end
+
+      def self.datasets(endpoint)
+        RestClientWrapper.get("http://apps.ideaconsult.net:8080/ambit2/dataset?feature_sameas=#{URI.encode endpoint}", :accept => "text/uri-list").split("\n")
+      end
+
     end
+
   end
 end

@@ -52,9 +52,9 @@ module OpenTox
       class BBRC
         include Fminer
         # Initialize bbrc algorithm
-        def initialize
+        def initialize(subjectid=nil)
           super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/bbrc")
-          load_metadata
+          load_metadata(subjectid)
         end
       end
 
@@ -62,9 +62,9 @@ module OpenTox
       class LAST
         include Fminer
         # Initialize last algorithm
-        def initialize
+        def initialize(subjectid=nil)
           super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/last")
-          load_metadata
+          load_metadata(subjectid)
         end
       end
 
@@ -74,9 +74,9 @@ module OpenTox
     class Lazar
       include Algorithm
       # Initialize lazar algorithm
-      def initialize
+      def initialize(subjectid=nil)
         super File.join(CONFIG[:services]["opentox-algorithm"], "lazar")
-        load_metadata
+        load_metadata(subjectid)
       end
     end
 
@@ -167,9 +167,17 @@ module OpenTox
       def self.local_svm_regression(neighbors,params )
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values between query and neighbors
         conf = sims.inject{|sum,x| sum + x }
+
+        # AM: Control log taking
+        take_logs=true
+        neighbors.each do |n| 
+          if (! n[:activity].nil?) && (n[:activity].to_f < 0.0)
+            take_logs = false
+          end
+        end
         acts = neighbors.collect do |n|
           act = n[:activity] 
-          Math.log10(act.to_f)
+          take_logs ? Math.log10(act.to_f) : act.to_f
         end # activities of neighbors for supervised learning
 
         neighbor_matches = neighbors.collect{ |n| n[:features] } # as in classification: URIs of matches
@@ -214,8 +222,8 @@ module OpenTox
           @r.eval "sims<-as.kernelMatrix(matrix(sims,1))"
           LOGGER.debug "Predicting ..."
           @r.eval "p<-predict(model,sims)[1,1]"
-          prediction = 10**(@r.p.to_f)
-          LOGGER.debug "Prediction is: '" + @prediction.to_s + "'."
+          prediction = 10**(@r.p.to_f) if take_logs
+          LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           @r.quit # free R
         end
         confidence = conf/neighbors.size if neighbors.size > 0

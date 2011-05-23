@@ -137,15 +137,22 @@ module OpenTox
     # Lists policies alongside with affected uris
     # @param [String] subjectid
     # @return [Hash] keys: all policies of the subjectid owner, values: uris affected by those policies
-    def self.list_policy_uris( subjectid )
+    def self.list_policies_uris( subjectid )
       names = list_policies(subjectid)
       policies = {}
       names.each do |n|
-        p = OpenTox::Policies.new
-        p.load_xml( list_policy(n, subjectid) )
-        policies[n] = p.uris
+        policies[n] = list_policy_uris( n, subjectid )
       end
       policies
+    end
+
+    # Lists policies alongside with affected uris
+    # @param [String] subjectid
+    # @return [Hash] keys: all policies of the subjectid owner, values: uris affected by those policies
+    def self.list_policy_uris( policy, subjectid )
+      p = OpenTox::Policies.new
+      p.load_xml( list_policy(policy, subjectid) )
+      p.uris
     end
     
     #Returns the owner (who created the first policy) of an URI
@@ -220,7 +227,9 @@ module OpenTox
       begin
         resource = RestClient::Resource.new("#{AA_SERVER}/opensso/identity/search")
         grps = resource.post(:admin => subjectid, :attributes_names => "objecttype", :attributes_values_objecttype => "group")
-        grps.split("\n").collect{|x|  x.sub("string=","")}
+        grps = grps.split("\n").collect{|x|  x.sub("string=","")}
+        grps.delete_if{|g|g=="MemberManagement"||g=="Webmasters"}
+        grps
       rescue
         []
       end
@@ -279,10 +288,12 @@ module OpenTox
     # @return [Boolean]
     def self.delete_policies_from_uri(uri, subjectid)
       policies = list_uri_policies(uri, subjectid)
-      policies.each do |policy|
-        ret = delete_policy(policy, subjectid)
-        LOGGER.debug "OpenTox::Authorization delete policy: #{policy} - with result: #{ret}"
-      end    
+      if policies
+        policies.each do |policy|
+          ret = delete_policy(policy, subjectid)
+          LOGGER.debug "OpenTox::Authorization delete policy: #{policy} - with result: #{ret}"
+        end
+      end
       return true
     end
 

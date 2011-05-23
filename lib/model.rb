@@ -44,11 +44,10 @@ module OpenTox
         load_metadata(subjectid) if @metadata==nil or @metadata.size==0 or (@metadata.size==1 && @metadata.values[0]==@uri)
         algorithm = OpenTox::Algorithm::Generic.find(@metadata[OT.algorithm], subjectid)
         algorithm_title = algorithm ? algorithm.metadata[DC.title] : nil
-        algorithm_type = algorithm ? algorithm.metadata[OT.isA] : nil
+        algorithm_type = algorithm ? algorithm.metadata[RDF.type] : nil
         dependent_variable = OpenTox::Feature.find( @metadata[OT.dependentVariables],subjectid )
         dependent_variable_type = dependent_variable ? dependent_variable.feature_type : nil
-        type_indicators = [dependent_variable_type, @metadata[OT.isA], @metadata[DC.title], 
-          @uri, algorithm_type, algorithm_title] 
+        type_indicators = [dependent_variable_type, @metadata[RDF.type], @metadata[DC.title], @uri, algorithm_type, algorithm_title].flatten
         type_indicators.each do |type|
           case type
           when /(?i)classification/
@@ -113,9 +112,10 @@ module OpenTox
       # @param [optional,Hash] params Parameters for the lazar algorithm (OpenTox::Algorithm::Lazar)
       # @return [OpenTox::Model::Lazar] lazar model
       def self.create(params)
+        subjectid = params[:subjectid]
         lazar_algorithm = OpenTox::Algorithm::Generic.new File.join( CONFIG[:services]["opentox-algorithm"],"lazar")
         model_uri = lazar_algorithm.run(params)
-        OpenTox::Model::Lazar.find(model_uri, params[:subjectid])
+        OpenTox::Model::Lazar.find(model_uri, subjectid)      
       end
 
       # Get a parameter value
@@ -187,7 +187,7 @@ module OpenTox
 
         if @neighbors.size == 0
           @prediction_dataset.add_feature(prediction_feature_uri, {
-            OT.isA => OT.MeasuredFeature,
+            RDF.type => [OT.MeasuredFeature],
             OT.hasSource => @uri,
             DC.creator => @uri,
             DC.title => URI.decode(File.basename( @metadata[OT.dependentVariables] )),
@@ -198,7 +198,7 @@ module OpenTox
 
         else
           @prediction_dataset.add_feature(prediction_feature_uri, {
-            OT.isA => OT.ModelPrediction,
+            RDF.type => [OT.ModelPrediction],
             OT.hasSource => @uri,
             DC.creator => @uri,
             DC.title => URI.decode(File.basename( @metadata[OT.dependentVariables] )),
@@ -215,7 +215,7 @@ module OpenTox
                 feature_uri = File.join( @prediction_dataset.uri, "feature", "descriptor", f.to_s)
                 features[feature] = feature_uri
                 @prediction_dataset.add_feature(feature_uri, {
-                  OT.isA => OT.Substructure,
+                  RDF.type => [OT.Substructure],
                   OT.smarts => feature,
                   OT.pValue => @p_values[feature],
                   OT.effect => @effects[feature]
@@ -236,7 +236,7 @@ module OpenTox
                 OT.compound => neighbor[:compound],
                 OT.similarity => neighbor[:similarity],
                 OT.measuredActivity => neighbor[:activity],
-                OT.isA => OT.Neighbor
+                RDF.type => [OT.Neighbor]
               })
               @prediction_dataset.add @compound.uri, neighbor_uri, true
               f = 0 unless f
@@ -250,7 +250,7 @@ module OpenTox
                 unless features.has_key? feature
                   features[feature] = feature_uri
                   @prediction_dataset.add_feature(feature_uri, {
-                    OT.isA => OT.Substructure,
+                    RDF.type => [OT.Substructure],
                     OT.smarts => feature,
                     OT.pValue => @p_values[feature],
                     OT.effect => @effects[feature]
