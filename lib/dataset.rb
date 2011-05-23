@@ -179,7 +179,6 @@ module OpenTox
       end
     end
 
-=begin
     # Detect feature type(s) in the dataset
     # @return [String] `classification", "regression", "mixed" or unknown`
     def feature_type(subjectid=nil)
@@ -193,6 +192,7 @@ module OpenTox
         "unknown"
       end
     end
+=begin
 =end
 
     # Get Spreadsheet representation
@@ -369,12 +369,11 @@ module OpenTox
     end
 
     def value(compound)
-      @data_entries[compound.uri].collect{|f,v| v.first if f.match(/prediction/)}.compact.first
+      @data_entries[compound.uri].collect{|f,v| v.first if f.match(/value/)}.compact.first
     end
 
     def confidence(compound)
-      feature_uri = @data_entries[compound.uri].collect{|f,v| f if f.match(/prediction/)}.compact.first
-      @features[feature_uri][OT.confidence]
+      @data_entries[compound.uri].collect{|f,v| v.first if f.match(/confidence/)}.compact.first
     end
 
     def descriptors(compound)
