@@ -251,6 +251,26 @@ module OpenTox
         []
       end
     end    
+
+
+    #proof if a user exists in LDAP 
+    # @param [String]user username
+    # @param [String]subjectid
+    # @return [Boolean] true or false
+    def self.user_exists(user, subjectid)
+      begin
+        resource = RestClient::Resource.new("#{AA_SERVER}/opensso/identity/read")
+        out = resource.post(:name => user, :admin => subjectid, :attributes_names => "name")
+        LOGGER.debug "mr ::: user_exists out: #{out.inspect}"
+        name=nil
+        out.split("\n").each do |line|
+          name = line.sub("identitydetails.name=","") if line.include?("identitydetails.name=")    
+        end
+        return user == name
+      rescue
+        false
+      end
+    end 
     
     #Returns the owner (user id) of a token
     # @param [String]subjectid

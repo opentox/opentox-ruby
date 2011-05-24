@@ -90,7 +90,8 @@ module OpenTox
         rexml.elements.each("Policies/Policy[@name='#{policy_name}']/Rule") do |r|    #Rules
           rule_name = r.attributes["name"]        
           uri = rexml.elements["Policies/Policy[@name='#{policy_name}']/Rule[@name='#{rule_name}']/ResourceName"].attributes["name"]
-          @policies[policy_name].rule = @policies[policy_name].set_rule(rule_name, uri)
+          @policies[policy_name].rule.name = rule_name
+          @policies[policy_name].uri = uri
           rexml.elements.each("Policies/Policy[@name='#{policy_name}']/Rule[@name='#{rule_name}']/AttributeValuePair") do |attribute_pairs|
             action=nil; value=nil;
             attribute_pairs.each_element do |elem|
@@ -117,7 +118,11 @@ module OpenTox
             subject_name  = s.attributes["name"]
             subject_type  = s.attributes["type"]
             subject_value = rexml.elements["Policies/Policy[@name='#{policy_name}']/Subjects[@name='#{@policies[policy_name].subject_group}']/Subject[@name='#{subject_name}']/AttributeValuePair/Value"].text
-            @policies[policy_name].set_subject(subject_name, subject_type, subject_value) if subject_name and subject_type and subject_value
+            if subject_name and subject_type and subject_value            
+              @policies[policy_name].subject.name = subject_name
+              @policies[policy_name].type = subject_type
+              @policies[policy_name].value = subject_value
+            end
           end
         end      
       end    
@@ -175,7 +180,6 @@ module OpenTox
         attributevaluepair.add_element(attributevalue)
         subject.add_element(attributevaluepair)
         subjects.add_element(subject)
-        
         policy.add_element(subjects)
         doc.root.add_element(policy)
       end    
@@ -193,65 +197,68 @@ module OpenTox
 
     def initialize(name)
       @name = name
-      @rule = nil 
-      @subject_group = ""
-      @subject = nil
+      @rule = Rule.new("#{name}_rule", nil) 
+      @subject_group = "#{name}_subjects"
+      @subject = Subject.new("#{name}_subject", nil, nil)
     end
     
-    # Sets rule instance for the policy.
-    # @param [String]name
-    # @param [String]uri URI that is affected by the policy 
-    def set_rule(name, uri)
-      @rule = Rule.new(name, uri)
-    end
-
-    # Sets subject instance for the policy. 
-    # @param [String]name
-    # @param [String]type LDAPUsers, LDAPGroups
-    # @param [String]value e.G. 'uid=guest,ou=people,dc=opentox,dc=org'
-    def set_subject(name, type, value)
-      @subject = Subject.new(name, type, value)
-    end
-
     # Subject type LDAPUsers or LDAPGroups
     def type
       @subject.type
     end
 
     # Set subject type <LDAPUsers, LDAPGroups>
+    # @param [String],type 
     def type=(type)
       @subject.type = type
     end
 
+    # returns LDAP Distinguished Name (DN) e.g. uid=username,ou=people,dc=opentox,dc=org or cn=membergroup,ou=groups,dc=opentox,dc=org
     def value
       @subject.value
     end
-
+    
+    # sets LDAP Distinguished Name (DN) for policy e.g.  
+    # @param [String],LDAPString 
     def value=(value)
       @subject.value = value
     end
 
+    # uri affected by policy    
     # @return uri affected by policy
     def uri
       @rule.uri
     end
     
-    # @return uri affected by policy
+    # sets uri affected by policy
     # @param [String] set URI 
     def uri=(uri)
       @rule.uri = uri
     end
 
-    # Get the groupname from within the LDAPstring
+    # Get the groupname from within the LDAP Distinguished Name (DN)
     def group
       return false if !value && type != "LDAPGroups"
       value.split(",").each{|part| return part.gsub("cn=","") if part.match("cn=")}
     end
 
-    # Get the username from within the LDAPstring
+    # Get the username from within the LDAP Distinguished Name (DN)
     def user
       return false if !value && type != "LDAPUsers"
       value.split(",").each{|part| return part.gsub("uid=","") if part.match("uid=")}
+    end
+
+    # helper method sets value and type to opentox LDAP Distinguished Name (DN) of a user
+    def set_ot_user(username)
+      self.value = "uid=#{username},ou=people,dc=opentox,dc=org"
+      self.type = "LDAPUsers"
+      true
+    end
+
+    def set_ot_group(groupname)
+      self.value = "cn=#{groupname},ou=groups,dc=opentox,dc=org"
+      self.type = "LDAPGroups"
+      true
     end
 
     #rule inside a policy
