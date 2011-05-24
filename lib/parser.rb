@@ -283,7 +283,7 @@ module OpenTox
         2.upto(book.last_row) { |i| 
           row = book.row(i)
           regression_features = detect_regression_features row
-          break if regression_features=true
+          break if regression_features==true
         }
         
         2.upto(book.last_row) { |i| add_values book.row(i),regression_features }
@@ -305,7 +305,7 @@ module OpenTox
         input.each { |row| 
           row = split_row(row)
           regression_features = detect_regression_features row
-          break if regression_features=true
+          break if regression_features==true
         }
         input.each { |row| add_values split_row(row),regression_features }
         warnings
@@ -355,6 +355,7 @@ module OpenTox
       end
 
       def detect_regression_features row
+        row.shift
         regression_features=false
         row.each_index do |i|
           value = row[i]
