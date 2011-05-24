@@ -282,15 +282,8 @@ module OpenTox
         regression_features=false
         2.upto(book.last_row) { |i| 
           row = book.row(i)
-          smiles = row.shift
-          row.each_index do |i|
-            value = row[i]
-            type = feature_type(value)
-            if type == OT.NumericFeature
-              regression_features=true
-              break
-            end
-          end
+          regression_features = detect_regression_features row
+          break if regression_features=true
         }
         
         2.upto(book.last_row) { |i| add_values book.row(i),regression_features }
@@ -311,20 +304,14 @@ module OpenTox
         regression_features=false
         input.each { |row| 
           row = split_row(row)
-          smiles = row.shift
-          row.each_index do |i|
-            value = row[i]
-            type = feature_type(value)
-            if type == OT.NumericFeature
-              regression_features=true
-              break
-            end
-          end
+          regression_features = detect_regression_features row
+          break if regression_features=true
         }
         input.each { |row| add_values split_row(row),regression_features }
         warnings
         @dataset
       end
+
 
       private
 
@@ -365,6 +352,18 @@ module OpenTox
           @features << feature_uri
           @dataset.add_feature(feature_uri,{DC.title => feature_name})
         end
+      end
+
+      def detect_regression_features row
+        regression_features=false
+        row.each_index do |i|
+          value = row[i]
+          type = feature_type(value)
+          if type == OT.NumericFeature
+            regression_features=true
+          end
+        end
+        regression_features
       end
 
       def add_values(row, regression_features=false)
