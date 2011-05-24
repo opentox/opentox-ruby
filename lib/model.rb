@@ -241,8 +241,8 @@ module OpenTox
         confidence_feature_uri = File.join( @prediction_dataset.uri, "feature", "prediction", File.basename(@metadata[OT.dependentVariables]),"confidence")
 
         prediction_feature_uris = {value_feature_uri => prediction[:prediction], confidence_feature_uri => prediction[:confidence]}
-        prediction_feature_uris[value_feature_uri] = "No similar compounds in training dataset." if @neighbors.size == 0 or prediction[:prediction].nil?
-
+        #prediction_feature_uris[value_feature_uri] = "No similar compounds in training dataset." if @neighbors.size == 0 or prediction[:prediction].nil?
+        prediction_feature_uris[value_feature_uri] = nil if @neighbors.size == 0 or prediction[:prediction].nil?
         
         #@prediction_dataset.metadata[OT.dependentVariables] = prediction_feature_uri
         @prediction_dataset.metadata[OT.dependentVariables] = @metadata[OT.dependentVariables]
