@@ -6,7 +6,7 @@ class String
   # encloses URI in text with with link tag
   # @return [String] new text with marked links
   def link_urls
-    self.gsub(/(?i)http(s?):\/\/[^\r\n\s']*/, '<a href=\0>\0</a>')
+    self.gsub(/(?i)http(s?):\/\/[^\r\n\s']*/, '<a href="\0">\0</a>')
   end
 end
 
@@ -30,7 +30,7 @@ module OpenTox
     title = nil #$sinatra.url_for($sinatra.request.env['PATH_INFO'], :full) if $sinatra
     html = "<html>"
     html += "<title>"+title+"</title>" if title
-    html += "<img src="+OT_LOGO+"><body>"
+    html += "<img src=\""+OT_LOGO+"\"><\/img><body>"
       
     if AA_SERVER
       user = OpenTox::Authorization.get_user(subjectid) if subjectid
@@ -63,7 +63,7 @@ module OpenTox
     html += "<h3>Content</h3>" if description || related_links
     html += "<pre><p style=\"padding:15px; border:10px solid \#5D308A\">"
     html += text.link_urls
-    html += "</p></pre></body><html>"
+    html += "</p></pre></body></html>"
     html
   end
   
@@ -78,7 +78,7 @@ module OpenTox
           "<tr><td>password:</td><td><input type='password' name='password' size='15' /></td></tr>"+
           #"<input type=hidden name=back_to value="+back_to.to_s+">"+
           "<tr><td><input type='submit' value='Login' /></td></tr>"
-    html += "</table></p></pre></form></body><html>"
+    html += "</table></p></pre></form></body></html>"
     html
   end
 end
