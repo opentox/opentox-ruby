@@ -109,6 +109,7 @@ module OpenTox
           OT.precision => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.areaUnderRoc => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.weightedAreaUnderRoc => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
+          OT.weightedAccuracy => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.fMeasure => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.percentIncorrect => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.validationType => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
