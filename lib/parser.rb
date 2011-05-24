@@ -277,7 +277,23 @@ module OpenTox
       def load_spreadsheet(book)
         book.default_sheet = 0
         add_features book.row(1)
-        2.upto(book.last_row) { |i| add_values book.row(i) }
+
+        # AM: fix mixed read in
+        regression_features=false
+        2.upto(book.last_row) { |i| 
+          row = book.row(i)
+          smiles = row.shift
+          row.each_index do |i|
+            value = row[i]
+            type = feature_type(value)
+            if type == OT.NumericFeature
+              regression_features=true
+              break
+            end
+          end
+        }
+        
+        2.upto(book.last_row) { |i| add_values book.row(i),regression_features }
         warnings
         @dataset
       end
@@ -289,7 +305,23 @@ module OpenTox
         row = 0
         input = csv.split("\n")
         add_features split_row(input.shift)
-        input.each { |row| add_values split_row(row) }
+
+
+        # AM: fix mixed read in
+        regression_features=false
+        input.each { |row| 
+          row = split_row(row)
+          smiles = row.shift
+          row.each_index do |i|
+            value = row[i]
+            type = feature_type(value)
+            if type == OT.NumericFeature
+              regression_features=true
+              break
+            end
+          end
+        }
+        input.each { |row| add_values split_row(row),regression_features }
         warnings
         @dataset
       end
@@ -335,7 +367,7 @@ module OpenTox
         end
       end
 
-      def add_values(row)
+      def add_values(row, regression_features=false)
 
         smiles = row.shift
         compound = Compound.from_smiles(smiles)
@@ -353,19 +385,23 @@ module OpenTox
 
           @feature_types[feature] << type 
 
-          case type
-          when OT.NominalFeature
-            case value.to_s
-            when TRUE_REGEXP
-              val = true
-            when FALSE_REGEXP
-              val = false
-            end
-          when OT.NumericFeature
+          if (regression_features)
             val = value.to_f
-          when OT.StringFeature
-            val = value.to_s
-            @activity_errors << smiles+", "+row.join(", ")
+          else
+            case type
+            when OT.NominalFeature
+              case value.to_s
+              when TRUE_REGEXP
+                val = true
+              when FALSE_REGEXP
+                val = false
+              end
+            when OT.NumericFeature
+              val = value.to_f
+            when OT.StringFeature
+              val = value.to_s
+              @activity_errors << smiles+", "+row.join(", ")
+            end
           end
           if val!=nil
             @dataset.add(compound.uri, feature, val)
