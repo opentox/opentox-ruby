@@ -215,6 +215,7 @@ module OpenTox
             (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
             LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
             neighbors_balanced(s, l, position, lr_size) # get ratio fraction of larger part
+            prop_matrix = get_prop_matrix
             prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
             if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
               prediction_best=prediction 
@@ -228,10 +229,11 @@ module OpenTox
 
           prediction=prediction_best
           @neighbors=neighbors_best
-          ### END AM balanced predictions
+         ### END AM balanced predictions
 
         else # regression case: no balancing
           neighbors
+          prop_matrix = get_prop_matrix
           prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
         end
         
@@ -339,21 +341,26 @@ module OpenTox
       end
 
       # Calculate the propositionalization matrix aka instantiation matrix (0/1 entries for features)
-#      def get_prop_matrix
-#        matrix = Array.new
-#        begin 
-#        @neighbors.each do |n|
-#          row = []
-#          @features.each do |f|
-#            row << @fingerprints[n].include?(f) ? 0.0 : @p_values[f]
-#          end
-#          matrix << row
-#        end
-#        rescue Exception => e
-#          LOGGER.debug "get_prop_matrix failed with '" + $! + "'"
-#        end
-#        matrix
-#      end
+      def get_prop_matrix
+        matrix = Array.new
+        begin 
+        @neighbors.each do |n|
+          n = n[:compound]
+          row = []
+          @features.each do |f|
+            if ! @fingerprints[n].nil? 
+              row << (@fingerprints[n].include?(f) ? 0.0 : @p_values[f])
+            else
+              row << 0.0
+            end
+          end
+          matrix << row
+        end
+        rescue Exception => e
+          LOGGER.debug "get_prop_matrix failed with '" + $! + "'"
+        end
+        matrix
+      end
 
       # Find neighbors and store them as object variable, access only a subset of compounds for that.
       def neighbors_balanced(s, l, start, offset)
