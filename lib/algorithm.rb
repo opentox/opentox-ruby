@@ -138,7 +138,7 @@ module OpenTox
       # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity`
       # @param [optional] params Ignored (only for compatibility with local_svm_regression)
       # @return [Hash] Hash with keys `:prediction, :confidence`
-      def self.weighted_majority_vote(neighbors,params={})
+      def self.weighted_majority_vote(neighbors,params={}, props=nil)
         conf = 0.0
         confidence = 0.0
         neighbors.each do |neighbor|
@@ -178,7 +178,7 @@ module OpenTox
 
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
         begin
-          prediction = (props.nil? ? local_svm(neighbors, acts, sims, "nu-svr", params) : local_svm_prop(props, acts, sims, "nu-svr", params))
+          prediction = (props.nil? ? local_svm(neighbors, acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr", params))
           prediction = (take_logs ? 10**(prediction.to_f) : prediction.to_f)
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
         rescue Exception => e
@@ -203,7 +203,7 @@ module OpenTox
         acts_f = acts.collect {|v| v == true ? 1.0 : 0.0}
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
         begin 
-          prediction = (props.nil? ? local_svm(neighbors, acts_f, sims, "C-bsvc", params) : local_svm_prop(props, acts_f, sims, "C-bsvc", params))
+          prediction = (props.nil? ? local_svm(neighbors, acts_f, sims, "C-bsvc", params) : local_svm_prop(props, acts_f, "C-bsvc", params))
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
@@ -226,7 +226,7 @@ module OpenTox
       # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
       # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
       # @return [Numeric] A prediction value.
-      def self.local_svm(neighbors, acts, sims, type, params, props=nil)
+      def self.local_svm(neighbors, acts, sims, type, params)
           neighbor_matches = neighbors.collect{ |n| n[:features] } # URIs of matches
           gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
           if neighbor_matches.size == 0
@@ -326,16 +326,17 @@ module OpenTox
             LOGGER.debug "Setting R data ..."
             # set data
             @r.n_prop = n_prop.flatten
-            @r.n = n_prop.size
+            @r.n_prop_x_size = n_prop.size
+            @r.n_prop_y_size = n_prop[0].size
             @r.y = acts
             @r.q_prop = q_prop
 
             begin
               LOGGER.debug "Preparing R data ..."
               # prepare data
-              @r.eval "y<-as.vector(y)"
-              @r.eval "prop_matrix<-matrix(n_prop,n,n)"
-              @r.eval "q_prop<-as.vector(q_prop)"
+              @r.eval "y<-matrix(y)"
+              @r.eval "prop_matrix<-matrix(n_prop, n_prop_x_size, n_prop_y_size, byrow=TRUE)"
+              @r.eval "q_prop<-matrix(q_prop, 1, n_prop_y_size, byrow=TRUE)"
               
               # model + support vectors
               LOGGER.debug "Creating SVM model ..."

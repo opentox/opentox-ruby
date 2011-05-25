@@ -215,7 +215,7 @@ module OpenTox
               LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
               neighbors_balanced(s, l, position, lr_size) # get ratio fraction of larger part
               props = get_props
-              prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
+              prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values}, props)")
               if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
                 prediction_best=prediction 
                 neighbors_best=@neighbors
@@ -233,7 +233,7 @@ module OpenTox
         else # no balancing as before
           neighbors
           props = get_props
-          prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
+          prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values}, props)")
         end
 
         # TODO: reasonable feature name
