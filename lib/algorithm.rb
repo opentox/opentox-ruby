@@ -178,7 +178,7 @@ module OpenTox
 
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
         begin
-          prediction = (props.nil? ? local_svm(neighbors, acts, sims, "nu-svr", params) : local_svm_prop(neighbors, acts, sims, "nu-svr", params, props))
+          prediction = (props.nil? ? local_svm(neighbors, acts, sims, "nu-svr", params) : local_svm_prop(props, acts, sims, "nu-svr", params))
           prediction = (take_logs ? 10**(prediction.to_f) : prediction.to_f)
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
         rescue Exception => e
@@ -203,7 +203,7 @@ module OpenTox
         acts_f = acts.collect {|v| v == true ? 1.0 : 0.0}
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
         begin 
-          prediction = (props.nil? ? local_svm(neighbors, acts_f, sims, "C-bsvc", params) : local_svm_prop(neighbors, acts_f, sims, "C-bsvc", params, props))
+          prediction = (props.nil? ? local_svm(neighbors, acts_f, sims, "C-bsvc", params) : local_svm_prop(props, acts_f, sims, "C-bsvc", params))
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"

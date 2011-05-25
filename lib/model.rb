@@ -176,8 +176,7 @@ module OpenTox
 
         return @prediction_dataset if database_activity(subjectid)
 
-
-        if metadata[RDF.type] == [OTA.ClassificationLazySingleTarget]
+        if metadata[RDF.type].include?([OTA.ClassificationLazySingleTarget][0]) # AM: searching in metadata for classification
           # AM: Balancing, see http://www.maunz.de/wordpress/opentox/2011/balanced-lazar
           l = Array.new # larger 
           s = Array.new # smaller fraction
@@ -231,7 +230,7 @@ module OpenTox
           @neighbors=neighbors_best
           ### END AM balanced predictions
 
-        else # regression case: no balancing
+        else # no balancing as before
           neighbors
           props = get_props
           prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
