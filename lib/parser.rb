@@ -56,7 +56,7 @@ module OpenTox
         `rapper -i rdfxml -o ntriples #{file.path} 2>/dev/null`.each_line do |line|
           triple = line.to_triple
           if triple[0] == @uri
-            if triple[1] == RDF.type # allow multiple types
+            if triple[1] == RDF.type || triple[1]==OT.predictedVariables # allow multiple types
               @metadata[triple[1]] = [] unless @metadata[triple[1]]
               @metadata[triple[1]] << triple[2].split('^^').first
             else
@@ -228,7 +228,11 @@ module OpenTox
             file = Tempfile.new("ot-rdfxml")
             # do not concat /features to uri string, this would not work for dataset/R401577?max=3 
             uri = URI::parse(@uri)
-            uri.path = File.join(uri.path,"features")
+            # PENDING
+            # ambit models return http://host/dataset/id?feature_uris[]=sth but 
+            # amibt dataset services does not support http://host/dataset/id/features?feature_uris[]=sth 
+            # -> load features from complete dataset
+            uri.path = File.join(uri.path,"features") unless @uri=~/\?feature_uris\[\]/
             uri = uri.to_s
             file.puts OpenTox::RestClientWrapper.get uri,{:subjectid => subjectid,:accept => "application/rdf+xml"},nil,false
             file.close

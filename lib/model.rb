@@ -164,8 +164,6 @@ module OpenTox
         features = {}
 
         unless @prediction_dataset
-          #@prediction_dataset = cached_prediction
-          #return @prediction_dataset if cached_prediction
           @prediction_dataset = Dataset.create(CONFIG[:services]["opentox-dataset"], subjectid)
           @prediction_dataset.add_metadata( {
             OT.hasSource => @uri,
@@ -237,38 +235,90 @@ module OpenTox
           prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
         end
         
-        prediction_feature_uri = File.join( @prediction_dataset.uri, "feature", "prediction", File.basename(@metadata[OT.dependentVariables]),@prediction_dataset.compounds.size.to_s)
-        # TODO: fix dependentVariable
-        @prediction_dataset.metadata[OT.dependentVariables] = prediction_feature_uri
+       # TODO: reasonable feature name
+        #prediction_feature_uri = File.join( @prediction_dataset.uri, "feature", "prediction", File.basename(@metadata[OT.dependentVariables]),@prediction_dataset.compounds.size.to_s)
+        value_feature_uri = File.join( @prediction_dataset.uri, "feature", "prediction", File.basename(@metadata[OT.dependentVariables]),"value")
+        confidence_feature_uri = File.join( @prediction_dataset.uri, "feature", "prediction", File.basename(@metadata[OT.dependentVariables]),"confidence")
 
+        prediction_feature_uris = {value_feature_uri => prediction[:prediction], confidence_feature_uri => prediction[:confidence]}
+        #prediction_feature_uris[value_feature_uri] = "No similar compounds in training dataset." if @neighbors.size == 0 or prediction[:prediction].nil?
+        prediction_feature_uris[value_feature_uri] = nil if @neighbors.size == 0 or prediction[:prediction].nil?
+        
+        #@prediction_dataset.metadata[OT.dependentVariables] = prediction_feature_uri
+        @prediction_dataset.metadata[OT.dependentVariables] = @metadata[OT.dependentVariables]
+
+=begin
         if @neighbors.size == 0
-          @prediction_dataset.add_feature(prediction_feature_uri, {
-            RDF.type => [OT.MeasuredFeature],
-            OT.hasSource => @uri,
-            DC.creator => @uri,
-            DC.title => URI.decode(File.basename( @metadata[OT.dependentVariables] )),
-            OT.error => "No similar compounds in training dataset.",
-            OT.parameters => [{DC.title => "compound_uri", OT.paramValue => compound_uri}]
-          })
-          @prediction_dataset.add @compound.uri, prediction_feature_uri, prediction[:prediction]
+          prediction_feature_uris.each do |prediction_feature_uri,value|
+            @prediction_dataset.add_feature(prediction_feature_uri, {
+              RDF.type => [OT.MeasuredFeature],
+              OT.hasSource => @uri,
+              DC.creator => @uri,
+              DC.title => URI.decode(File.basename( @metadata[OT.dependentVariables] )),
+              OT.error => "No similar compounds in training dataset.",
+              #OT.parameters => [{DC.title => "compound_uri", OT.paramValue => compound_uri}]
+            })
+            @prediction_dataset.add @compound.uri, prediction_feature_uri, value
+          end
 
         else
+=end
+        prediction_feature_uris.each do |prediction_feature_uri,value|
+          @prediction_dataset.metadata[OT.predictedVariables] = [] unless @prediction_dataset.metadata[OT.predictedVariables] 
+          @prediction_dataset.metadata[OT.predictedVariables] << prediction_feature_uri
           @prediction_dataset.add_feature(prediction_feature_uri, {
             RDF.type => [OT.ModelPrediction],
             OT.hasSource => @uri,
             DC.creator => @uri,
             DC.title => URI.decode(File.basename( @metadata[OT.dependentVariables] )),
-            OT.prediction => prediction[:prediction],
-            OT.confidence => prediction[:confidence],
-            OT.parameters => [{DC.title => "compound_uri", OT.paramValue => compound_uri}]
+            # TODO: factor information to value
           })
-          @prediction_dataset.add @compound.uri, prediction_feature_uri, prediction[:prediction]
+            #OT.prediction => prediction[:prediction],
+            #OT.confidence => prediction[:confidence],
+            #OT.parameters => [{DC.title => "compound_uri", OT.paramValue => compound_uri}]
+            @prediction_dataset.add @compound.uri, prediction_feature_uri, value
+        end
 
-          if verbose
-            if @feature_calculation_algorithm == "Substructure.match"
-              f = 0
-              @compound_features.each do |feature|
-                feature_uri = File.join( @prediction_dataset.uri, "feature", "descriptor", f.to_s)
+        if verbose
+          if @feature_calculation_algorithm == "Substructure.match"
+            f = 0
+            @compound_features.each do |feature|
+              feature_uri = File.join( @prediction_dataset.uri, "feature", "descriptor", f.to_s)
+              features[feature] = feature_uri
+              @prediction_dataset.add_feature(feature_uri, {
+                RDF.type => [OT.Substructure],
+                OT.smarts => feature,
+                OT.pValue => @p_values[feature],
+                OT.effect => @effects[feature]
+              })
+              @prediction_dataset.add @compound.uri, feature_uri, true
+              f+=1
+            end
+          else
+            @compound_features.each do |feature|
+              features[feature] = feature
+              @prediction_dataset.add @compound.uri, feature, true
+            end
+          end
+          n = 0
+          @neighbors.each do |neighbor|
+            neighbor_uri = File.join( @prediction_dataset.uri, "feature", "neighbor", n.to_s )
+            @prediction_dataset.add_feature(neighbor_uri, {
+              OT.compound => neighbor[:compound],
+              OT.similarity => neighbor[:similarity],
+              OT.measuredActivity => neighbor[:activity],
+              RDF.type => [OT.Neighbor]
+            })
+            @prediction_dataset.add @compound.uri, neighbor_uri, true
+            f = 0 unless f
+            neighbor[:features].each do |feature|
+              if @feature_calculation_algorithm == "Substructure.match"
+                feature_uri = File.join( @prediction_dataset.uri, "feature", "descriptor", f.to_s) unless feature_uri = features[feature]
+              else
+                feature_uri = feature
+              end
+              @prediction_dataset.add neighbor[:compound], feature_uri, true
+              unless features.has_key? feature
                 features[feature] = feature_uri
                 @prediction_dataset.add_feature(feature_uri, {
                   RDF.type => [OT.Substructure],
@@ -276,49 +326,13 @@ module OpenTox
                   OT.pValue => @p_values[feature],
                   OT.effect => @effects[feature]
                 })
-                @prediction_dataset.add @compound.uri, feature_uri, true
                 f+=1
               end
-            else
-              @compound_features.each do |feature|
-                features[feature] = feature
-                @prediction_dataset.add @compound.uri, feature, true
-              end
             end
-            n = 0
-            @neighbors.each do |neighbor|
-              neighbor_uri = File.join( @prediction_dataset.uri, "feature", "neighbor", n.to_s )
-              @prediction_dataset.add_feature(neighbor_uri, {
-                OT.compound => neighbor[:compound],
-                OT.similarity => neighbor[:similarity],
-                OT.measuredActivity => neighbor[:activity],
-                RDF.type => [OT.Neighbor]
-              })
-              @prediction_dataset.add @compound.uri, neighbor_uri, true
-              f = 0 unless f
-              neighbor[:features].each do |feature|
-                if @feature_calculation_algorithm == "Substructure.match"
-                  feature_uri = File.join( @prediction_dataset.uri, "feature", "descriptor", f.to_s) unless feature_uri = features[feature]
-                else
-                  feature_uri = feature
-                end
-                @prediction_dataset.add neighbor[:compound], feature_uri, true
-                unless features.has_key? feature
-                  features[feature] = feature_uri
-                  @prediction_dataset.add_feature(feature_uri, {
-                    RDF.type => [OT.Substructure],
-                    OT.smarts => feature,
-                    OT.pValue => @p_values[feature],
-                    OT.effect => @effects[feature]
-                  })
-                  f+=1
-                end
-              end
-              n+=1
-            end
-            # what happens with dataset predictions?
+            n+=1
           end
         end
+        #end
 
         @prediction_dataset.save(subjectid)
         @prediction_dataset

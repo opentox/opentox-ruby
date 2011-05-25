@@ -202,7 +202,7 @@ module OpenTox
         acts_f = acts.collect {|v| v == true ? 1.0 : 0.0}
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
         begin 
-          prediction = local_svm (neighbors, acts_f, sims, "C-bsvc", params)
+          prediction = local_svm(neighbors, acts_f, sims, "C-bsvc", params)
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
