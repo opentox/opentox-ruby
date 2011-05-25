@@ -36,11 +36,11 @@ module OpenTox
       user = OpenTox::Authorization.get_user(subjectid) if subjectid
       html +=  "<pre><p align=\"right\">"
       unless user
-        html += "You are currently not logged in to "+$url_provider.url_for("",:full)+
-          ", <a href="+$url_provider.url_for("/login",:full)+">login</a>"
+        html += "You are currently not signed in to "+$url_provider.url_for("",:full)+
+          ", <a href="+$url_provider.url_for("/sign_in",:full)+">sign in</a>"
       else
-        html += "You are logged in as '#{user}' to "+$url_provider.url_for("",:full)+
-          ", <a href="+$url_provider.url_for("/logout",:full)+">logout</a>"
+        html += "You are signed in as '#{user}' to "+$url_provider.url_for("",:full)+
+          ", <a href="+$url_provider.url_for("/sign_out",:full)+">sign out</a>"
       end
       html += "  </p></pre>"
     end 
@@ -67,46 +67,44 @@ module OpenTox
     html
   end
   
-  def self.login( msg=nil )
+  def self.sign_in( msg=nil )
     html = "<html><title>Login</title><img src="+OT_LOGO+"><body>"
-    html += "<form method='POST' action='"+$url_provider.url_for("/login",:full)+"'>"
+    html += "<form method='POST' action='"+$url_provider.url_for("/sign_in",:full)+"'>"
     html += "<pre><p style=\"padding:15px; border:10px solid \#5D308A\">"
     html += msg+"\n\n" if msg
-    html += "Please login to "+$url_provider.url_for("",:full)+"\n\n"
+    html += "Please sign in to "+$url_provider.url_for("",:full)+"\n\n"
     html += "<table border=0>"
     html += "<tr><td>user:</td><td><input type='text' name='user' size='15' /></td></tr>"+
           "<tr><td>password:</td><td><input type='password' name='password' size='15' /></td></tr>"+
           #"<input type=hidden name=back_to value="+back_to.to_s+">"+
-          "<tr><td><input type='submit' value='Login' /></td></tr>"
+          "<tr><td><input type='submit' value='Sign in' /></td></tr>"
     html += "</table></p></pre></form></body></html>"
     html
   end
 end
 
-=begin
-get '/logout/?' do
+get '/sign_out/?' do
   response.set_cookie("subjectid",{:value=>nil})
   content_type "text/html"
-  content = "Sucessfully logged out from "+$url_provider.url_for("",:full)
+  content = "Sucessfully signed out from "+$url_provider.url_for("",:full)
   OpenTox.text_to_html(content)
 end
 
-get '/login/?' do
+get '/sign_in/?' do
   content_type "text/html"
-  OpenTox.login
+  OpenTox.sign_in
 end
 
-post '/login/?' do
+post '/sign_in/?' do
   subjectid = OpenTox::Authorization.authenticate(params[:user], params[:password])
   if (subjectid)
     response.set_cookie("subjectid",{:value=>subjectid})
     content_type "text/html"
-    content = "Sucessfully logged in as '"+params[:user]+"' to "+$url_provider.url_for("",:full)
+    content = "Sucessfully signed in as '"+params[:user]+"' to "+$url_provider.url_for("",:full)
     OpenTox.text_to_html(content,subjectid)    
   else
     content_type "text/html"
-    OpenTox.login("Login failed, please try again")
+    OpenTox.sign_in("Login failed, please try again")
   end
 end
-=end
 
