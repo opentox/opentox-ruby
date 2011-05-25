@@ -338,54 +338,39 @@ module OpenTox
         @prediction_dataset
       end
 
-      # Find neighbors and store them as object variable
+      # Find neighbors and store them as object variable, access only a subset of compounds for that.
       def neighbors_balanced(s, l, start, offset)
         @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
-
         @neighbors = []
-        begin
-          #@fingerprints.each do |training_compound,training_features| # AM: this is original by CH
           [ l[start, offset ] , s ].flatten.each do |training_compound| # AM: access only a balanced subset
             training_features = @fingerprints[training_compound]
-            sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values)")
-            if sim > @min_sim
-              @activities[training_compound].each do |act|
-                this_neighbor = {
-                  :compound => training_compound,
-                  :similarity => sim,
-                  :features => training_features,
-                  :activity => act
-                }
-                @neighbors << this_neighbor
-              end
-            end
-          end
-        rescue Exception => e
-          LOGGER.error "BLAZAR failed in neighbors: "+e.class.to_s+": "+e.message
+            add_neighbor training_features
         end
 
       end
 
-
-      # Find neighbors and store them as object variable
+      # Find neighbors and store them as object variable.
       def neighbors
-      
-      @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
-   
-      @neighbors = []
-      @fingerprints.each do |training_compound,training_features|
-      sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values)")
-          if sim > @min_sim
-                @activities[training_compound].each do |act|
-                   @neighbors << {
-                     :compound => training_compound,
-                     :similarity => sim,
-                     :features => training_features,
-                     :activity => act
-                   }
-            end
+        @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
+        @neighbors = []
+        @fingerprints.each do |training_compound,training_features| # AM: access all compounds
+           add_neighbor training_features
+        end
+      end
+
+      # Adds a neighbor to @neighbors if it passes the similarity threshold.
+      def add_neighbor(training_features)
+        sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values)")
+        if sim > @min_sim
+          @activities[training_compound].each do |act|
+            @neighbors << {
+               :compound => training_compound,
+               :similarity => sim,
+               :features => training_features,
+               :activity => act
+            }
           end
-         end
+        end
       end
 
       # Find database activities and store them in @prediction_dataset
