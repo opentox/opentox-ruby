@@ -178,7 +178,7 @@ module OpenTox
 
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
         begin
-          prediction = local_svm(neighbors, acts, sims, "nu-svr", params)
+          prediction = (props.nil? ? local_svm(neighbors, acts, sims, "nu-svr", params) : local_svm_prop(neighbors, acts, sims, "nu-svr", params, props))
           prediction = (take_logs ? 10**(prediction.to_f) : prediction.to_f)
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
         rescue Exception => e
@@ -194,15 +194,16 @@ module OpenTox
       # Local support vector classification from neighbors 
       # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
       # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
+      # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
       # @return [Hash] Hash with keys `:prediction, :confidence`
-      def self.local_svm_classification(neighbors, params)
+      def self.local_svm_classification(neighbors, params, props=nil)
         acts = neighbors.collect do |n|
           act = n[:activity]
         end # activities of neighbors for supervised learning
         acts_f = acts.collect {|v| v == true ? 1.0 : 0.0}
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
         begin 
-          prediction = local_svm(neighbors, acts_f, sims, "C-bsvc", params)
+          prediction = (props.nil? ? local_svm(neighbors, acts_f, sims, "C-bsvc", params) : local_svm_prop(neighbors, acts_f, sims, "C-bsvc", params, props))
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
@@ -216,14 +217,16 @@ module OpenTox
 
 
       # Local support vector prediction from neighbors. 
-      # Not to be called directly (use local_svm_regression or local_svm_classification.
+      # Uses pre-defined Kernel Matrix.
+      # Not to be called directly (use local_svm_regression or local_svm_classification).
       # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
       # @param [Array] acts, activities for neighbors.
       # @param [Array] sims, similarities for neighbors.
       # @param [String] type, one of "nu-svr" (regression) or "C-bsvc" (classification).
       # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
+      # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
       # @return [Numeric] A prediction value.
-      def self.local_svm(neighbors, acts, sims, type, params)
+      def self.local_svm(neighbors, acts, sims, type, params, props=nil)
           neighbor_matches = neighbors.collect{ |n| n[:features] } # URIs of matches
           gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
           if neighbor_matches.size == 0
@@ -284,6 +287,78 @@ module OpenTox
           end
           prediction
       end
+
+      # Local support vector prediction from neighbors. 
+      # Uses propositionalized setting.
+      # Not to be called directly (use local_svm_regression or local_svm_classification).
+      # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
+      # @param [Array] acts, activities for neighbors.
+      # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
+      # @param [String] type, one of "nu-svr" (regression) or "C-bsvc" (classification).
+      # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
+      # @return [Numeric] A prediction value.
+      def self.local_svm_prop(props, acts, type, params)
+
+          n_prop = props[0] # is a matrix, i.e. two nested Arrays.
+          q_prop = props[1] # is an Array.
+
+          #neighbor_matches = neighbors.collect{ |n| n[:features] } # URIs of matches
+          #gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
+          if n_prop.size == 0
+            raise "No neighbors found."
+          else
+            # gram matrix
+            #(0..(neighbor_matches.length-1)).each do |i|
+            #  gram_matrix[i] = [] unless gram_matrix[i]
+            #  # upper triangle
+            #  ((i+1)..(neighbor_matches.length-1)).each do |j|
+            #    sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values])")
+            #    gram_matrix[i][j] = Algorithm.gauss(sim)
+            #    gram_matrix[j] = [] unless gram_matrix[j] 
+            #    gram_matrix[j][i] = gram_matrix[i][j] # lower triangle
+            #  end
+            #  gram_matrix[i][i] = 1.0
+            #end
+
+            #LOGGER.debug gram_matrix.to_yaml
+            @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
+            @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
+            LOGGER.debug "Setting R data ..."
+            # set data
+            @r.n_prop = n_prop.flatten
+            @r.n = n_prop.size
+            @r.y = acts
+            @r.q_prop = q_prop
+
+            begin
+              LOGGER.debug "Preparing R data ..."
+              # prepare data
+              @r.eval "y<-as.vector(y)"
+              @r.eval "prop_matrix<-matrix(n_prop,n,n)"
+              @r.eval "q_prop<-as.vector(q_prop)"
+              
+              # model + support vectors
+              LOGGER.debug "Creating SVM model ..."
+              @r.eval "model<-ksvm(prop_matrix, y, type=\"#{type}\", nu=0.5)"
+              LOGGER.debug "Predicting ..."
+              if type == "nu-svr" 
+                @r.eval "p<-predict(model,q_prop)[1,1]"
+              elsif type == "C-bsvc"
+                @r.eval "p<-predict(model,q_prop)"
+              end
+              if type == "nu-svr"
+                prediction = @r.p
+              elsif type == "C-bsvc"
+                prediction = (@r.p.to_f == 1.0 ? true : false)
+              end
+              @r.quit # free R
+            rescue Exception => e
+              LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
+            end
+          end
+          prediction
+      end
+
 
     end
 
