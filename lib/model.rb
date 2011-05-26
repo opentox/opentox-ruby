@@ -176,11 +176,15 @@ module OpenTox
 
         return @prediction_dataset if database_activity(subjectid)
 
-
-       if metadata[RDF.type] == [OTA.ClassificationLazySingleTarget]
+        load_metadata(subjectid)
+        case OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type
+        when "classification"
           # AM: Balancing, see http://www.maunz.de/wordpress/opentox/2011/balanced-lazar
           l = Array.new # larger 
           s = Array.new # smaller fraction
+
+          raise "no fingerprints in model" if @fingerprints.size==0
+
           @fingerprints.each do |training_compound,training_features|
             @activities[training_compound].each do |act|
               case act.to_s
@@ -231,6 +235,7 @@ module OpenTox
           ### END AM balanced predictions
 
         else # regression case: no balancing
+          LOGGER.info "LAZAR: Unbalanced."
           neighbors
           prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
         end
