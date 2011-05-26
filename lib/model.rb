@@ -207,7 +207,7 @@ module OpenTox
 
           # AM: Balanced predictions
           addon = (modulo[1].to_f/modulo[0]).ceil # what will be added in each round 
-          slack = modulo[1].divmod(addon)[1] # what remains for the last round
+          slack = (addon!=0 ? modulo[1].divmod(addon)[1] : 0) # what remains for the last round
           position = 0
           predictions = Array.new
 
