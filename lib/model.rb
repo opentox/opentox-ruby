@@ -168,7 +168,6 @@ module OpenTox
           @prediction_dataset.add_metadata( {
             OT.hasSource => @uri,
             DC.creator => @uri,
-            # TODO: fix dependentVariable
             DC.title => URI.decode(File.basename( @metadata[OT.dependentVariables] )),
             OT.parameters => [{DC.title => "compound_uri", OT.paramValue => compound_uri}]
           } )
@@ -235,47 +234,16 @@ module OpenTox
           prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
         end
         
-       # TODO: reasonable feature name
-        #prediction_feature_uri = File.join( @prediction_dataset.uri, "feature", "prediction", File.basename(@metadata[OT.dependentVariables]),@prediction_dataset.compounds.size.to_s)
-        value_feature_uri = File.join( @prediction_dataset.uri, "feature", "prediction", File.basename(@metadata[OT.dependentVariables]),"value")
-        confidence_feature_uri = File.join( @prediction_dataset.uri, "feature", "prediction", File.basename(@metadata[OT.dependentVariables]),"confidence")
+        value_feature_uri = File.join( @uri, "predicted", "value")
+        confidence_feature_uri = File.join( @uri, "predicted", "confidence")
 
         prediction_feature_uris = {value_feature_uri => prediction[:prediction], confidence_feature_uri => prediction[:confidence]}
-        #prediction_feature_uris[value_feature_uri] = "No similar compounds in training dataset." if @neighbors.size == 0 or prediction[:prediction].nil?
         prediction_feature_uris[value_feature_uri] = nil if @neighbors.size == 0 or prediction[:prediction].nil?
         
-        #@prediction_dataset.metadata[OT.dependentVariables] = prediction_feature_uri
         @prediction_dataset.metadata[OT.dependentVariables] = @metadata[OT.dependentVariables]
+        @prediction_dataset.metadata[OT.predictedVariables] = [value_feature_uri, confidence_feature_uri]
 
-=begin
-        if @neighbors.size == 0
-          prediction_feature_uris.each do |prediction_feature_uri,value|
-            @prediction_dataset.add_feature(prediction_feature_uri, {
-              RDF.type => [OT.MeasuredFeature],
-              OT.hasSource => @uri,
-              DC.creator => @uri,
-              DC.title => URI.decode(File.basename( @metadata[OT.dependentVariables] )),
-              OT.error => "No similar compounds in training dataset.",
-              #OT.parameters => [{DC.title => "compound_uri", OT.paramValue => compound_uri}]
-            })
-            @prediction_dataset.add @compound.uri, prediction_feature_uri, value
-          end
-
-        else
-=end
         prediction_feature_uris.each do |prediction_feature_uri,value|
-          @prediction_dataset.metadata[OT.predictedVariables] = [] unless @prediction_dataset.metadata[OT.predictedVariables] 
-          @prediction_dataset.metadata[OT.predictedVariables] << prediction_feature_uri
-          @prediction_dataset.add_feature(prediction_feature_uri, {
-            RDF.type => [OT.ModelPrediction],
-            OT.hasSource => @uri,
-            DC.creator => @uri,
-            DC.title => URI.decode(File.basename( @metadata[OT.dependentVariables] )),
-            # TODO: factor information to value
-          })
-            #OT.prediction => prediction[:prediction],
-            #OT.confidence => prediction[:confidence],
-            #OT.parameters => [{DC.title => "compound_uri", OT.paramValue => compound_uri}]
             @prediction_dataset.add @compound.uri, prediction_feature_uri, value
         end
 
@@ -399,6 +367,35 @@ module OpenTox
         else
           false
         end
+      end
+
+      def prediction_features
+        [prediction_value_feature,prediction_confidence_feature]
+      end
+
+      def prediction_value_feature
+        dependent_uri = @metadata[OT.dependentVariables].first
+        feature = OpenTox::Feature.new File.join( @uri, "predicted", "value")
+        feature.add_metadata( {
+          RDF.type => [OT.ModelPrediction],
+          OT.hasSource => @uri,
+          DC.creator => @uri,
+          DC.title => URI.decode(File.basename( dependent_uri )),
+          OWL.sameAs => dependent_uri
+        })
+        feature
+      end
+
+      def prediction_confidence_feature
+        dependent_uri = @metadata[OT.dependentVariables].first
+        feature = OpenTox::Feature.new File.join( @uri, "predicted", "confidence")
+        feature.add_metadata( {
+          RDF.type => [OT.ModelPrediction],
+          OT.hasSource => @uri,
+          DC.creator => @uri,
+          DC.title => "#{URI.decode(File.basename( dependent_uri ))} confidence"
+        })
+        feature
       end
 
       # Save model at model service
