@@ -176,7 +176,10 @@ module OpenTox
 
         return @prediction_dataset if database_activity(subjectid)
 
-        if metadata[RDF.type].include?([OTA.ClassificationLazySingleTarget][0]) # AM: searching in metadata for classification
+        load_metadata(subjectid)
+        case OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type
+        when "classification"
+          
           # AM: Balancing, see http://www.maunz.de/wordpress/opentox/2011/balanced-lazar
           l = Array.new # larger 
           s = Array.new # smaller fraction
@@ -231,6 +234,7 @@ module OpenTox
           ### END AM balanced predictions
 
         else # no balancing as before
+          LOGGER.info "LAZAR: Unbalanced."
           neighbors
           (@prediction_algorithm.include? "svm" and params[:prop_kernel] == "true") ? props = get_props : props = nil
           prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values}, props)")
