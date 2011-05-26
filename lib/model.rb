@@ -214,7 +214,7 @@ module OpenTox
               (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
               LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
               neighbors_balanced(s, l, position, lr_size) # get ratio fraction of larger part
-              props = get_props
+              (@prediction_algorithm.include? "svm" and params[:prop_kernel] == "true") ? props = get_props : props = nil
               prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values}, props)")
               if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
                 prediction_best=prediction 
@@ -232,7 +232,7 @@ module OpenTox
 
         else # no balancing as before
           neighbors
-          props = get_props
+          (@prediction_algorithm.include? "svm" and params[:prop_kernel] == "true") ? props = get_props : props = nil
           prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values}, props)")
         end
 

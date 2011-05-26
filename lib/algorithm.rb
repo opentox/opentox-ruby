@@ -227,6 +227,7 @@ module OpenTox
       # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
       # @return [Numeric] A prediction value.
       def self.local_svm(neighbors, acts, sims, type, params)
+          LOGGER.debug "Local SVM (Weighted Tanimoto Kernel)."
           neighbor_matches = neighbors.collect{ |n| n[:features] } # URIs of matches
           gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
           if neighbor_matches.size == 0
@@ -299,6 +300,7 @@ module OpenTox
       # @return [Numeric] A prediction value.
       def self.local_svm_prop(props, acts, type, params)
 
+          LOGGER.debug "Local SVM (Propositionalization / Kernlab Kernel)."
           n_prop = props[0] # is a matrix, i.e. two nested Arrays.
           q_prop = props[1] # is an Array.
 
