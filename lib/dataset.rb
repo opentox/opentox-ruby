@@ -167,16 +167,13 @@ module OpenTox
       @features
     end
 
-    def feature_classes(feature, subjectid=nil)
-      if Feature.find(feature, subjectid).feature_type == "classification"
-        classes = []
-        @data_entries.each do |c,e|
-          e[feature].each { |v| classes << v.to_s }
-        end
-        classes.uniq.sort
-      else
-        nil
-      end
+    # returns the accept_values of a feature, i.e. the classification domain / all possible feature values 
+    # @param [String] feature the URI of the feature
+    # @return [Array] return array with strings, nil if value is not set (e.g. when feature is numeric)
+    def accept_values(feature)
+      accept_values = features[feature][OT.acceptValue]
+      accept_values.sort if accept_values
+      accept_values
     end
 
     # Detect feature type(s) in the dataset
