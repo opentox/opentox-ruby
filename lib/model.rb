@@ -69,7 +69,7 @@ module OpenTox
       include Model
       include Algorithm
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel
 
       def initialize(uri=nil)
 
@@ -92,6 +92,7 @@ module OpenTox
         @prediction_algorithm = "Neighbors.weighted_majority_vote"
 
         @min_sim = 0.3
+        @prop_kernel = false
 
       end
 
@@ -219,7 +220,11 @@ module OpenTox
               (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
               LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
               neighbors_balanced(s, l, position, lr_size) # get ratio fraction of larger part
-              (@prediction_algorithm.include? "svm" and params[:prop_kernel] == "true") ? props = get_props : props = nil
+              if @prop_kernel && @prediction_algorithm.include?("svm")
+                props = get_props 
+              else
+                props = nil
+              end
               prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values}, props)")
               if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
                 prediction_best=prediction 
@@ -235,10 +240,14 @@ module OpenTox
           @neighbors=neighbors_best
           ### END AM balanced predictions
 
-        else # regression case: no balancing
+        else # AM: no balancing
           LOGGER.info "LAZAR: Unbalanced."
           neighbors
-          (@prediction_algorithm.include? "svm" and params[:prop_kernel] == "true") ? props = get_props : props = nil
+          if @prop_kernel && @prediction_algorithm.include?("svm")
+           props = get_props 
+          else
+           props = nil
+          end
           prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values}, props)")
         end
 

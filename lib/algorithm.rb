@@ -164,7 +164,7 @@ module OpenTox
       # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
       # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
       # @return [Hash] Hash with keys `:prediction, :confidence`
-      def self.local_svm_regression(neighbors, params)
+      def self.local_svm_regression(neighbors, params, props=nil)
         take_logs=true
         neighbors.each do |n| 
           if (! n[:activity].nil?) && (n[:activity].to_f < 0.0)
