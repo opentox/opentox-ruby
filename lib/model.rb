@@ -179,10 +179,12 @@ module OpenTox
         load_metadata(subjectid)
         case OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type
         when "classification"
-          
           # AM: Balancing, see http://www.maunz.de/wordpress/opentox/2011/balanced-lazar
           l = Array.new # larger 
           s = Array.new # smaller fraction
+
+          raise "no fingerprints in model" if @fingerprints.size==0
+
           @fingerprints.each do |training_compound,training_features|
             @activities[training_compound].each do |act|
               case act.to_s
@@ -233,7 +235,7 @@ module OpenTox
           @neighbors=neighbors_best
           ### END AM balanced predictions
 
-        else # no balancing as before
+        else # regression case: no balancing
           LOGGER.info "LAZAR: Unbalanced."
           neighbors
           (@prediction_algorithm.include? "svm" and params[:prop_kernel] == "true") ? props = get_props : props = nil
