@@ -38,29 +38,51 @@ module OpenTox
       # provides feature type, possible types are "regression" or "classification"
       # @return [String] feature type, "unknown" if type could not be estimated
       def feature_type(subjectid=nil)
-        return @feature_type if @feature_type
-
-        # dynamically perform restcalls if necessary
-        load_metadata(subjectid) if @metadata==nil or @metadata.size==0 or (@metadata.size==1 && @metadata.values[0]==@uri)
-        algorithm = OpenTox::Algorithm::Generic.find(@metadata[OT.algorithm], subjectid)
-        algorithm_title = algorithm ? algorithm.metadata[DC.title] : nil
-        algorithm_type = algorithm ? algorithm.metadata[RDF.type] : nil
-        dependent_variable = OpenTox::Feature.find( @metadata[OT.dependentVariables],subjectid )
-        dependent_variable_type = dependent_variable ? dependent_variable.feature_type : nil
-        type_indicators = [dependent_variable_type, @metadata[RDF.type], @metadata[DC.title], @uri, algorithm_type, algorithm_title].flatten
-        type_indicators.each do |type|
-          case type
-          when /(?i)classification/
-            @feature_type =  "classification"
-            break
-          when /(?i)regression/
-            @feature_type = "regression"
-          end
+        unless @feature_type
+          load_predicted_variables( subjectid ) unless @predicted_variable
+          @feature_type = OpenTox::Feature.find( @predicted_variable, subjectid ).feature_type
         end
-        raise "unknown model "+type_indicators.inspect unless @feature_type
         @feature_type
       end
+    
+      def predicted_variable( subjectid )
+        load_predicted_variables( subjectid ) unless @predicted_variable
+        @predicted_variable
+      end
 
+      def predicted_confidence( subjectid )
+        load_predicted_variables( subjectid ) unless @predicted_confidence
+        @predicted_confidence
+      end
+  
+      private
+      def load_predicted_variables( subjectid=nil )
+        load_metadata(subjectid) if @metadata==nil or @metadata.size==0 or (@metadata.size==1 && @metadata.values[0]==@uri)
+        if @metadata[OT.predictedVariables]
+          predictedVariables = @metadata[OT.predictedVariables]
+          if predictedVariables.is_a?(Array)
+            if (predictedVariables.size==1)
+              @predicted_variable = predictedVariables[0]
+            elsif (predictedVariables.size==2)
+              # PENDING identify confidence
+              conf_index = -1
+              predictedVariables.size.times do |i|
+                f = OpenTox::Feature.find(predictedVariables[i])
+                conf_index = i if f.metadata[DC.title]=~/(?i)confidence/
+              end
+              raise "could not estimate predicted variable from model: '"+uri.to_s+
+                "', number of predicted-variables==2, but no confidence found" if conf_index==-1
+              @predicted_variable = predictedVariables[1-conf_index]
+              @predicted_confidence = predictedVariables[conf_index]
+            else
+              raise "could not estimate predicted variable from model: '"+uri.to_s+"', number of predicted-variables > 2"  
+            end
+          else
+            raise "could not estimate predicted variable from model: '"+uri.to_s+"', predicted-variables is no array"
+          end        
+        end
+        raise "could not estimate predicted variable from model: '"+uri.to_s+"'" unless @predicted_variable
+      end
     end
 
     # Lazy Structure Activity Relationship class
