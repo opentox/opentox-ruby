@@ -69,7 +69,7 @@ module OpenTox
       include Model
       include Algorithm
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel
 
       def initialize(uri=nil)
 
@@ -92,6 +92,7 @@ module OpenTox
         @prediction_algorithm = "Neighbors.weighted_majority_vote"
 
         @min_sim = 0.3
+        @prop_kernel = false
 
       end
 
@@ -214,17 +215,22 @@ module OpenTox
           neighbors_best=nil
 
           begin
-          for i in 1..modulo[0] do
-            (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
-            LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
-            neighbors_balanced(s, l, position, lr_size) # get ratio fraction of larger part
-            prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
-            if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
-              prediction_best=prediction 
-              neighbors_best=@neighbors
+            for i in 1..modulo[0] do
+              (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
+              LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
+              neighbors_balanced(s, l, position, lr_size) # get ratio fraction of larger part
+              if @prop_kernel && @prediction_algorithm.include?("svm")
+                props = get_props 
+              else
+                props = nil
+              end
+              prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values}, props)")
+              if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
+                prediction_best=prediction 
+                neighbors_best=@neighbors
+              end
+              position = position + lr_size
             end
-            position = position + lr_size
-          end
           rescue Exception => e
             LOGGER.error "BLAZAR failed in prediction: "+e.class.to_s+": "+e.message
           end
@@ -233,10 +239,15 @@ module OpenTox
           @neighbors=neighbors_best
           ### END AM balanced predictions
 
-        else # regression case: no balancing
+        else # AM: no balancing
           LOGGER.info "LAZAR: Unbalanced."
           neighbors
-          prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values})")
+          if @prop_kernel && @prediction_algorithm.include?("svm")
+           props = get_props 
+          else
+           props = nil
+          end
+          prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values}, props)")
         end
         
         value_feature_uri = File.join( @uri, "predicted", "value")
@@ -244,7 +255,7 @@ module OpenTox
 
         prediction_feature_uris = {value_feature_uri => prediction[:prediction], confidence_feature_uri => prediction[:confidence]}
         prediction_feature_uris[value_feature_uri] = nil if @neighbors.size == 0 or prediction[:prediction].nil?
-        
+
         @prediction_dataset.metadata[OT.dependentVariables] = @metadata[OT.dependentVariables]
         @prediction_dataset.metadata[OT.predictedVariables] = [value_feature_uri, confidence_feature_uri]
 
@@ -311,54 +322,66 @@ module OpenTox
         @prediction_dataset
       end
 
-      # Find neighbors and store them as object variable
-      def neighbors_balanced(s, l, start, offset)
-        @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
-
-        @neighbors = []
-        begin
-          #@fingerprints.each do |training_compound,training_features| # AM: this is original by CH
-          [ l[start, offset ] , s ].flatten.each do |training_compound| # AM: access only a balanced subset
-            training_features = @fingerprints[training_compound]
-            sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values)")
-            if sim > @min_sim
-              @activities[training_compound].each do |act|
-                this_neighbor = {
-                  :compound => training_compound,
-                  :similarity => sim,
-                  :features => training_features,
-                  :activity => act
-                }
-                @neighbors << this_neighbor
+      # Calculate the propositionalization matrix aka instantiation matrix (0/1 entries for features)
+      # Same for the vector describing the query compound
+      def get_props
+        matrix = Array.new
+        begin 
+          @neighbors.each do |n|
+            n = n[:compound]
+            row = []
+            @features.each do |f|
+              if ! @fingerprints[n].nil? 
+                row << (@fingerprints[n].include?(f) ? 0.0 : @p_values[f])
+              else
+                row << 0.0
               end
             end
+            matrix << row
+          end
+          row = []
+          @features.each do |f|
+            row << (@compound.match([f]).size == 0 ? 0.0 : @p_values[f])
           end
         rescue Exception => e
-          LOGGER.error "BLAZAR failed in neighbors: "+e.class.to_s+": "+e.message
+          LOGGER.debug "get_props failed with '" + $! + "'"
+        end
+        [ matrix, row ]
+      end
+
+      # Find neighbors and store them as object variable, access only a subset of compounds for that.
+      def neighbors_balanced(s, l, start, offset)
+        @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
+        @neighbors = []
+        [ l[start, offset ] , s ].flatten.each do |training_compound| # AM: access only a balanced subset
+          training_features = @fingerprints[training_compound]
+          add_neighbor training_features, training_compound
         end
 
       end
 
-
-      # Find neighbors and store them as object variable
+      # Find neighbors and store them as object variable, access all compounds for that.
       def neighbors
-      
-      @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
-   
-      @neighbors = []
-      @fingerprints.each do |training_compound,training_features|
-      sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values)")
-          if sim > @min_sim
-                @activities[training_compound].each do |act|
-                   @neighbors << {
-                     :compound => training_compound,
-                     :similarity => sim,
-                     :features => training_features,
-                     :activity => act
-                   }
-            end
+        @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
+        @neighbors = []
+        @fingerprints.each do |training_compound,training_features| # AM: access all compounds
+          add_neighbor training_features, training_compound
+        end
+      end
+
+      # Adds a neighbor to @neighbors if it passes the similarity threshold.
+      def add_neighbor(training_features, training_compound)
+        sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values)")
+        if sim > @min_sim
+          @activities[training_compound].each do |act|
+            @neighbors << {
+              :compound => training_compound,
+              :similarity => sim,
+              :features => training_features,
+              :activity => act
+            }
           end
-         end
+        end
       end
 
       # Find database activities and store them in @prediction_dataset
