@@ -27,7 +27,7 @@ end
 Ohm.connect :thread_safe => true
 
 # load mail settings for error messages
-load File.join config_dir,"mail.rb" if File.exists?(File.join config_dir,"mail.rb")
+#load File.join config_dir,"mail.rb" if File.exists?(File.join config_dir,"mail.rb")
 
 logfile = "#{LOG_DIR}/#{ENV["RACK_ENV"]}.log"
 #LOGGER = OTLogger.new(logfile,'daily') # daily rotation

@@ -25,7 +25,7 @@ begin
     gem.add_dependency "spreadsheet", "=0.6.5.4"
     gem.add_dependency "google-spreadsheet-ruby", "=0.1.5"
     gem.add_dependency "yajl-ruby", "=0.8.2"
-    gem.add_dependency "tmail", "=1.2.7.1"
+    #gem.add_dependency "mail", "=2.3.0"
     gem.add_dependency "rinruby", "=2.0.2"
     gem.add_dependency "ohm", "=0.1.3"
     gem.add_dependency "ohm-contrib", "=0.1.1"
