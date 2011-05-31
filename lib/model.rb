@@ -91,7 +91,7 @@ module OpenTox
       include Model
       include Algorithm
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map
 
       def initialize(uri=nil)
 
@@ -108,6 +108,7 @@ module OpenTox
         @activities = {}
         @p_values = {}
         @fingerprints = {}
+        @value_map = {}
 
         @feature_calculation_algorithm = "Substructure.match"
         @similarity_algorithm = "Similarity.tanimoto"
@@ -275,15 +276,21 @@ module OpenTox
         value_feature_uri = File.join( @uri, "predicted", "value")
         confidence_feature_uri = File.join( @uri, "predicted", "confidence")
 
-        prediction_feature_uris = {value_feature_uri => prediction[:prediction], confidence_feature_uri => prediction[:confidence]}
-        prediction_feature_uris[value_feature_uri] = nil if @neighbors.size == 0 or prediction[:prediction].nil?
+        #prediction_feature_uris = {value_feature_uri => prediction[:prediction], confidence_feature_uri => prediction[:confidence]}
+        #prediction_feature_uris[value_feature_uri] = nil if @neighbors.size == 0 or prediction[:prediction].nil?
 
         @prediction_dataset.metadata[OT.dependentVariables] = @metadata[OT.dependentVariables]
         @prediction_dataset.metadata[OT.predictedVariables] = [value_feature_uri, confidence_feature_uri]
 
-        prediction_feature_uris.each do |prediction_feature_uri,value|
-            @prediction_dataset.add @compound.uri, prediction_feature_uri, value
+        if OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "classification"
+          @prediction_dataset.add @compound.uri, value_feature_uri, @value_map[prediction[:prediction]]
+        else
+          @prediction_dataset.add @compound.uri, value_feature_uri, prediction[:prediction]
         end
+        @prediction_dataset.add @compound.uri, confidence_feature_uri, prediction[:confidence]
+        #prediction_feature_uris.each do |prediction_feature_uri,value|
+            #@prediction_dataset.add @compound.uri, prediction_feature_uri, @value_map[value]
+        #end
 
         if verbose
           if @feature_calculation_algorithm == "Substructure.match"
