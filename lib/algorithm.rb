@@ -16,6 +16,7 @@ module OpenTox
     # @param [optional,OpenTox::Task] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @return [String] URI of new resource (dataset, model, ...)
     def run(params=nil, waiting_task=nil)
+      LOGGER.info "Running algorithm '"+@uri.to_s+"' with params: "+params.inspect
       RestClientWrapper.post(@uri, params, {:accept => 'text/uri-list'}, waiting_task).to_s
     end
     

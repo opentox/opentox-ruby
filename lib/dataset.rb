@@ -149,7 +149,11 @@ module OpenTox
     # Load and return only compound URIs from the dataset service
     # @return [Array]  Compound URIs in the dataset
     def load_compounds(subjectid=nil)
-      RestClientWrapper.get(File.join(uri,"compounds"),{:accept=> "text/uri-list", :subjectid => subjectid}).to_s.each_line do |compound_uri|
+      # fix for datasets like http://apps.ideaconsult.net:8080/ambit2/dataset/272?max=50
+      u = URI::parse(uri)
+      u.path = File.join(u.path,"compounds")
+      u = u.to_s
+      RestClientWrapper.get(u,{:accept=> "text/uri-list", :subjectid => subjectid}).to_s.each_line do |compound_uri|
         @compounds << compound_uri.chomp
       end
       @compounds.uniq!
