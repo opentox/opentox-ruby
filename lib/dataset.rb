@@ -304,6 +304,12 @@ module OpenTox
           end
         end
       end
+      # set feature metadata in new dataset accordingly (including accept values)      
+      features.each do |f|
+        self.features[f].each do |k,v|
+          dataset.features[f][k] = v
+        end
+      end
       dataset.add_metadata(metadata)
       dataset.save(subjectid)
       dataset
