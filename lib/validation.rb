@@ -36,6 +36,18 @@ module OpenTox
       Validation.new(uri)
     end
     
+    # creates a training test validation, waits until it finishes, may take some time
+    # @param [Hash] params (required:algorithm_uri,training_dataset_uri,prediction_feature,test_dataset_uri,optional:algorithm_params)
+    # @param [String,optional] subjectid
+    # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
+    # @return [OpenTox::Validation]
+    def self.create_training_test_validation( params, subjectid=nil, waiting_task=nil )
+      params[:subjectid] = subjectid if subjectid
+      uri = OpenTox::RestClientWrapper.post( File.join(CONFIG[:services]["opentox-validation"],"training_test_validation"),
+        params,{:content_type => "text/uri-list"},waiting_task )
+      Validation.new(uri)
+    end
+    
     # looks for report for this validation, creates a report if no report is found
     # @param [String,optional] subjectid
     # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
