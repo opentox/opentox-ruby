@@ -22,6 +22,12 @@ module OpenTox
         @inchi = RestClientWrapper.get(@uri, :accept => 'chemical/x-inchi').to_s.chomp if @uri
       end
     end
+    
+    # request smiles from compound service via accept header
+    # @return smiles as string
+    def self.smiles(uri)
+      RestClientWrapper.get(uri, :accept => 'chemical/x-daylight-smiles').to_s.chomp
+    end
 
     # Create a compound from smiles string
     # @example
