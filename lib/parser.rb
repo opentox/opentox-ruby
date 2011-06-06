@@ -250,8 +250,13 @@ module OpenTox
           File.delete(to_delete) if to_delete
           statements.each do |triple|
             if features.include? triple[0]
-              @dataset.features[triple[0]] = {} unless @dataset.features[triple[0]] 
-              @dataset.features[triple[0]][triple[1]] = triple[2].split('^^').first
+              @dataset.features[triple[0]] = {} unless @dataset.features[triple[0]]
+              if triple[1] == RDF.type
+                 @dataset.features[triple[0]][triple[1]] = [] unless @dataset.features[triple[0]][triple[1]]
+                 @dataset.features[triple[0]][triple[1]] << triple[2].split('^^').first
+              else
+                @dataset.features[triple[0]][triple[1]] = triple[2].split('^^').first
+              end
             end
           end
           @dataset.features

@@ -21,6 +21,11 @@ module OpenTox
       else
         @inchi = RestClientWrapper.get(@uri, :accept => 'chemical/x-inchi').to_s.chomp if @uri
       end
+      
+      if @uri and @inchi.to_s.size==0
+        LOGGER.warn "REMOVE ABMIT HACK: no inchi for compound "+@uri.to_s+", load via smiles"
+        @inchi = Compound.smiles2inchi(Compound.smiles(@uri))
+      end
     end
     
     # request smiles from compound service via accept header
