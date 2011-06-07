@@ -32,6 +32,8 @@ begin
     gem.add_dependency "SystemTimer", "=1.2.3"
     gem.add_dependency "rjb", "=1.3.4"
     gem.add_dependency "haml", "=3.1.1"
+    # for headless browser tests
+    gem.add_dependency "akephalos", "=0.2.5"
     #valiation-gems
     gem.add_dependency "dm-core",  "=1.1.0"
     gem.add_dependency "dm-serializer",  "=1.1.0"
