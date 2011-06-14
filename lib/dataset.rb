@@ -149,7 +149,11 @@ module OpenTox
     # Load and return only compound URIs from the dataset service
     # @return [Array]  Compound URIs in the dataset
     def load_compounds(subjectid=nil)
-      RestClientWrapper.get(File.join(uri,"compounds"),{:accept=> "text/uri-list", :subjectid => subjectid}).to_s.each_line do |compound_uri|
+      # fix for datasets like http://apps.ideaconsult.net:8080/ambit2/dataset/272?max=50
+      u = URI::parse(uri)
+      u.path = File.join(u.path,"compounds")
+      u = u.to_s
+      RestClientWrapper.get(u,{:accept=> "text/uri-list", :subjectid => subjectid}).to_s.each_line do |compound_uri|
         @compounds << compound_uri.chomp
       end
       @compounds.uniq!
@@ -167,16 +171,13 @@ module OpenTox
       @features
     end
 
-    def feature_classes(feature, subjectid=nil)
-      if Feature.find(feature, subjectid).feature_type == "classification"
-        classes = []
-        @data_entries.each do |c,e|
-          e[feature].each { |v| classes << v.to_s }
-        end
-        classes.uniq.sort
-      else
-        nil
-      end
+    # returns the accept_values of a feature, i.e. the classification domain / all possible feature values 
+    # @param [String] feature the URI of the feature
+    # @return [Array] return array with strings, nil if value is not set (e.g. when feature is numeric)
+    def accept_values(feature)
+      accept_values = features[feature][OT.acceptValue]
+      accept_values.sort if accept_values
+      accept_values
     end
 
     # Detect feature type(s) in the dataset
@@ -305,6 +306,12 @@ module OpenTox
               end
             end
           end
+        end
+      end
+      # set feature metadata in new dataset accordingly (including accept values)      
+      features.each do |f|
+        self.features[f].each do |k,v|
+          dataset.features[f][k] = v
         end
       end
       dataset.add_metadata(metadata)

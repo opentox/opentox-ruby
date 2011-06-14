@@ -19,6 +19,7 @@ set :lock, true
 end
  
 use Rack::ShowExceptions
+=begin
 if defined?(MAIL)
 
 	# monkeypatch with the original method
@@ -50,3 +51,4 @@ if defined?(MAIL)
 			mail.smtp MAIL
 	end 
 end
+=end

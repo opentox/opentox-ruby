@@ -40,8 +40,9 @@ module OpenTox
         else
           file = Tempfile.new("ot-rdfxml")
           if @dataset
-            # do not concat /metadata to uri string, this would not work for dataset/R401577?max=3 
             uri = URI::parse(@uri)
+            #remove params like dataset/<id>?max=3 from uri, not needed for metadata
+            uri.query = nil 
             uri.path = File.join(uri.path,"metadata")
             uri = uri.to_s
           else
@@ -230,9 +231,10 @@ module OpenTox
             uri = URI::parse(@uri)
             # PENDING
             # ambit models return http://host/dataset/id?feature_uris[]=sth but 
-            # amibt dataset services does not support http://host/dataset/id/features?feature_uris[]=sth 
+            # amibt dataset services does not support http://host/dataset/id/features?feature_uris[]=sth
+            # and features are not inlcuded in http://host/dataset/id/features
             # -> load features from complete dataset
-            uri.path = File.join(uri.path,"features") unless @uri=~/\?feature_uris\[\]/
+            uri.path = File.join(uri.path,"features") unless @uri=~/\?(feature_uris|page|pagesize)/
             uri = uri.to_s
             file.puts OpenTox::RestClientWrapper.get uri,{:subjectid => subjectid,:accept => "application/rdf+xml"},nil,false
             file.close
@@ -248,8 +250,13 @@ module OpenTox
           File.delete(to_delete) if to_delete
           statements.each do |triple|
             if features.include? triple[0]
-              @dataset.features[triple[0]] = {} unless @dataset.features[triple[0]] 
-              @dataset.features[triple[0]][triple[1]] = triple[2].split('^^').first
+              @dataset.features[triple[0]] = {} unless @dataset.features[triple[0]]
+              if triple[1] == RDF.type
+                 @dataset.features[triple[0]][triple[1]] = [] unless @dataset.features[triple[0]][triple[1]]
+                 @dataset.features[triple[0]][triple[1]] << triple[2].split('^^').first
+              else
+                @dataset.features[triple[0]][triple[1]] = triple[2].split('^^').first
+              end
             end
           end
           @dataset.features
