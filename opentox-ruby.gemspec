@@ -5,11 +5,11 @@
 
 Gem::Specification.new do |s|
   s.name = %q{opentox-ruby}
-  s.version = "2.0.0"
+  s.version = "2.0.1"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Christoph Helma, Martin Guetlein, Andreas Maunz, Micha Rautenberg, David Vorgrimmler"]
-  s.date = %q{2011-05-23}
+  s.date = %q{2011-06-15}
   s.description = %q{Ruby wrapper for the OpenTox REST API (http://www.opentox.org)}
   s.email = %q{helma@in-silico.ch}
   s.executables = ["opentox-install-debian.sh", "opentox-install-ubuntu.sh"]
