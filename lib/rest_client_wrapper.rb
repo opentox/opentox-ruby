@@ -137,7 +137,8 @@ module OpenTox
         if task.errorReport
           received_error task.errorReport, task.http_code, nil, {:rest_uri => task.uri, :rest_code => task.http_code}
         else
-          raise "task status: '"+task.status.to_s+"' but errorReport nil"
+          raise "status of task '"+task.uri.to_s+"' is no longer running (hasStatus is '"+task.status+
+            "'), but it is neither completed nor has an errorReport"
         end 
       end
     
