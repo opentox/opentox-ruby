@@ -170,9 +170,9 @@ module OpenTox
     # @param [Array] deactivating Array with deactivating Smarts strings
     # @return [String] URI for compound image with highlighted fragments
     def matching_smarts_image_uri(activating, deactivating)
-      activating_smarts = URI.encode "\"#{activating.join("\"/\"")}\""
-      deactivating_smarts = URI.encode "\"#{deactivating.join("\"/\"")}\""
-      File.join @uri, "smarts/activating", URI.encode(activating_smarts),"deactivating", URI.encode(deactivating_smarts)
+      activating_smarts = "\"#{activating.collect{|smarts| CGI.escape(smarts)}.join("\"/\"")}\""
+      deactivating_smarts = "\"#{deactivating.collect{|smarts| CGI.escape(smarts)}.join("\"/\"")}\""
+      File.join @uri, "smarts/activating", activating_smarts, "deactivating", deactivating_smarts
     end
 
 
