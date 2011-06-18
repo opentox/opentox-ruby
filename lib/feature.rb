@@ -22,6 +22,7 @@ module OpenTox
     # provides feature type, possible types are "regression" or "classification"
     # @return [String] feature type, unknown if OT.isA property is unknown/ not set
     def feature_type
+      raise OpenTox::BadRequestError.new("rdf type of feature '"+uri.to_s+"' not set") unless metadata[RDF.type]
       if metadata[RDF.type].flatten.include?(OT.NominalFeature)
         "classification"
       elsif metadata[RDF.type].flatten.include?(OT.NumericFeature)
