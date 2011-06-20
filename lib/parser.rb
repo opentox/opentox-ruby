@@ -293,11 +293,18 @@ module OpenTox
         regression_features=false
         2.upto(book.last_row) { |i| 
           row = book.row(i)
-          regression_features = detect_regression_features row
-          break if regression_features==true
+          row.shift
+          row.each_index do |i|
+            value = row[i]
+            value_maps[value].nil? ? value_maps[value]=0 : value_maps[value] += 1
+            if value_maps.size > 5
+              regression_features=true
+              break
+            end
+          end
         }
         
-        2.upto(book.last_row) { |i| add_values book.row(i),regression_features }
+        2.upto(book.last_row) { |i| add_values book.row(i) }
         warnings
         @dataset
       end
@@ -313,12 +320,20 @@ module OpenTox
 
         # AM: fix mixed read in
         regression_features=false
+        value_maps= {0}
         input.each { |row| 
           row = split_row(row)
-          regression_features = detect_regression_features row
-          break if regression_features==true
+          row.shift
+          row.each_index do |i|
+            value = row[i]
+            value_maps[value].nil? ? value_maps[value]=0 : value_maps[value] += 1
+            if value_maps.size > 5
+              regression_features=true
+              break
+            end
+          end
         }
-        input.each { |row| add_values split_row(row),regression_features }
+        input.each { |row| add_values split_row(row) }
         warnings
         @dataset
       end
@@ -365,20 +380,7 @@ module OpenTox
         end
       end
 
-      def detect_regression_features row
-        row.shift
-        regression_features=false
-        row.each_index do |i|
-          value = row[i]
-          type = feature_type(value)
-          if type == OT.NumericFeature
-            regression_features=true
-          end
-        end
-        regression_features
-      end
-
-      def add_values(row, regression_features=false)
+      def add_values(row)
 
         smiles = row.shift
         compound = Compound.from_smiles(smiles)
@@ -396,23 +398,12 @@ module OpenTox
 
           @feature_types[feature] << type 
 
-          if (regression_features)
+          case type
+          when OT.NumericFeature
             val = value.to_f
-          else
-            case type
-            when OT.NominalFeature
-              case value.to_s
-              when TRUE_REGEXP
-                val = true
-              when FALSE_REGEXP
-                val = false
-              end
-            when OT.NumericFeature
-              val = value.to_f
-            when OT.StringFeature
-              val = value.to_s
-              @activity_errors << smiles+", "+row.join(", ")
-            end
+          when OT.StringFeature
+            val = value.to_s
+            @activity_errors << smiles+", "+row.join(", ")
           end
           if val!=nil
             @dataset.add(compound.uri, feature, val)
@@ -428,14 +419,8 @@ module OpenTox
         true if Float(value) rescue false
       end
 
-      def classification?(value)
-        !value.to_s.strip.match(TRUE_REGEXP).nil? or !value.to_s.strip.match(FALSE_REGEXP).nil?
-      end
-
       def feature_type(value)
-        if classification? value
-          return OT.NominalFeature
-        elsif numeric? value
+        if numeric? value
           return OT.NumericFeature
         else
           return OT.StringFeature
