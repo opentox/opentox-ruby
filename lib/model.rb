@@ -91,7 +91,7 @@ module OpenTox
       include Model
       include Algorithm
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :balanced
 
       def initialize(uri=nil)
 
@@ -116,6 +116,7 @@ module OpenTox
 
         @min_sim = 0.3
         @prop_kernel = false
+        @balanced = false
 
       end
 
@@ -200,8 +201,8 @@ module OpenTox
         return @prediction_dataset if database_activity(subjectid)
 
         load_metadata(subjectid)
-        case OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type
-        when "classification"
+        if @balanced && OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "classification"
+
           # AM: Balancing, see http://www.maunz.de/wordpress/opentox/2011/balanced-lazar
           l = Array.new # larger 
           s = Array.new # smaller fraction
@@ -211,12 +212,12 @@ module OpenTox
           @fingerprints.each do |training_compound,training_features|
             @activities[training_compound].each do |act|
               case act.to_s
-              when "false" 
+              when "0" 
                 l << training_compound
-              when "true"  
+              when "1"  
                 s << training_compound
               else
-                LOGGER.warn "BLAZAR: Activity #{act.to_s} should not be reached."
+                LOGGER.warn "BLAZAR: Activity #{act.to_s} should not be reached (supports only two classes)."
               end
             end
           end
@@ -262,7 +263,7 @@ module OpenTox
           @neighbors=neighbors_best
           ### END AM balanced predictions
 
-        else # AM: no balancing
+        else # AM: no balancing or regression
           LOGGER.info "LAZAR: Unbalanced."
           neighbors
           if @prop_kernel && @prediction_algorithm.include?("svm")

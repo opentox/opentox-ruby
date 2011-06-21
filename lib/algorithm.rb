@@ -143,21 +143,25 @@ module OpenTox
         conf = 0.0
         confidence = 0.0
         neighbors.each do |neighbor|
-          case neighbor[:activity].to_s
-          when 'true'
-            conf += Algorithm.gauss(neighbor[:similarity])
-          when 'false'
-            conf -= Algorithm.gauss(neighbor[:similarity])
-          end
-        end
-        if conf > 0.0
-          prediction = true
-        elsif conf < 0.0
-          prediction = false
-        else
-          prediction = nil
+          conf += neighbor[:activity].to_f * Algorithm.gauss(neighbor[:similarity]).to_f
+          #case neighbor[:activity].to_s
+          #when 'true'
+          #  conf += Algorithm.gauss(neighbor[:similarity])
+          #when 'false'
+          #  conf -= Algorithm.gauss(neighbor[:similarity])
+          #end
         end
         confidence = conf/neighbors.size if neighbors.size > 0
+        prediction = confidence.round
+        {:prediction => prediction, :confidence => confidence}
+        #if conf > 0.0
+        #  prediction = true
+        #elsif conf < 0.0
+        #  prediction = false
+        #else
+        #  prediction = nil
+        #end
+        #confidence = conf/neighbors.size if neighbors.size > 0
         {:prediction => prediction, :confidence => confidence.abs}
       end
 
