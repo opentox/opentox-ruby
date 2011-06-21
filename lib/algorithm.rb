@@ -141,28 +141,16 @@ module OpenTox
       # @return [Hash] Hash with keys `:prediction, :confidence`
       def self.weighted_majority_vote(neighbors,params={}, props=nil)
         conf = 0.0
+        conf_sum = 0.0
         confidence = 0.0
         neighbors.each do |neighbor|
-          conf += neighbor[:activity].to_f * Algorithm.gauss(neighbor[:similarity]).to_f
-          #case neighbor[:activity].to_s
-          #when 'true'
-          #  conf += Algorithm.gauss(neighbor[:similarity])
-          #when 'false'
-          #  conf -= Algorithm.gauss(neighbor[:similarity])
-          #end
+          weight = Algorithm.gauss(neighbor[:similarity]).to_f
+          conf += neighbor[:activity].to_f * weight
+          conf_sum += weight
         end
-        confidence = conf/neighbors.size if neighbors.size > 0
-        prediction = confidence.round
+        prediction = (conf/conf_sum).round if conf_sum > 0
+        confidence = conf_sum/neighbors.size if neighbors.size > 0
         {:prediction => prediction, :confidence => confidence}
-        #if conf > 0.0
-        #  prediction = true
-        #elsif conf < 0.0
-        #  prediction = false
-        #else
-        #  prediction = nil
-        #end
-        #confidence = conf/neighbors.size if neighbors.size > 0
-        {:prediction => prediction, :confidence => confidence.abs}
       end
 
       # Local support vector regression from neighbors 
