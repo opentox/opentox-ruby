@@ -443,7 +443,7 @@ module OpenTox
       end
 
       def split_row(row)
-        row.chomp.gsub(/["']/,'').split(/\s*[,;]\s*/) # remove quotes
+        row.chomp.gsub(/["']/,'').split(/\s*[,;\t]\s*/) # remove quotes
       end
 
     end
