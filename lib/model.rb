@@ -88,8 +88,8 @@ module OpenTox
     # Lazy Structure Activity Relationship class
     class Lazar
 
-      include Model
       include Algorithm
+      include Model
 
       attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map
 
@@ -140,6 +140,18 @@ module OpenTox
         lazar_algorithm = OpenTox::Algorithm::Generic.new File.join( CONFIG[:services]["opentox-algorithm"],"lazar")
         model_uri = lazar_algorithm.run(params)
         OpenTox::Model::Lazar.find(model_uri, subjectid)      
+      end
+
+      def run( params, accept_header=nil, waiting_task=nil )
+      unless accept_header
+        if CONFIG[:yaml_hosts].include?(URI.parse(@uri).host)
+          accept_header = 'application/x-yaml' 
+        else
+          accept_header = 'application/rdf+xml'
+        end
+      end
+      LOGGER.info "running model "+@uri.to_s+", params: "+params.inspect+", accept: "+accept_header.to_s
+      RestClientWrapper.post(@uri,params,{:accept => accept_header},waiting_task).to_s
       end
 
       # Get a parameter value
@@ -199,7 +211,7 @@ module OpenTox
 
         return @prediction_dataset if database_activity(subjectid)
 
-        load_metadata(subjectid)
+        #load_metadata(subjectid)
         case OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type
         when "classification"
           # AM: Balancing, see http://www.maunz.de/wordpress/opentox/2011/balanced-lazar
