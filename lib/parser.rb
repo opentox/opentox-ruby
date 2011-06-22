@@ -57,12 +57,12 @@ module OpenTox
         `rapper -i rdfxml -o ntriples #{file.path} 2>/dev/null`.each_line do |line|
           triple = line.to_triple
           if triple[0] == @uri
-            if triple[1] == RDF.type || triple[1]==OT.predictedVariables # allow multiple types
+            #if triple[1] == RDF.type || triple[1]==OT.predictedVariables # allow multiple types
               @metadata[triple[1]] = [] unless @metadata[triple[1]]
               @metadata[triple[1]] << triple[2].split('^^').first
-            else
-              @metadata[triple[1]] = triple[2].split('^^').first
-            end
+            #else
+              #@metadata[triple[1]] = triple[2].split('^^').first
+            #end
           end
           statements << triple 
           parameter_ids << triple[2] if triple[1] == OT.parameters
@@ -75,6 +75,9 @@ module OpenTox
             statements.each{ |t| parameter[t[1]] = t[2] if t[0] == p and t[1] != RDF['type']}
             @metadata[OT.parameters] << parameter
           end
+        end
+        @metadata.each do |k,v|
+          v = v.first if v.size == 1
         end
         @metadata
       end
