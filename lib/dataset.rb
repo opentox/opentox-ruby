@@ -376,11 +376,14 @@ module OpenTox
     end
 
     def value(compound)
-      @data_entries[compound.uri].collect{|f,v| v.first if f.match(/value/)}.compact.first
+      v = nil
+      v = @data_entries[compound.uri].collect{|f,v| v.first if f.match(/value/)}.compact.first if @data_entries[compound.uri]
+      v = nil if v.is_a? Array and v.empty?
+      v
     end
 
     def confidence(compound)
-      @data_entries[compound.uri].collect{|f,v| v.first if f.match(/confidence/)}.compact.first
+      @data_entries[compound.uri].collect{|f,v| v.first if f.match(/confidence/)}.compact.first if @data_entries[compound.uri]
     end
 
     def descriptors(compound)
@@ -388,12 +391,11 @@ module OpenTox
     end
 
     def measured_activities(compound)
-      source = @metadata[OT.hasSource]
-      @data_entries[compound.uri].collect{|f,v| v if f.match(/#{source}/)}.compact.flatten
+      @data_entries[compound.uri].collect{|f,v| v if f.match(/#{@metadata[OT.hasSource]}/)}.compact.flatten if @data_entries[compound.uri]
     end
 
     def neighbors(compound)
-      @data_entries[compound.uri].collect{|f,v| @features[f] if f.match(/neighbor/)}.compact
+      @data_entries[compound.uri].collect{|f,v| @features[f] if f.match(/neighbor/)}.compact if @data_entries[compound.uri]
     end
 
 #    def errors(compound)

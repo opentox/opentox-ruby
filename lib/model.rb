@@ -186,7 +186,7 @@ module OpenTox
             LOGGER.warn "prediction for compound "+compound_uri.to_s+" failed: "+ex.message
           end
         end
-        @prediction_dataset.save(subjectid)
+        #@prediction_dataset.save(subjectid)
         @prediction_dataset
       end
 
@@ -209,141 +209,99 @@ module OpenTox
           } )
         end
 
-        return @prediction_dataset if database_activity(subjectid)
+        unless database_activity(subjectid) # adds database activity to @prediction_dataset
 
-        #load_metadata(subjectid)
-        case OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type
-        when "classification"
-          # AM: Balancing, see http://www.maunz.de/wordpress/opentox/2011/balanced-lazar
-          l = Array.new # larger 
-          s = Array.new # smaller fraction
+          case OpenTox::Feature.find(@metadata[OT.dependentVariables]).feature_type
+          when "classification"
+            # AM: Balancing, see http://www.maunz.de/wordpress/opentox/2011/balanced-lazar
+            l = Array.new # larger 
+            s = Array.new # smaller fraction
 
-          raise "no fingerprints in model" if @fingerprints.size==0
+            raise "no fingerprints in model" if @fingerprints.size==0
 
-          @fingerprints.each do |training_compound,training_features|
-            @activities[training_compound].each do |act|
-              case act.to_s
-              when "false" 
-                l << training_compound
-              when "true"  
-                s << training_compound
-              else
-                LOGGER.warn "BLAZAR: Activity #{act.to_s} should not be reached."
+            @fingerprints.each do |training_compound,training_features|
+              @activities[training_compound].each do |act|
+                case act.to_s
+                when "false" 
+                  l << training_compound
+                when "true"  
+                  s << training_compound
+                else
+                  LOGGER.warn "BLAZAR: Activity #{act.to_s} should not be reached."
+                end
               end
             end
-          end
-          if s.size > l.size then 
-            l,s = s,l # happy swapping
-            LOGGER.info "BLAZAR: |s|=#{s.size}, |l|=#{l.size}."
-          end
-          # determine ratio
-          modulo = l.size.divmod(s.size)# modulo[0]=ratio, modulo[1]=rest
-          LOGGER.info "BLAZAR: Balance: #{modulo[0]}, rest #{modulo[1]}."
-
-          # AM: Balanced predictions
-          addon = (modulo[1].to_f/modulo[0]).ceil # what will be added in each round 
-          slack = (addon!=0 ? modulo[1].divmod(addon)[1] : 0) # what remains for the last round
-          position = 0
-          predictions = Array.new
-
-          prediction_best=nil
-          neighbors_best=nil
-
-          begin
-            for i in 1..modulo[0] do
-              (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
-              LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
-              neighbors_balanced(s, l, position, lr_size) # get ratio fraction of larger part
-              if @prop_kernel && @prediction_algorithm.include?("svm")
-                props = get_props 
-              else
-                props = nil
-              end
-              prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values}, props)")
-              if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
-                prediction_best=prediction 
-                neighbors_best=@neighbors
-              end
-              position = position + lr_size
+            if s.size > l.size then 
+              l,s = s,l # happy swapping
+              LOGGER.info "BLAZAR: |s|=#{s.size}, |l|=#{l.size}."
             end
-          rescue Exception => e
-            LOGGER.error "BLAZAR failed in prediction: "+e.class.to_s+": "+e.message
+            # determine ratio
+            modulo = l.size.divmod(s.size)# modulo[0]=ratio, modulo[1]=rest
+            LOGGER.info "BLAZAR: Balance: #{modulo[0]}, rest #{modulo[1]}."
+
+            # AM: Balanced predictions
+            addon = (modulo[1].to_f/modulo[0]).ceil # what will be added in each round 
+            slack = (addon!=0 ? modulo[1].divmod(addon)[1] : 0) # what remains for the last round
+            position = 0
+            predictions = Array.new
+
+            prediction_best=nil
+            neighbors_best=nil
+
+            begin
+              for i in 1..modulo[0] do
+                (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
+                LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
+                neighbors_balanced(s, l, position, lr_size) # get ratio fraction of larger part
+                if @prop_kernel && @prediction_algorithm.include?("svm")
+                  props = get_props 
+                else
+                  props = nil
+                end
+                prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values}, props)")
+                if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
+                  prediction_best=prediction 
+                  neighbors_best=@neighbors
+                end
+                position = position + lr_size
+              end
+            rescue Exception => e
+              LOGGER.error "BLAZAR failed in prediction: "+e.class.to_s+": "+e.message
+            end
+
+            prediction=prediction_best
+            @neighbors=neighbors_best
+            ### END AM balanced predictions
+
+          else # AM: no balancing
+            LOGGER.info "LAZAR: Unbalanced."
+            neighbors
+            if @prop_kernel && @prediction_algorithm.include?("svm")
+             props = get_props 
+            else
+             props = nil
+            end
+            prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values}, props)")
           end
+          
+          value_feature_uri = File.join( @uri, "predicted", "value")
+          confidence_feature_uri = File.join( @uri, "predicted", "confidence")
 
-          prediction=prediction_best
-          @neighbors=neighbors_best
-          ### END AM balanced predictions
+          @prediction_dataset.metadata[OT.dependentVariables] = @metadata[OT.dependentVariables] unless @prediction_dataset.metadata[OT.dependentVariables] 
+          @prediction_dataset.metadata[OT.predictedVariables] = [value_feature_uri, confidence_feature_uri] unless @prediction_dataset.metadata[OT.predictedVariables] 
 
-        else # AM: no balancing
-          LOGGER.info "LAZAR: Unbalanced."
-          neighbors
-          if @prop_kernel && @prediction_algorithm.include?("svm")
-           props = get_props 
+          if OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "classification"
+            @prediction_dataset.add @compound.uri, value_feature_uri, @value_map[prediction[:prediction]]
           else
-           props = nil
+            @prediction_dataset.add @compound.uri, value_feature_uri, prediction[:prediction]
           end
-          prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values}, props)")
-        end
-        
-        value_feature_uri = File.join( @uri, "predicted", "value")
-        confidence_feature_uri = File.join( @uri, "predicted", "confidence")
+          @prediction_dataset.add @compound.uri, confidence_feature_uri, prediction[:confidence]
 
-        #prediction_feature_uris = {value_feature_uri => prediction[:prediction], confidence_feature_uri => prediction[:confidence]}
-        #prediction_feature_uris[value_feature_uri] = nil if @neighbors.size == 0 or prediction[:prediction].nil?
-
-        @prediction_dataset.metadata[OT.dependentVariables] = @metadata[OT.dependentVariables]
-        @prediction_dataset.metadata[OT.predictedVariables] = [value_feature_uri, confidence_feature_uri]
-
-        if OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "classification"
-          @prediction_dataset.add @compound.uri, value_feature_uri, @value_map[prediction[:prediction]]
-        else
-          @prediction_dataset.add @compound.uri, value_feature_uri, prediction[:prediction]
-        end
-        @prediction_dataset.add @compound.uri, confidence_feature_uri, prediction[:confidence]
-        #prediction_feature_uris.each do |prediction_feature_uri,value|
-            #@prediction_dataset.add @compound.uri, prediction_feature_uri, @value_map[value]
-        #end
-
-        if verbose
-          if @feature_calculation_algorithm == "Substructure.match"
-            f = 0
-            @compound_features.each do |feature|
-              feature_uri = File.join( @prediction_dataset.uri, "feature", "descriptor", f.to_s)
-              features[feature] = feature_uri
-              @prediction_dataset.add_feature(feature_uri, {
-                RDF.type => [OT.Substructure],
-                OT.smarts => feature,
-                OT.pValue => @p_values[feature],
-                OT.effect => @effects[feature]
-              })
-              @prediction_dataset.add @compound.uri, feature_uri, true
-              f+=1
-            end
-          else
-            @compound_features.each do |feature|
-              features[feature] = feature
-              @prediction_dataset.add @compound.uri, feature, true
-            end
-          end
-          n = 0
-          @neighbors.each do |neighbor|
-            neighbor_uri = File.join( @prediction_dataset.uri, "feature", "neighbor", n.to_s )
-            @prediction_dataset.add_feature(neighbor_uri, {
-              OT.compound => neighbor[:compound],
-              OT.similarity => neighbor[:similarity],
-              OT.measuredActivity => neighbor[:activity],
-              RDF.type => [OT.Neighbor]
-            })
-            @prediction_dataset.add @compound.uri, neighbor_uri, true
-            f = 0 unless f
-            neighbor[:features].each do |feature|
-              if @feature_calculation_algorithm == "Substructure.match"
-                feature_uri = File.join( @prediction_dataset.uri, "feature", "descriptor", f.to_s) unless feature_uri = features[feature]
-              else
-                feature_uri = feature
-              end
-              @prediction_dataset.add neighbor[:compound], feature_uri, true
-              unless features.has_key? feature
+          if verbose
+            if @feature_calculation_algorithm == "Substructure.match"
+              f = 0
+              @compound_features.each do |feature|
+                feature_uri = File.join( @prediction_dataset.uri, "feature", "descriptor", f.to_s)
                 features[feature] = feature_uri
                 @prediction_dataset.add_feature(feature_uri, {
                   RDF.type => [OT.Substructure],
@@ -351,13 +309,48 @@ module OpenTox
                   OT.pValue => @p_values[feature],
                   OT.effect => @effects[feature]
                 })
+                @prediction_dataset.add @compound.uri, feature_uri, true
                 f+=1
               end
+            else
+              @compound_features.each do |feature|
+                features[feature] = feature
+                @prediction_dataset.add @compound.uri, feature, true
+              end
             end
-            n+=1
+            n = 0
+            @neighbors.each do |neighbor|
+              neighbor_uri = File.join( @prediction_dataset.uri, "feature", "neighbor", n.to_s )
+              @prediction_dataset.add_feature(neighbor_uri, {
+                OT.compound => neighbor[:compound],
+                OT.similarity => neighbor[:similarity],
+                OT.measuredActivity => neighbor[:activity],
+                RDF.type => [OT.Neighbor]
+              })
+              @prediction_dataset.add @compound.uri, neighbor_uri, true
+              f = 0 unless f
+              neighbor[:features].each do |feature|
+                if @feature_calculation_algorithm == "Substructure.match"
+                  feature_uri = File.join( @prediction_dataset.uri, "feature", "descriptor", f.to_s) unless feature_uri = features[feature]
+                else
+                  feature_uri = feature
+                end
+                @prediction_dataset.add neighbor[:compound], feature_uri, true
+                unless features.has_key? feature
+                  features[feature] = feature_uri
+                  @prediction_dataset.add_feature(feature_uri, {
+                    RDF.type => [OT.Substructure],
+                    OT.smarts => feature,
+                    OT.pValue => @p_values[feature],
+                    OT.effect => @effects[feature]
+                  })
+                  f+=1
+                end
+              end
+              n+=1
+            end
           end
         end
-        #end
 
         @prediction_dataset.save(subjectid)
         @prediction_dataset
