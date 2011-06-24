@@ -285,22 +285,39 @@ module OpenTox
         @duplicates = {}
       end
 
+      def detect_new_values(row, value_maps)
+        row.shift
+        row.each_index do |i|
+          value = row[i]
+          value_maps[i] = Hash.new if value_maps[i].nil?
+          value_maps[i][value].nil? ? value_maps[i][value]=0 : value_maps[i][value] += 1
+        end
+        value_maps
+      end
+
       # Load Spreadsheet book (created with roo gem http://roo.rubyforge.org/, excel format specification: http://toxcreate.org/help)
       # @param [Excel] book Excel workbook object (created with roo gem)
       # @return [OpenTox::Dataset] Dataset object with Excel data
       def load_spreadsheet(book)
         book.default_sheet = 0
         add_features book.row(1)
+        value_maps = Array.new
+        regression_features=Array.new
 
-        # AM: fix mixed read in
-        regression_features=false
         2.upto(book.last_row) { |i| 
           row = book.row(i)
-          regression_features = detect_regression_features row
-          break if regression_features==true
+          value_maps = detect_new_values(row, value_maps)
+          value_maps.each_with_index { |vm,j|
+            if vm.size > 5 # 5 is the maximum nr of classes supported by Fminer.
+              regression_features[j]=true 
+            else
+              regression_features[j]=false
+            end
+          }
         }
-        
-        2.upto(book.last_row) { |i| add_values book.row(i),regression_features }
+        2.upto(book.last_row) { |i| 
+          add_values book.row(i), regression_features
+        }
         warnings
         @dataset
       end
@@ -312,16 +329,23 @@ module OpenTox
         row = 0
         input = csv.split("\n")
         add_features split_row(input.shift)
+        value_maps = Array.new
+        regression_features=Array.new
 
-
-        # AM: fix mixed read in
-        regression_features=false
         input.each { |row| 
           row = split_row(row)
-          regression_features = detect_regression_features row
-          break if regression_features==true
+          value_maps = detect_new_values(row, value_maps)
+          value_maps.each_with_index { |vm,j|
+            if vm.size > 5 # 5 is the maximum nr of classes supported by Fminer.
+              regression_features[j]=true 
+            else
+              regression_features[j]=false
+            end
+          }
         }
-        input.each { |row| add_values split_row(row),regression_features }
+        input.each { |row| 
+          add_values split_row(row), regression_features
+        }
         warnings
         @dataset
       end
@@ -368,20 +392,10 @@ module OpenTox
         end
       end
 
-      def detect_regression_features row
-        row.shift
-        regression_features=false
-        row.each_index do |i|
-          value = row[i]
-          type = feature_type(value)
-          if type == OT.NumericFeature
-            regression_features=true
-          end
-        end
-        regression_features
-      end
-
-      def add_values(row, regression_features=false)
+      # Adds a row to a dataset
+      # @param Array A row split up as an array
+      # @param Array Indicator for regression for each field
+      def add_values(row, regression_features)
 
         smiles = row.shift
         compound = Compound.from_smiles(smiles)
@@ -395,27 +409,23 @@ module OpenTox
         row.each_index do |i|
           value = row[i]
           feature = @features[i]
-          type = feature_type(value)
 
+          type = nil
+          if (regression_features[i])
+            type = feature_type(value)
+            if type != OT.NumericFeature
+              raise "Error! Expected numeric values."
+            end
+          else
+            type = OT.NominalFeature
+          end
           @feature_types[feature] << type 
 
-          if (regression_features)
+          case type
+          when OT.NumericFeature
             val = value.to_f
-          else
-            case type
-            when OT.NominalFeature
-              case value.to_s
-              when TRUE_REGEXP
-                val = true
-              when FALSE_REGEXP
-                val = false
-              end
-            when OT.NumericFeature
-              val = value.to_f
-            when OT.StringFeature
-              val = value.to_s
-              @activity_errors << smiles+", "+row.join(", ")
-            end
+          when OT.NominalFeature
+            val = value.to_s
           end
           if val!=nil
             @dataset.add(compound.uri, feature, val)
@@ -431,17 +441,11 @@ module OpenTox
         true if Float(value) rescue false
       end
 
-      def classification?(value)
-        !value.to_s.strip.match(TRUE_REGEXP).nil? or !value.to_s.strip.match(FALSE_REGEXP).nil?
-      end
-
       def feature_type(value)
-        if classification? value
-          return OT.NominalFeature
-        elsif numeric? value
+        if numeric? value
           return OT.NumericFeature
         else
-          return OT.StringFeature
+          return OT.NominalFeature
         end
       end
 

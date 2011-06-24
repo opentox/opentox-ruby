@@ -140,25 +140,46 @@ module OpenTox
       # @param [optional] params Ignored (only for compatibility with local_svm_regression)
       # @return [Hash] Hash with keys `:prediction, :confidence`
       def self.weighted_majority_vote(neighbors,params={}, props=nil)
-        conf = 0.0
+        neighbor_contribution = 0.0
+        confidence_sum = 0.0
         confidence = 0.0
+        prediction = nil
+        positive_map_value= nil
+        negative_map_value= nil
+
         neighbors.each do |neighbor|
-          case neighbor[:activity].to_s
-          when 'true'
-            conf += Algorithm.gauss(neighbor[:similarity])
-          when 'false'
-            conf -= Algorithm.gauss(neighbor[:similarity])
+          neighbor_weight = Algorithm.gauss(neighbor[:similarity]).to_f
+          neighbor_contribution += neighbor[:activity].to_f * neighbor_weight
+
+          if params[:value_map].size == 2 # provide compat to binary classification
+            map_entry = params[:value_map][neighbor[:activity].to_i].to_s # access original neighbor activity
+            case map_entry
+            when TRUE_REGEXP
+              confidence_sum += neighbor_weight
+              positive_map_value = neighbor[:activity]
+            when FALSE_REGEXP
+              confidence_sum -= neighbor_weight
+              negative_map_value = neighbor[:activity]
+            end
+          else
+            confidence_sum += neighbor_weight # AM: new multinomial confidence
           end
         end
-        if conf > 0.0
-          prediction = true
-        elsif conf < 0.0
-          prediction = false
-        else
-          prediction = nil
-        end
-        confidence = conf/neighbors.size if neighbors.size > 0
-        {:prediction => prediction, :confidence => confidence.abs}
+
+        if params[:value_map].size == 2 # provide compat to binary classification
+          if confidence_sum >= 0.0
+            prediction = positive_map_value unless neighbors.size==0
+          elsif confidence_sum < 0.0
+            prediction = negative_map_value unless neighbors.size==0
+          end
+        else 
+          prediction = (neighbor_contribution/confidence_sum).round  unless neighbors.size==0  # AM: new multinomial prediction
+        end 
+
+        confidence = confidence_sum/neighbors.size if neighbors.size > 0
+        res = {:prediction => prediction, :confidence => confidence.abs}
+        puts res.to_yaml
+        res
       end
 
       # Local support vector regression from neighbors 
@@ -201,7 +222,8 @@ module OpenTox
         acts = neighbors.collect do |n|
           act = n[:activity]
         end # activities of neighbors for supervised learning
-        acts_f = acts.collect {|v| v == true ? 1.0 : 0.0}
+#        acts_f = acts.collect {|v| v == true ? 1.0 : 0.0}
+        acts_f = acts
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
         begin 
           prediction = (props.nil? ? local_svm(neighbors, acts_f, sims, "C-bsvc", params) : local_svm_prop(props, acts_f, "C-bsvc", params))
@@ -279,7 +301,8 @@ module OpenTox
               if type == "nu-svr"
                 prediction = @r.p
               elsif type == "C-bsvc"
-                prediction = (@r.p.to_f == 1.0 ? true : false)
+                #prediction = (@r.p.to_f == 1.0 ? true : false)
+                prediction = @r.p
               end
               @r.quit # free R
             rescue Exception => e
@@ -353,7 +376,8 @@ module OpenTox
               if type == "nu-svr"
                 prediction = @r.p
               elsif type == "C-bsvc"
-                prediction = (@r.p.to_f == 1.0 ? true : false)
+                #prediction = (@r.p.to_f == 1.0 ? true : false)
+                prediction = @r.p
               end
               @r.quit # free R
             rescue Exception => e
