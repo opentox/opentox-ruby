@@ -222,7 +222,8 @@ module OpenTox
         acts = neighbors.collect do |n|
           act = n[:activity]
         end # activities of neighbors for supervised learning
-        acts_f = acts.collect {|v| v == true ? 1.0 : 0.0}
+#        acts_f = acts.collect {|v| v == true ? 1.0 : 0.0}
+        acts_f = acts
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
         begin 
           prediction = (props.nil? ? local_svm(neighbors, acts_f, sims, "C-bsvc", params) : local_svm_prop(props, acts_f, "C-bsvc", params))
@@ -300,7 +301,8 @@ module OpenTox
               if type == "nu-svr"
                 prediction = @r.p
               elsif type == "C-bsvc"
-                prediction = (@r.p.to_f == 1.0 ? true : false)
+                #prediction = (@r.p.to_f == 1.0 ? true : false)
+                prediction = @r.p
               end
               @r.quit # free R
             rescue Exception => e
@@ -374,7 +376,8 @@ module OpenTox
               if type == "nu-svr"
                 prediction = @r.p
               elsif type == "C-bsvc"
-                prediction = (@r.p.to_f == 1.0 ? true : false)
+                #prediction = (@r.p.to_f == 1.0 ? true : false)
+                prediction = @r.p
               end
               @r.quit # free R
             rescue Exception => e
