@@ -76,6 +76,9 @@ module OpenTox
             @metadata[OT.parameters] << parameter
           end
         end
+        #@metadata.each do |k,v|
+          #v = v.first if v and v.size == 1
+        #end
         @metadata
       end
       
