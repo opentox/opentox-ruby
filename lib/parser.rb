@@ -289,7 +289,8 @@ module OpenTox
         row.shift
         row.each_index do |i|
           value = row[i]
-          value_maps[value].nil? ? value_maps[value]=0 : value_maps[value] += 1
+          value_maps[i] = Hash.new if value_maps[i].nil?
+          value_maps[i][value].nil? ? value_maps[i][value]=0 : value_maps[i][value] += 1
         end
         value_maps
       end
@@ -300,19 +301,22 @@ module OpenTox
       def load_spreadsheet(book)
         book.default_sheet = 0
         add_features book.row(1)
+        value_maps = Array.new
+        regression_features=Array.new
 
-        regression_features=false
-        value_maps= {}
         2.upto(book.last_row) { |i| 
           row = book.row(i)
-          value_maps=detect_new_values(row, value_maps)
-          if value_maps.size > 5 # 5 is the maximum nr of classes supported by Fminer.
-            regression_features=true 
-            break
-          end
+          value_maps = detect_new_values(row, value_maps)
+          value_maps.each_with_index { |vm,j|
+            if vm.size > 5 # 5 is the maximum nr of classes supported by Fminer.
+              regression_features[j]=true 
+            else
+              regression_features[j]=false
+            end
+          }
         }
         2.upto(book.last_row) { |i| 
-          add_values book.row(i), regression_features 
+          add_values book.row(i), regression_features
         }
         warnings
         @dataset
@@ -325,16 +329,19 @@ module OpenTox
         row = 0
         input = csv.split("\n")
         add_features split_row(input.shift)
+        value_maps = Array.new
+        regression_features=Array.new
 
-        regression_features=false
-        value_maps= {}
         input.each { |row| 
           row = split_row(row)
-          value_maps=detect_new_values(row, value_maps)
-          if value_maps.size > 5 # 5 is the maximum nr of classes supported by Fminer.
-            regression_features=true 
-            break
-          end
+          value_maps = detect_new_values(row, value_maps)
+          value_maps.each_with_index { |vm,j|
+            if vm.size > 5 # 5 is the maximum nr of classes supported by Fminer.
+              regression_features[j]=true 
+            else
+              regression_features[j]=false
+            end
+          }
         }
         input.each { |row| 
           add_values split_row(row), regression_features
@@ -385,6 +392,9 @@ module OpenTox
         end
       end
 
+      # Adds a row to a dataset
+      # @param Array A row split up as an array
+      # @param Array Indicator for regression for each field
       def add_values(row, regression_features)
 
         smiles = row.shift
@@ -401,7 +411,7 @@ module OpenTox
           feature = @features[i]
 
           type = nil
-          if (regression_features)
+          if (regression_features[i])
             type = feature_type(value)
             if type != OT.NumericFeature
               raise "Error! Expected numeric values."

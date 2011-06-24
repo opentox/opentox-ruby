@@ -258,7 +258,7 @@ module OpenTox
                 else
                   props = nil
                 end
-                prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values}, props)")
+                prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values, :value_map => @value_map}, props)")
                 if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
                   prediction_best=prediction 
                   neighbors_best=@neighbors
@@ -281,7 +281,7 @@ module OpenTox
             else
              props = nil
             end
-            prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values}, props)")
+            prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values, :value_map => @value_map}, props)")
           end
           
           value_feature_uri = File.join( @uri, "predicted", "value")
@@ -422,7 +422,7 @@ module OpenTox
       # @return [Boolean] true if compound has databasse activities, false if not
       def database_activity(subjectid)
         if @activities[@compound.uri]
-          @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], act }
+          @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], @value_map[act] }
           @prediction_dataset.add_metadata(OT.hasSource => @metadata[OT.trainingDataset])
           @prediction_dataset.save(subjectid)
           true

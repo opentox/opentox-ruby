@@ -140,17 +140,46 @@ module OpenTox
       # @param [optional] params Ignored (only for compatibility with local_svm_regression)
       # @return [Hash] Hash with keys `:prediction, :confidence`
       def self.weighted_majority_vote(neighbors,params={}, props=nil)
-        conf = 0.0
-        conf_sum = 0.0
+        neighbor_contribution = 0.0
+        confidence_sum = 0.0
         confidence = 0.0
+        prediction = nil
+        positive_map_value= nil
+        negative_map_value= nil
+
         neighbors.each do |neighbor|
-          weight = Algorithm.gauss(neighbor[:similarity]).to_f
-          conf += neighbor[:activity].to_f * weight
-          conf_sum += weight
+          neighbor_weight = Algorithm.gauss(neighbor[:similarity]).to_f
+          neighbor_contribution += neighbor[:activity].to_f * neighbor_weight
+
+          if params[:value_map].size == 2 # provide compat to binary classification
+            map_entry = params[:value_map][neighbor[:activity].to_i].to_s # access original neighbor activity
+            case map_entry
+            when TRUE_REGEXP
+              confidence_sum += neighbor_weight
+              positive_map_value = neighbor[:activity]
+            when FALSE_REGEXP
+              confidence_sum -= neighbor_weight
+              negative_map_value = neighbor[:activity]
+            end
+          else
+            confidence_sum += neighbor_weight # AM: new multinomial confidence
+          end
         end
-        prediction = (conf/conf_sum).round if conf_sum > 0
-        confidence = conf_sum/neighbors.size if neighbors.size > 0
-        {:prediction => prediction, :confidence => confidence}
+
+        if params[:value_map].size == 2 # provide compat to binary classification
+          if confidence_sum >= 0.0
+            prediction = positive_map_value unless neighbors.size==0
+          elsif confidence_sum < 0.0
+            prediction = negative_map_value unless neighbors.size==0
+          end
+        else 
+          prediction = (neighbor_contribution/confidence_sum).round  unless neighbors.size==0  # AM: new multinomial prediction
+        end 
+
+        confidence = confidence_sum/neighbors.size if neighbors.size > 0
+        res = {:prediction => prediction, :confidence => confidence.abs}
+        puts res.to_yaml
+        res
       end
 
       # Local support vector regression from neighbors 
