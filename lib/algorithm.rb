@@ -151,26 +151,23 @@ module OpenTox
           neighbor_weight = Algorithm.gauss(neighbor[:similarity]).to_f
           neighbor_contribution += neighbor[:activity].to_f * neighbor_weight
 
-          if params[:value_map].size == 2 # provide compat to binary classification
-            map_entry = params[:value_map][neighbor[:activity].to_i].to_s # access original neighbor activity
-            case map_entry
-            when TRUE_REGEXP
-              confidence_sum += neighbor_weight
-              positive_map_value = neighbor[:activity]
-            when FALSE_REGEXP
+          if params[:value_map].size == 2 # AM: provide compat to binary classification: 1=>false 2=>true
+            case neighbor[:activity]
+            when 1
               confidence_sum -= neighbor_weight
-              negative_map_value = neighbor[:activity]
+            when 2
+              confidence_sum += neighbor_weight
             end
           else
-            confidence_sum += neighbor_weight # AM: new multinomial confidence
+            confidence_sum += neighbor_weight
           end
         end
 
-        if params[:value_map].size == 2 # provide compat to binary classification
+        if params[:value_map].size == 2 
           if confidence_sum >= 0.0
-            prediction = positive_map_value unless neighbors.size==0
+            prediction = 2 unless neighbors.size==0
           elsif confidence_sum < 0.0
-            prediction = negative_map_value unless neighbors.size==0
+            prediction = 1 unless neighbors.size==0
           end
         else 
           prediction = (neighbor_contribution/confidence_sum).round  unless neighbors.size==0  # AM: new multinomial prediction
