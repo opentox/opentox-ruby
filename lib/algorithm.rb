@@ -174,9 +174,7 @@ module OpenTox
         end 
 
         confidence = confidence_sum/neighbors.size if neighbors.size > 0
-        res = {:prediction => prediction, :confidence => confidence.abs}
-        puts res.to_yaml
-        res
+        return {:prediction => prediction, :confidence => confidence.abs}
       end
 
       # Local support vector regression from neighbors 
@@ -422,12 +420,22 @@ module OpenTox
       return array.size % 2 == 1 ? array[m_pos] : (array[m_pos-1] + array[m_pos])/2
     end
 
-    # Sum of an array
+    # Sum of an array for Numeric values
     # @param [Array] Array with values
     # @return [Integer] Sum of values
     def self.sum(array)
       array.inject{|s,x| s + x }
     end
+
+    # Sum of an array for Arrays.
+    # @param [Array] Array with values
+    # @return [Integer] Sum of size of values
+    def self.sum_size(array)
+      sum=0
+      array.each { |e| sum += e.size }
+      return sum
+    end
+
 
     # Minimum Frequency
     # @param [Integer] per-mil value
@@ -439,20 +447,20 @@ module OpenTox
     end
 
     # Effect calculation for classification
-    # @param [Array] Array of occurrence counts of a feature.
-    # @param [Array] Array of database instance counts.
+    # @param [Array] Array of occurrences per class in the form of Enumerables.
+    # @param [Array] Array of database instance counts per class.
     def self.effect(occurrences, db_instances)
       max=nil
       max_value=0
-      nr_o = sum(occurrences)
-      nr_db = sum(db_instances)
+      nr_o = self.sum_size(occurrences)
+      nr_db = self.sum(db_instances)
 
       occurrences.each_with_index { |o,i| # fminer outputs occurrences sorted reverse by activity.
-        actual = o.to_f/nr_o
+        actual = o.size.to_f/nr_o
         expected = db_instances[i].to_f/nr_db
         if actual > expected
           if ((actual - expected) / actual) > max_value
-            max_value = (actual - expected) / actual # 'Schleppzeiger'
+           max_value = (actual - expected) / actual # 'Schleppzeiger'
             max = i
           end
         end
