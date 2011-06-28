@@ -450,7 +450,7 @@ module OpenTox
     # @param [Array] Array of occurrences per class in the form of Enumerables.
     # @param [Array] Array of database instance counts per class.
     def self.effect(occurrences, db_instances)
-      max=nil
+      max=0
       max_value=0
       nr_o = self.sum_size(occurrences)
       nr_db = self.sum(db_instances)
