@@ -206,19 +206,18 @@ module OpenTox
 
         begin
           sim_median = Algorithm.median(sims)
-          confidence = nil
-          if sim_median 
+          #confidence = nil
+          if sim_median.nil? 
+            LOGGER.debug "dv ------------ sim_median is nil"
+          else
             @r_sd = RinRuby.new(false,false)
             @r_sd.r_regression_acts = acts
-            standard_diviation = @r_sd.pull "as.numeric(sd(r_regression_acts))"#calculate standard deviation
-            LOGGER.debug "dv ----------------- sd is: '" + standard_diviation.to_s + "'."
+            standard_deviation = @r_sd.pull "as.numeric(sd(r_regression_acts))"#calculate standard deviation
             @r_sd.quit #free R  
-            confidence = (sim_median*Math.exp(-1*standard_diviation)).abs
+            confidence = (sim_median*Math.exp(-1*standard_deviation)).abs
             if confidence.nan?
               confidence = nil
             end
-          else
-            LOGGER.debug "dv ------------ sim_median not valid"
           end
           LOGGER.debug "Confidence is: '" + confidence.to_s + "'."
         rescue Exception => e
