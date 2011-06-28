@@ -422,5 +422,46 @@ module OpenTox
       return array.size % 2 == 1 ? array[m_pos] : (array[m_pos-1] + array[m_pos])/2
     end
 
+    # Sum of an array
+    # @param [Array] Array with values
+    # @return [Integer] Sum of values
+    def self.sum(array)
+      array.inject{|s,x| s + x }
+    end
+
+    # Minimum Frequency
+    # @param [Integer] per-mil value
+    # return [Integer] min-frequency
+    def self.min_frequency(training_dataset,per_mil)
+      minfreq = per_mil*training_dataset.compounds.size/1000 # AM sugg. 8-10 per mil for BBRC, 50 per mil for LAST
+      minfreq = 2 unless minfreq > 2
+      minfreq
+    end
+
+    # Effect calculation for classification
+    # @param [Array] Array of occurrence counts of a feature.
+    # @param [Array] Array of database instance counts.
+    def self.effect(occurrences, db_instances)
+      max=nil
+      max_value=0
+      nr_o = sum(occurrences)
+      nr_db = sum(db_instances)
+
+      occurrences.each_with_index { |o,i| # fminer outputs occurrences sorted reverse by activity.
+        actual = o.to_f/nr_o
+        expected = db_instances[i].to_f/nr_db
+        if actual > expected
+          if ((actual - expected) / actual) > max_value
+            max_value = (actual - expected) / actual # 'Schleppzeiger'
+            max = i
+          end
+        end
+      }
+      max
+    end
+
+
   end
 end
+
+
