@@ -46,12 +46,87 @@ module OpenTox
     end
 
     # Fminer algorithms (https://github.com/amaunz/fminer2)
-    module Fminer
+    class Fminer
       include Algorithm
+      attr_accessor :prediction_feature, :training_dataset, :minfreq, :compounds, :db_class_sizes, :all_activities, :smi
+      
+      def check_params(params,per_mil)
+        raise OpenTox::NotFoundError.new "Please submit a dataset_uri." unless params[:dataset_uri] and  !params[:dataset_uri].nil?
+        raise OpenTox::NotFoundError.new "Please submit a prediction_feature." unless params[:prediction_feature] and  !params[:prediction_feature].nil?
+        @prediction_feature = OpenTox::Feature.find params[:prediction_feature], @subjectid
+        @training_dataset = OpenTox::Dataset.find "#{params[:dataset_uri]}", @subjectid
+        raise OpenTox::NotFoundError.new "No feature #{params[:prediction_feature]} in dataset #{params[:dataset_uri]}" unless @training_dataset.features and @training_dataset.features.include?(params[:prediction_feature])
+
+        unless params[:min_frequency].nil? 
+          @minfreq=params[:min_frequency].to_i
+          raise "Minimum frequency must be a number >0!" unless @minfreq>0
+        else
+          @minfreq=OpenTox::Algorithm.min_frequency(@training_dataset,per_mil) # AM sugg. 8-10 per mil for BBRC, 50 per mil for LAST
+        end
+      end
+
+      def add_fminer_data(fminer_instance, params, value_map)
+
+        id = 1 # fminer start id is not 0
+        @training_dataset.data_entries.each do |compound,entry|
+          begin
+            smiles = OpenTox::Compound.smiles(compound.to_s)
+          rescue
+            LOGGER.warn "No resource for #{compound.to_s}"
+            next
+          end
+          if smiles == '' or smiles.nil?
+            LOGGER.warn "Cannot find smiles for #{compound.to_s}."
+            next
+          end
+          
+          # AM: take log if appropriate
+          take_logs=true
+          entry.each do |feature,values|
+             values.each do |value|
+                if @prediction_feature.feature_type == "regression"
+                   if (! value.nil?) && (value.to_f <= 0)
+                     take_logs=false
+                   end
+                end
+             end
+          end
+          
+          value_map=params[:value_map] unless params[:value_map].nil?
+          entry.each do |feature,values|
+            if feature == @prediction_feature.uri
+              values.each do |value|
+                if value.nil? 
+                  LOGGER.warn "No #{feature} activity for #{compound.to_s}."
+                else
+                  if @prediction_feature.feature_type == "classification"
+                    activity= value_map.invert[value].to_i # activities are mapped to 1..n
+                    @db_class_sizes[activity-1].nil? ? @db_class_sizes[activity-1]=1 : @db_class_sizes[activity-1]+=1 # AM effect
+                  elsif @prediction_feature.feature_type == "regression"
+                    activity= take_logs ? Math.log10(value.to_f) : value.to_f 
+                  end
+                  begin
+                    fminer_instance.AddCompound(smiles,id)
+                    fminer_instance.AddActivity(activity, id)
+                    @all_activities[id]=activity # DV: insert global information
+                    @compounds[id] = compound
+                    @smi[id] = smiles
+                    id += 1
+                  rescue Exception => e
+                    LOGGER.warn "Could not add " + smiles + "\t" + value.to_s + " to fminer"
+                    LOGGER.warn e.backtrace
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+
+    end
 
       # Backbone Refinement Class mining (http://bbrc.maunz.de/)
-      class BBRC
-        include Fminer
+      class BBRC < Fminer
         # Initialize bbrc algorithm
         def initialize(subjectid=nil)
           super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/bbrc")
@@ -60,8 +135,7 @@ module OpenTox
       end
 
       # LAtent STructure Pattern Mining (http://last-pm.maunz.de)
-      class LAST
-        include Fminer
+      class LAST < Fminer
         # Initialize last algorithm
         def initialize(subjectid=nil)
           super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/last")
@@ -69,7 +143,6 @@ module OpenTox
         end
       end
 
-    end
 
     # Create lazar prediction model
     class Lazar
