@@ -210,10 +210,12 @@ module OpenTox
           if sim_median.nil? 
             LOGGER.debug "dv ------------ sim_median is nil"
           else
-            @r_sd = RinRuby.new(false,false)
-            @r_sd.r_regression_acts = acts
-            standard_deviation = @r_sd.pull "as.numeric(sd(r_regression_acts))"#calculate standard deviation
-            @r_sd.quit #free R  
+            #@r_sd = RinRuby.new(false,false)
+            #@r_sd.r_regression_acts = acts
+            #standard_deviation = @r_sd.pull "as.numeric(sd(r_regression_acts))"#calculate standard deviation
+            #@r_sd.quit #free R  
+            standard_deviation = acts.std_dev
+            LOGGER.debug "dv ------------ sd: #{standard_deviation}"
             confidence = (sim_median*Math.exp(-1*standard_deviation)).abs
             if confidence.nan?
               confidence = nil
@@ -440,5 +442,36 @@ module OpenTox
       return array.size % 2 == 1 ? array[m_pos] : (array[m_pos-1] + array[m_pos])/2
     end
 
+    # Adds mean calculation to Array class
+    #class Array; def mean; sum.to_f / size.to_f; end; end
+
+    # Calculation of standard deviation
+    # @param [Array] Array with values
+    # @return [Float] variance
+    #def self.variance(array)
+    #  return nil if array.empty?
+    #  mean = array.mean
+    #  return array.inject(0.0) {|s,x| s + (x - mean)**2}
+    #end
+    module Variance
+      def sum(&blk)
+        map(&blk).inject { |sum, element| sum + element }
+      end
+
+      def mean
+        (sum.to_f / size.to_f)
+      end
+
+      def variance
+        m = mean
+        sum { |i| ( i - m )**2 } / size
+      end
+
+      def std_dev
+        Math.sqrt(variance)
+      end
+    end
+    Array.send :include, Variance 
+   
   end
 end
