@@ -253,7 +253,7 @@ module OpenTox
                 (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
                 LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
                 neighbors_balanced(s, l, position, lr_size) # get ratio fraction of larger part
-                if @prop_kernel && @prediction_algorithm.include?("svm")
+                if @prop_kernel && ( @prediction_algorithm.include?("svm") || @prediction_algorithm.include?("local_mlr_prop") )
                   props = get_props 
                 else
                   props = nil
@@ -276,7 +276,7 @@ module OpenTox
           else # AM: no balancing or regression
             LOGGER.info "LAZAR: Unbalanced."
             neighbors
-            if @prop_kernel && @prediction_algorithm.include?("svm")
+            if @prop_kernel && ( @prediction_algorithm.include?("svm") || @prediction_algorithm.include?("local_mlr_prop") )
              props = get_props 
             else
              props = nil
