@@ -46,12 +46,87 @@ module OpenTox
     end
 
     # Fminer algorithms (https://github.com/amaunz/fminer2)
-    module Fminer
+    class Fminer
       include Algorithm
+      attr_accessor :prediction_feature, :training_dataset, :minfreq, :compounds, :db_class_sizes, :all_activities, :smi
+      
+      def check_params(params,per_mil)
+        raise OpenTox::NotFoundError.new "Please submit a dataset_uri." unless params[:dataset_uri] and  !params[:dataset_uri].nil?
+        raise OpenTox::NotFoundError.new "Please submit a prediction_feature." unless params[:prediction_feature] and  !params[:prediction_feature].nil?
+        @prediction_feature = OpenTox::Feature.find params[:prediction_feature], @subjectid
+        @training_dataset = OpenTox::Dataset.find "#{params[:dataset_uri]}", @subjectid
+        raise OpenTox::NotFoundError.new "No feature #{params[:prediction_feature]} in dataset #{params[:dataset_uri]}" unless @training_dataset.features and @training_dataset.features.include?(params[:prediction_feature])
+
+        unless params[:min_frequency].nil? 
+          @minfreq=params[:min_frequency].to_i
+          raise "Minimum frequency must be a number >0!" unless @minfreq>0
+        else
+          @minfreq=OpenTox::Algorithm.min_frequency(@training_dataset,per_mil) # AM sugg. 8-10 per mil for BBRC, 50 per mil for LAST
+        end
+      end
+
+      def add_fminer_data(fminer_instance, params, value_map)
+
+        id = 1 # fminer start id is not 0
+        @training_dataset.data_entries.each do |compound,entry|
+          begin
+            smiles = OpenTox::Compound.smiles(compound.to_s)
+          rescue
+            LOGGER.warn "No resource for #{compound.to_s}"
+            next
+          end
+          if smiles == '' or smiles.nil?
+            LOGGER.warn "Cannot find smiles for #{compound.to_s}."
+            next
+          end
+          
+          # AM: take log if appropriate
+          take_logs=true
+          entry.each do |feature,values|
+             values.each do |value|
+                if @prediction_feature.feature_type == "regression"
+                   if (! value.nil?) && (value.to_f <= 0)
+                     take_logs=false
+                   end
+                end
+             end
+          end
+          
+          value_map=params[:value_map] unless params[:value_map].nil?
+          entry.each do |feature,values|
+            if feature == @prediction_feature.uri
+              values.each do |value|
+                if value.nil? 
+                  LOGGER.warn "No #{feature} activity for #{compound.to_s}."
+                else
+                  if @prediction_feature.feature_type == "classification"
+                    activity= value_map.invert[value].to_i # activities are mapped to 1..n
+                    @db_class_sizes[activity-1].nil? ? @db_class_sizes[activity-1]=1 : @db_class_sizes[activity-1]+=1 # AM effect
+                  elsif @prediction_feature.feature_type == "regression"
+                    activity= take_logs ? Math.log10(value.to_f) : value.to_f 
+                  end
+                  begin
+                    fminer_instance.AddCompound(smiles,id)
+                    fminer_instance.AddActivity(activity, id)
+                    @all_activities[id]=activity # DV: insert global information
+                    @compounds[id] = compound
+                    @smi[id] = smiles
+                    id += 1
+                  rescue Exception => e
+                    LOGGER.warn "Could not add " + smiles + "\t" + value.to_s + " to fminer"
+                    LOGGER.warn e.backtrace
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+
+    end
 
       # Backbone Refinement Class mining (http://bbrc.maunz.de/)
-      class BBRC
-        include Fminer
+      class BBRC < Fminer
         # Initialize bbrc algorithm
         def initialize(subjectid=nil)
           super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/bbrc")
@@ -60,8 +135,7 @@ module OpenTox
       end
 
       # LAtent STructure Pattern Mining (http://last-pm.maunz.de)
-      class LAST
-        include Fminer
+      class LAST < Fminer
         # Initialize last algorithm
         def initialize(subjectid=nil)
           super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/last")
@@ -69,7 +143,6 @@ module OpenTox
         end
       end
 
-    end
 
     # Create lazar prediction model
     class Lazar
@@ -174,9 +247,7 @@ module OpenTox
         end 
 
         confidence = confidence_sum/neighbors.size if neighbors.size > 0
-        res = {:prediction => prediction, :confidence => confidence.abs}
-        puts res.to_yaml
-        res
+        return {:prediction => prediction, :confidence => confidence.abs}
       end
 
       # Local support vector regression from neighbors 
@@ -225,9 +296,7 @@ module OpenTox
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
         end
-        res = {:prediction => prediction, :confidence => confidence}
-        puts res.to_yaml
-        res
+        return {:prediction => prediction, :confidence => confidence}
       end
 
       # Local support vector classification from neighbors 
@@ -442,36 +511,73 @@ module OpenTox
       return array.size % 2 == 1 ? array[m_pos] : (array[m_pos-1] + array[m_pos])/2
     end
 
-    # Adds mean calculation to Array class
-    #class Array; def mean; sum.to_f / size.to_f; end; end
-
-    # Calculation of standard deviation
+    # Sum of an array for Numeric values
     # @param [Array] Array with values
-    # @return [Float] variance
-    #def self.variance(array)
-    #  return nil if array.empty?
-    #  mean = array.mean
-    #  return array.inject(0.0) {|s,x| s + (x - mean)**2}
-    #end
+    # @return [Integer] Sum of values
+    def self.sum(array)
+      array.inject{|s,x| s + x }
+    end
+
+    # Sum of an array for Arrays.
+    # @param [Array] Array with values
+    # @return [Integer] Sum of size of values
+    def self.sum_size(array)
+      sum=0
+      array.each { |e| sum += e.size }
+      return sum
+    end
+
+
+    # Minimum Frequency
+    # @param [Integer] per-mil value
+    # return [Integer] min-frequency
+    def self.min_frequency(training_dataset,per_mil)
+      minfreq = per_mil*training_dataset.compounds.size/1000 # AM sugg. 8-10 per mil for BBRC, 50 per mil for LAST
+      minfreq = 2 unless minfreq > 2
+      minfreq
+    end
+
+    # Effect calculation for classification
+    # @param [Array] Array of occurrences per class in the form of Enumerables.
+    # @param [Array] Array of database instance counts per class.
+    def self.effect(occurrences, db_instances)
+      max=0
+      max_value=0
+      nr_o = self.sum_size(occurrences)
+      nr_db = self.sum(db_instances)
+
+      occurrences.each_with_index { |o,i| # fminer outputs occurrences sorted reverse by activity.
+        actual = o.size.to_f/nr_o
+        expected = db_instances[i].to_f/nr_db
+        if actual > expected
+          if ((actual - expected) / actual) > max_value
+           max_value = (actual - expected) / actual # 'Schleppzeiger'
+            max = i
+          end
+        end
+      }
+      max
+    end
+    
+    # Adds variance, mean and standard deviation calculation to Array class
     module Variance
       def sum(&blk)
         map(&blk).inject { |sum, element| sum + element }
       end
-
       def mean
         (sum.to_f / size.to_f)
       end
-
       def variance
         m = mean
         sum { |i| ( i - m )**2 } / size
       end
-
       def std_dev
         Math.sqrt(variance)
       end
     end
     Array.send :include, Variance 
-   
+
   end
 end
+
+
