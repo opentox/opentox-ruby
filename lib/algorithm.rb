@@ -401,19 +401,6 @@ module OpenTox
           if n_prop.size == 0
             raise "No neighbors found."
           else
-            # gram matrix
-            #(0..(neighbor_matches.length-1)).each do |i|
-            #  gram_matrix[i] = [] unless gram_matrix[i]
-            #  # upper triangle
-            #  ((i+1)..(neighbor_matches.length-1)).each do |j|
-            #    sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values])")
-            #    gram_matrix[i][j] = Algorithm.gauss(sim)
-            #    gram_matrix[j] = [] unless gram_matrix[j] 
-            #    gram_matrix[j][i] = gram_matrix[i][j] # lower triangle
-            #  end
-            #  gram_matrix[i][i] = 1.0
-            #end
-
             #LOGGER.debug gram_matrix.to_yaml
             @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
             @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
@@ -455,7 +442,41 @@ module OpenTox
           prediction
       end
 
+      # Local multi-linear regression (MLR) prediction from neighbors. 
+      # Uses propositionalized setting.
+      # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
+      # @param [Array] acts, activities for neighbors.
+      # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
+      # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
+      # @return [Numeric] A prediction value.
+      def local_mlr_prop 
+          LOGGER.debug "Local MLR (Propositionalization / GSL)."
+          n_prop = props[0] # is a matrix, i.e. two nested Arrays.
+          q_prop = props[1] # is an Array.
 
+          if n_prop.size == 0
+            raise "No neighbors found."
+          else
+            begin
+              LOGGER.debug "Setting GSL data ..."
+              # set data
+              prop_matrix = GSL::Matrix[n_prop]
+              n_prop_x_size = n_prop.size
+              n_prop_y_size = n_prop[0].size
+              y = GSL::Vector[acts]
+              q_prop = GSL::Vector[q_prop]
+
+              # model + support vectors
+              LOGGER.debug "Creating MLR model ..."
+              work = GSL::MultiFit::Workspace.alloc(n_prop_y_size,n_prop_x_size)
+              [c, cov, chisq, status] = GSL::MultiFit::linear(prop_matrix, y, work)
+              LOGGER.debug "Predicting ..."
+              prediction = GSL::Multifit::linear_est(q_prop, c, cov)
+            rescue Exception => e
+              LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
+            end
+          end
+          prediction
     end
 
     module Substructure
