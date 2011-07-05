@@ -213,10 +213,13 @@ module OpenTox
 
         begin
           min,max = acts.minmax
-          neg_offset = 1.0 - min # negative offset to min element
-          acts = acts.collect do |a|
-            Math.log10(a-neg_offset) # everything >1, then take log10
-          end
+          offset = 1.0 - min # offset to min element
+          offset = -1.0 * offset if offset>0.0 
+          div_offset = max - offset # dynamic range
+
+          acts = acts.collect { |a| a - offset }        # everything >1, starting at 1
+          acts = acts.collect { |a| a / div_offset }    # scale to unit length
+          acts = acts.collect { |a| Math.log10 a }    # everything >1, then take log10
 
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
           n_prop = props[0] # is a matrix, i.e. two nested Arrays.
@@ -251,7 +254,7 @@ module OpenTox
             end
           end
 
-          prediction = 10**(prediction.to_f) + neg_offset # reverse log10
+          prediction = div_offset * (10**(prediction.to_f)) + offset # reverse transformation
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
@@ -317,13 +320,24 @@ module OpenTox
 
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
         begin
-          min,max = acts.minmax
-          neg_offset = 1.0 - min # negative offset to min element
-          acts = acts.collect do |a|
-            Math.log10(a-neg_offset) # everything >1, then take log10
-          end
+          offset = 1.0 - acts.minmax[0] # offset to min element
+          offset = -1.0 * offset if offset>0.0 
+
+          puts "OFFSET MV"
+          acts = acts.collect { |a| a - offset }           # slide
+          puts acts.to_yaml
+
+          puts "OFFSET LOG"
+          acts = acts.collect { |a| Math.log10 a }         # everything >1, then take log10
+          puts acts.to_yaml
+
+          div_offset = acts.minmax[1] # dynamic range
+          puts "OFFSET DIV"
+          acts = acts.collect { |a| a / div_offset } # scale 
+          puts acts.to_yaml
+
           prediction = (props.nil? ? local_svm(neighbors, acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr", params))
-          prediction = 10**(prediction.to_f) + neg_offset
+          prediction = (10**(div_offset*prediction.to_f))+offset
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
