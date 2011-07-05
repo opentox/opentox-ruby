@@ -212,7 +212,7 @@ module OpenTox
 
 
         begin
-          [min,max] = acts.minmax
+          min,max = acts.minmax
           neg_offset = 1.0 - min # negative offset to min element
           acts = acts.collect do |a|
             Math.log10(a-neg_offset) # everything >1, then take log10
@@ -317,7 +317,7 @@ module OpenTox
 
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
         begin
-          [min,max] = acts.minmax
+          min,max = acts.minmax
           neg_offset = 1.0 - min # negative offset to min element
           acts = acts.collect do |a|
             Math.log10(a-neg_offset) # everything >1, then take log10
