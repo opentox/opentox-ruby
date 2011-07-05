@@ -80,18 +80,6 @@ module OpenTox
             next
           end
           
-          # AM: take log if appropriate
-          take_logs=true
-          entry.each do |feature,values|
-             values.each do |value|
-                if @prediction_feature.feature_type == "regression"
-                   if (! value.nil?) && (value.to_f <= 0)
-                     take_logs=false
-                   end
-                end
-             end
-          end
-          
           value_map=params[:value_map] unless params[:value_map].nil?
           entry.each do |feature,values|
             if feature == @prediction_feature.uri
@@ -103,7 +91,7 @@ module OpenTox
                     activity= value_map.invert[value].to_i # activities are mapped to 1..n
                     @db_class_sizes[activity-1].nil? ? @db_class_sizes[activity-1]=1 : @db_class_sizes[activity-1]+=1 # AM effect
                   elsif @prediction_feature.feature_type == "regression"
-                    activity= take_logs ? Math.log10(value.to_f) : value.to_f 
+                    activity= value.to_f 
                   end
                   begin
                     fminer_instance.AddCompound(smiles,id)
@@ -216,21 +204,19 @@ module OpenTox
       # @return [Numeric] A prediction value.
       def self.local_mlr_prop(neighbors, params, props)
 
-        take_logs=true
-
-        neighbors.each do |n| 
-          if (! n[:activity].nil?) && (n[:activity].to_f < 0.0)
-            take_logs = false
-          end
-        end
 
         acts = neighbors.collect do |n|
           act = n[:activity] 
-          take_logs ? Math.log10(act.to_f) : act.to_f
+          act.to_f
         end # activities of neighbors for supervised learning
 
 
         begin
+          [min,max] = acts.minmax
+          neg_offset = 1.0 - min # negative offset to min element
+          acts = acts.collect do |a|
+            Math.log10(a-neg_offset) # everything >1, then take log10
+          end
 
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
           n_prop = props[0] # is a matrix, i.e. two nested Arrays.
@@ -265,7 +251,7 @@ module OpenTox
             end
           end
 
-          prediction = (take_logs ? 10**(prediction.to_f) : prediction.to_f)
+          prediction = 10**(prediction.to_f) + neg_offset # reverse log10
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
@@ -324,21 +310,20 @@ module OpenTox
       # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
       # @return [Hash] Hash with keys `:prediction, :confidence`
       def self.local_svm_regression(neighbors, params, props=nil)
-        take_logs=true
-        neighbors.each do |n| 
-          if (! n[:activity].nil?) && (n[:activity].to_f < 0.0)
-            take_logs = false
-          end
-        end
         acts = neighbors.collect do |n|
           act = n[:activity] 
-          take_logs ? Math.log10(act.to_f) : act.to_f
+          act.to_f
         end # activities of neighbors for supervised learning
 
         sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
         begin
+          [min,max] = acts.minmax
+          neg_offset = 1.0 - min # negative offset to min element
+          acts = acts.collect do |a|
+            Math.log10(a-neg_offset) # everything >1, then take log10
+          end
           prediction = (props.nil? ? local_svm(neighbors, acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr", params))
-          prediction = (take_logs ? 10**(prediction.to_f) : prediction.to_f)
+          prediction = 10**(prediction.to_f) + neg_offset
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
