@@ -307,8 +307,8 @@ module OpenTox
           offset = -1.0 * offset if offset>0.0 
           inverter = OpenTox::Algorithm::Transform::Inverter.new(acts)
           prediction = (props.nil? ? local_svm(neighbors, inverter.values, sims, "nu-svr", params) : local_svm_prop(props, inverter.values, "nu-svr", params))
-          prediction = inverter.back_transform([prediction])
-          LOGGER.debug "Prediction is: '" + prediction[0].to_s + "'."
+          prediction = inverter.back_transform([prediction])[0]
+          LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           conf = sims.inject{|sum,x| sum + x }
           confidence = conf/neighbors.size
           {:prediction => prediction, :confidence => confidence}
