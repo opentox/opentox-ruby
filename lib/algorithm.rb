@@ -511,6 +511,7 @@ module OpenTox
         def initialize(values)
           @values=values
           raise "Cannot transform, values empty." if @values.size==0
+          @values = @values.collect { |v| -1.0 * v }   # slide >1
           @offset = 1.0 - @values.minmax[0] 
           @offset = -1.0 * @offset if @offset>0.0 
           @values = @values.collect { |v| v - @offset }   # slide >1
@@ -520,6 +521,7 @@ module OpenTox
         def back_transform(values)
           values = values.collect { |v| 1 / v }
           values = values.collect { |v| v + @offset }
+          values = values.collect { |v| -1.0 * v }
         end
 
       end
