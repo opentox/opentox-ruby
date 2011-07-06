@@ -204,22 +204,13 @@ module OpenTox
       # @return [Numeric] A prediction value.
       def self.local_mlr_prop(neighbors, params, props)
 
-
-        acts = neighbors.collect do |n|
-          act = n[:activity] 
-          act.to_f
-        end # activities of neighbors for supervised learning
-
-
+        raise "No neighbors found." unless neighbors.size>0
         begin
-          min,max = acts.minmax
-          offset = 1.0 - min # offset to min element
-          offset = -1.0 * offset if offset>0.0 
-          div_offset = max - offset # dynamic range
 
-          acts = acts.collect { |a| a - offset }        # everything >1, starting at 1
-          acts = acts.collect { |a| a / div_offset }    # scale to unit length
-          acts = acts.collect { |a| Math.log10 a }    # everything >1, then take log10
+          acts = neighbors.collect do |n|
+            act = n[:activity] 
+            act.to_f
+          end # activities of neighbors for supervised learning
 
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
           n_prop = props[0] # is a matrix, i.e. two nested Arrays.
@@ -233,37 +224,31 @@ module OpenTox
           n_prop_tmp = Array.new ; repeat_factor.times { n_prop_tmp.concat n_prop } ; n_prop = n_prop_tmp
           acts_tmp = Array.new ; repeat_factor.times { acts_tmp.concat acts } ; acts = acts_tmp
 
-          if n_prop.size == 0
-            raise "No neighbors found."
-          else
-            begin
-              LOGGER.debug "Setting GSL data ..."
-              # set data
-              prop_matrix = GSL::Matrix[n_prop, n_prop_y_size * repeat_factor, n_prop_x_size]
-              y = GSL::Vector[acts]
-              q_prop = GSL::Vector[q_prop]
+          LOGGER.debug "Setting GSL data ..."
+          # set data
+          prop_matrix = GSL::Matrix[n_prop, n_prop_y_size * repeat_factor, n_prop_x_size]
+          y = GSL::Vector[acts]
+          q_prop = GSL::Vector[q_prop]
 
-              # model + support vectors
-              LOGGER.debug "Creating MLR model ..."
-              work = GSL::MultiFit::Workspace.alloc(n_prop_y_size * repeat_factor, n_prop_x_size)
-              c, cov, chisq, status = GSL::MultiFit::linear(prop_matrix, y, work)
-              LOGGER.debug "Predicting ..."
-              prediction = GSL::MultiFit::linear_est(q_prop, c, cov)[0]
-            rescue Exception => e
-              LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
-            end
-          end
-
-          prediction = div_offset * (10**(prediction.to_f)) + offset # reverse transformation
+          # model + support vectors
+          LOGGER.debug "Creating MLR model ..."
+          work = GSL::MultiFit::Workspace.alloc(n_prop_y_size * repeat_factor, n_prop_x_size)
+          c, cov, chisq, status = GSL::MultiFit::linear(prop_matrix, y, work)
+          LOGGER.debug "Predicting ..."
+          prediction = GSL::MultiFit::linear_est(q_prop, c, cov)[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
+
+          sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
+          conf = sims.inject{|sum,x| sum + x }
+          confidence = conf/neighbors.size if neighbors.size > 0
+          {:prediction => prediction, :confidence => confidence}
+
         rescue Exception => e
-          LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
+          LOGGER.debug "#{e.class}: #{e.message}"
+          puts "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
 
-        sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
-        conf = sims.inject{|sum,x| sum + x }
-        confidence = conf/neighbors.size if neighbors.size > 0
-        {:prediction => prediction, :confidence => confidence}
+
     end
 
       # Classification with majority vote from neighbors weighted by similarity
@@ -313,39 +298,24 @@ module OpenTox
       # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
       # @return [Hash] Hash with keys `:prediction, :confidence`
       def self.local_svm_regression(neighbors, params, props=nil)
-        acts = neighbors.collect do |n|
-          act = n[:activity] 
-          act.to_f
-        end # activities of neighbors for supervised learning
 
-        sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
+        raise "No neighbors found." unless neighbors.size>0
         begin
+          acts = neighbors.collect{ |n| n[:activity].to_f }
+          sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) }
           offset = 1.0 - acts.minmax[0] # offset to min element
           offset = -1.0 * offset if offset>0.0 
-
-          puts "OFFSET MV"
-          acts = acts.collect { |a| a - offset }           # slide
-          puts acts.to_yaml
-
-          puts "OFFSET LOG"
-          acts = acts.collect { |a| Math.log10 a }         # everything >1, then take log10
-          puts acts.to_yaml
-
-          div_offset = acts.minmax[1] # dynamic range
-          puts "OFFSET DIV"
-          acts = acts.collect { |a| a / div_offset } # scale 
-          puts acts.to_yaml
-
-          prediction = (props.nil? ? local_svm(neighbors, acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr", params))
-          prediction = (10**(div_offset*prediction.to_f))+offset
-          LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
+          inverter = OpenTox::Algorithm::Transform::Inverter.new(acts)
+          prediction = (props.nil? ? local_svm(neighbors, inverter.values, sims, "nu-svr", params) : local_svm_prop(props, inverter.values, "nu-svr", params))
+          prediction = inverter.back_transform([prediction])
+          LOGGER.debug "Prediction is: '" + prediction[0].to_s + "'."
+          conf = sims.inject{|sum,x| sum + x }
+          confidence = conf/neighbors.size
+          {:prediction => prediction, :confidence => confidence}
         rescue Exception => e
-          LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
+          LOGGER.debug "#{e.class}: #{e.message}"
+          puts "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
-
-        conf = sims.inject{|sum,x| sum + x }
-        confidence = conf/neighbors.size if neighbors.size > 0
-        {:prediction => prediction, :confidence => confidence}
         
       end
 
@@ -355,22 +325,21 @@ module OpenTox
       # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
       # @return [Hash] Hash with keys `:prediction, :confidence`
       def self.local_svm_classification(neighbors, params, props=nil)
-        acts = neighbors.collect do |n|
-          act = n[:activity]
-        end # activities of neighbors for supervised learning
-#        acts_f = acts.collect {|v| v == true ? 1.0 : 0.0}
-        acts_f = acts
-        sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
+
+        raise "No neighbors found." unless neighbors.size>0
         begin 
+          acts = neighbors.collect { |n| act = n[:activity] }
+          acts_f = acts
+          sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
           prediction = (props.nil? ? local_svm(neighbors, acts_f, sims, "C-bsvc", params) : local_svm_prop(props, acts_f, "C-bsvc", params))
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
+          conf = sims.inject{|sum,x| sum + x }
+          confidence = conf/neighbors.size if neighbors.size > 0
+          {:prediction => prediction, :confidence => confidence}
         rescue Exception => e
-          LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
+          LOGGER.debug "#{e.class}: #{e.message}"
+          puts "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
-
-        conf = sims.inject{|sum,x| sum + x }
-        confidence = conf/neighbors.size if neighbors.size > 0
-        {:prediction => prediction, :confidence => confidence}
         
       end
 
@@ -442,7 +411,8 @@ module OpenTox
             end
             @r.quit # free R
           rescue Exception => e
-            LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
+            LOGGER.debug "#{e.class}: #{e.message}"
+            puts "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
 
         end
@@ -504,7 +474,8 @@ module OpenTox
               end
               @r.quit # free R
             rescue Exception => e
-              LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
+              LOGGER.debug "#{e.class}: #{e.message}"
+              puts "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
             end
           end
           prediction
@@ -528,6 +499,29 @@ module OpenTox
       include Algorithm
       # API should match Substructure.match
       def features(dataset_uri,compound_uri)
+      end
+    end
+
+    module Transform
+      include Algorithm
+
+      class Inverter # to improve normality conditions on a vector
+        attr_accessor :values
+
+        def initialize(values)
+          @values=values
+          raise "Cannot transform, values empty." if @values.size==0
+          @offset = 1.0 - @values.minmax[0] 
+          @offset = -1.0 * @offset if @offset>0.0 
+          @values = @values.collect { |v| v - @offset }   # slide >1
+          @values = @values.collect { |v| 1 / v }         # invert using sigmoidal function
+        end
+
+        def back_transform(values)
+          values = values.collect { |v| 1 / v }
+          values = values.collect { |v| v + @offset }
+        end
+
       end
     end
     
