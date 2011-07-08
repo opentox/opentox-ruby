@@ -91,7 +91,7 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :balanced
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :balanced :transform
 
       def initialize(uri=nil)
 
@@ -117,6 +117,7 @@ module OpenTox
         @min_sim = 0.3
         @prop_kernel = false
         @balanced = false
+        @transform = nil
 
       end
 

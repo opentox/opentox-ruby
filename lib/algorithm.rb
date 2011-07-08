@@ -303,11 +303,8 @@ module OpenTox
         begin
           acts = neighbors.collect{ |n| n[:activity].to_f }
           sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) }
-          offset = 1.0 - acts.minmax[0] # offset to min element
-          offset = -1.0 * offset if offset>0.0 
-          inverter = OpenTox::Algorithm::Transform::Inverter.new(acts)
-          prediction = (props.nil? ? local_svm(neighbors, inverter.values, sims, "nu-svr", params) : local_svm_prop(props, inverter.values, "nu-svr", params))
-          prediction = inverter.back_transform([prediction])[0]
+          prediction = (props.nil? ? local_svm(neighbors, acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr", params))
+          prediction = lazar.inverter.back_transform([prediction])[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           conf = sims.inject{|sum,x| sum + x }
           confidence = conf/neighbors.size
