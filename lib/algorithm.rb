@@ -512,7 +512,7 @@ module OpenTox
           @offset = 1.0 - @values.minmax[0] 
           @offset = -1.0 * @offset if @offset>0.0 
           @values = @values.collect { |v| v - @offset }   # slide >1
-          @values = @values.collect { |v| 1 / v }         # invert using sigmoidal function
+          @values = @values.collect { |v| 1 / v }         # invert
         end
 
         def back_transform(values)
@@ -529,10 +529,17 @@ module OpenTox
         def initialize(values)
           @values=values
           raise "Cannot transform, values empty." if @values.size==0
-          @offset = 1.0 - @values.minmax[0] 
+          has_negatives = false
+          @values.each { |v| 
+            if v<0.0 
+              has_negatives = true 
+            end 
+          }
+          has_negatives ? @anchor_point = 1.0 : @anchor_point = 0.0
+          @offset = @anchor_point - @values.minmax[0] 
           @offset = -1.0 * @offset if @offset>0.0 
-          @values = @values.collect { |v| v - @offset }   # slide >1
-          @values = @values.collect { |v| Math::log10 v } # take log10
+          @values = @values.collect { |v| v - @offset }   # slide > anchor
+          @values = @values.collect { |v| Math::log10 v } # log10
         end
 
         def back_transform(values)
