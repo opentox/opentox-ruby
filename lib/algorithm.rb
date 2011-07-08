@@ -202,7 +202,7 @@ module OpenTox
       # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
       # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
       # @return [Numeric] A prediction value.
-      def self.local_mlr_prop(neighbors, params, props)
+      def self.local_mlr_prop(neighbors, params, props, transform=nil)
 
         raise "No neighbors found." unless neighbors.size>0
         begin
@@ -255,7 +255,7 @@ module OpenTox
       # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity`
       # @param [optional] params Ignored (only for compatibility with local_svm_regression)
       # @return [Hash] Hash with keys `:prediction, :confidence`
-      def self.weighted_majority_vote(neighbors,params={}, props=nil)
+      def self.weighted_majority_vote(neighbors,params={}, props=nil, transform=nil)
         neighbor_contribution = 0.0
         confidence_sum = 0.0
         confidence = 0.0
@@ -297,14 +297,14 @@ module OpenTox
       # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
       # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
       # @return [Hash] Hash with keys `:prediction, :confidence`
-      def self.local_svm_regression(neighbors, params, props=nil)
+      def self.local_svm_regression(neighbors, params, props=nil, transform=nil)
 
         raise "No neighbors found." unless neighbors.size>0
         begin
           acts = neighbors.collect{ |n| n[:activity].to_f }
           sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) }
           prediction = (props.nil? ? local_svm(neighbors, acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr", params))
-          prediction = lazar.inverter.back_transform([prediction])[0]
+          prediction = transform.back_transform([prediction])[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           conf = sims.inject{|sum,x| sum + x }
           confidence = conf/neighbors.size
@@ -321,7 +321,7 @@ module OpenTox
       # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
       # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
       # @return [Hash] Hash with keys `:prediction, :confidence`
-      def self.local_svm_classification(neighbors, params, props=nil)
+      def self.local_svm_classification(neighbors, params, props=nil, transform=nil)
 
         raise "No neighbors found." unless neighbors.size>0
         begin 
@@ -508,7 +508,7 @@ module OpenTox
         def initialize(values)
           @values=values
           raise "Cannot transform, values empty." if @values.size==0
-          @values = @values.collect { |v| -1.0 * v }   # slide >1
+          @values = @values.collect { |v| -1.0 * v }  
           @offset = 1.0 - @values.minmax[0] 
           @offset = -1.0 * @offset if @offset>0.0 
           @values = @values.collect { |v| v - @offset }   # slide >1
@@ -519,6 +519,25 @@ module OpenTox
           values = values.collect { |v| 1 / v }
           values = values.collect { |v| v + @offset }
           values = values.collect { |v| -1.0 * v }
+        end
+
+      end
+
+      class Log10 # to improve normality conditions on a vector
+        attr_accessor :values
+
+        def initialize(values)
+          @values=values
+          raise "Cannot transform, values empty." if @values.size==0
+          @offset = 1.0 - @values.minmax[0] 
+          @offset = -1.0 * @offset if @offset>0.0 
+          @values = @values.collect { |v| v - @offset }   # slide >1
+          @values = @values.collect { |v| Math::log10 v } # take log10
+        end
+
+        def back_transform(values)
+          values = values.collect { |v| 10**v }
+          values = values.collect { |v| v + @offset }
         end
 
       end
