@@ -3,6 +3,7 @@
 # avoids compiling R with X
 R = nil
 require "rinruby" 
+require "statsample"
 
 module OpenTox
 
@@ -215,54 +216,61 @@ module OpenTox
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
           n_prop = props[0] # is a matrix, i.e. two nested Arrays.
           q_prop = props[1] # is an Array.
-          n_prop_x_size = n_prop[0].size
-          n_prop_y_size = n_prop.size
-
-          data = n_prop << q_prop # attach q_prop
+ 
+          n_prop = n_prop << q_prop # attach q_prop
           begin
-            nr_cases = data.size
-            nr_features = data[0].size
+            nr_cases = n_prop.size
+            nr_features = n_prop[0].size
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
-          
+
           # Auto-Scaling
           LOGGER.debug "Scaling ..."
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
-          (0..nr_features-1).each { |i|
+          (0..nr_cases-1).each { |i|
             column_view = data_matrix.col(i)
-            OpenTox::Algorithm::AutoScale.new(column_view)
+            OpenTox::Algorithm::Transform::AutoScale.new(column_view)
           }
 
           # PCA
           LOGGER.debug "PCA ..."
           data_matrix_hash = Hash.new
-          (0..nr_features-1).each { |i|
+          (0..nr_cases-1).each { |i|
             column_view = data_matrix.col(i)
             data_matrix_hash[i] = column_view.to_scale
           }
-          ds = data_matrix_hash.to_dataset
-          pca = OpenTox::Algorithm::PCA.new(dataset)
+          dataset_hash = data_matrix_hash.to_dataset
+          pca = OpenTox::Algorithm::Transform::PCA.new(dataset_hash)
 
           # Mangle data
           n_prop = pca.dataset_transformed_matrix.transpose.to_a
           q_prop = n_prop.pop # Restore query
+
+          begin
+            nr_cases = n_prop.size
+            nr_features = n_prop[0].size
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          end
+
           n_prop.flatten!
-          y_x_rel = n_prop_y_size.to_f / n_prop_x_size
+          y_x_rel = nr_cases.to_f / nr_features
           repeat_factor = (1/y_x_rel).ceil
           n_prop_tmp = Array.new ; repeat_factor.times { n_prop_tmp.concat n_prop } ; n_prop = n_prop_tmp
           acts_tmp = Array.new ; repeat_factor.times { acts_tmp.concat acts } ; acts = acts_tmp
 
           # set data
           LOGGER.debug "Setting prop data ..."
-          prop_matrix = GSL::Matrix[n_prop, n_prop_y_size * repeat_factor, n_prop_x_size]
+          prop_matrix = GSL::Matrix[n_prop, nr_cases * repeat_factor, nr_features]
           y = GSL::Vector[acts]
           q_prop = GSL::Vector[q_prop]
 
           # model + support vectors
           LOGGER.debug "Creating MLR model ..."
-          work = GSL::MultiFit::Workspace.alloc(n_prop_y_size * repeat_factor, n_prop_x_size)
+          work = GSL::MultiFit::Workspace.alloc(nr_cases * repeat_factor, nr_features)
           c, cov, chisq, status = GSL::MultiFit::linear(prop_matrix, y, work)
           LOGGER.debug "Predicting ..."
           prediction = GSL::MultiFit::linear_est(q_prop, c, cov)[0]
@@ -600,6 +608,7 @@ module OpenTox
         attr_accessor :dataset_transformed_matrix
 
         def initialize dataset
+
           @cor_matrix=Statsample::Bivariate.correlation_matrix(dataset)
           pca=Statsample::Factor::PCA.new(@cor_matrix)
 
@@ -610,7 +619,7 @@ module OpenTox
           # compression cutoff @0.9
           @eigenvectors_selected = Array.new
           pca.eigenvectors.each_with_index { |ev, i|
-            if (eigenvalue_sums[i] <= 0.9) || (@eigenvectors_selected.size == 0)
+            if (eigenvalue_sums[i] <= (0.9*dataset.cases)) || (@eigenvectors_selected.size == 0)
               @eigenvectors_selected << ev.to_a
             end
           }
@@ -660,9 +669,9 @@ module OpenTox
     # @param [Integer] per-mil value
     # return [Integer] min-frequency
     def self.min_frequency(training_dataset,per_mil)
-      minfreq = per_mil*training_dataset.compounds.size/1000 # AM sugg. 8-10 per mil for BBRC, 50 per mil for LAST
+      minfreq = per_mil * training_dataset.compounds.size.to_f / 1000.0 # AM sugg. 8-10 per mil for BBRC, 50 per mil for LAST
       minfreq = 2 unless minfreq > 2
-      minfreq
+      Integer (minfreq)
     end
 
     # Effect calculation for classification
