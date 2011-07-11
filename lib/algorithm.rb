@@ -162,19 +162,39 @@ module OpenTox
 
       # Tanimoto similarity
       # @param [Array] features_a Features of first compound
-      # @param [Array] features_b Features of second compound
+      # @param [Array][Hash] features_b Features of second compound
       # @param [optional, Hash] weights Weights for all features
       # @return [Float] (Weighted) tanimoto similarity
       def self.tanimoto(features_a,features_b,weights=nil)
+        LOGGER.debug "dv ------------ class: #{features_b.class}"
         common_features = features_a & features_b
         all_features = (features_a + features_b).uniq
         common_p_sum = 0.0
         if common_features.size > 0
           if weights
-            common_features.each{|f| common_p_sum += Algorithm.gauss(weights[f])}
-            all_p_sum = 0.0
-            all_features.each{|f| all_p_sum += Algorithm.gauss(weights[f])}
+            if @nr_hits == true
+             LOGGER.debug "dv --------------- NR_HITS TRUE" 
+            else
+              common_features.each{|f| common_p_sum += Algorithm.gauss(weights[f])}
+              all_p_sum = 0.0
+              all_features.each{|f| all_p_sum += Algorithm.gauss(weights[f])}
+            end
             common_p_sum/all_p_sum
+            #if frequencies
+            #  #LOGGER.debug "dv --------------- all_features: #{all_features} \n common_features: #{common_features} "
+            #  common_features.each do |f| 
+            #    #LOGGER.debug "dv --------------- weight: #{weights[f]} frequency: #{frequencies[f]}"
+            #    common_p_sum += Algorithm.gauss(weights[f]*frequencies[f].to_f)
+            #  end
+            #  all_p_sum = 0.0
+            #  all_features.each{|f| all_p_sum += Algorithm.gauss(weights[f]*frequencies[f].to_f)}
+            #else
+            #  common_features.each{|f| common_p_sum += Algorithm.gauss(weights[f])}
+            #  all_p_sum = 0.0
+            #  all_features.each{|f| all_p_sum += Algorithm.gauss(weights[f])}
+            #end
+            #  #LOGGER.debug "dv -------------- common_p_sum: #{common_p_sum}  all_p_sum: #{all_p_sum}"
+            #  common_p_sum/all_p_sum
           else
             common_features.to_f/all_features
           end
@@ -596,7 +616,23 @@ module OpenTox
       }
       max
     end
-
+    
+    # Frequency check befor Simularity calculation
+    # @param [Array] similarity_algorithm, 
+    # @param [Array] features_a
+    # @param [Array] [Hash] (feature_b => frequency} 
+    # @param []      p_values
+    # return sim
+    #def self.similarity(similarity_algorithm, features_a, features_b, p_values = nil)
+    #  if @nr_hits == true
+    #    
+    #    features_b_f = 
+    #    eval("#{similarity_algorithm}(features_a,features_b_f,p_values,frequencies_b)")
+    #  else
+    #    eval("#{similarity_algorithm}(features_a,features_b,p_values)")
+    #  end
+    #end
+    
 
   end
 end

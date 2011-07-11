@@ -91,7 +91,8 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :balanced
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :frequencies, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :balanced, :nr_hits
+
 
       def initialize(uri=nil)
 
@@ -107,6 +108,7 @@ module OpenTox
         @effects = {}
         @activities = {}
         @p_values = {}
+        @frequencies = {}
         @fingerprints = {}
         @value_map = {}
 
@@ -114,6 +116,7 @@ module OpenTox
         @similarity_algorithm = "Similarity.tanimoto"
         @prediction_algorithm = "Neighbors.weighted_majority_vote"
 
+        @nr_hits = false
         @min_sim = 0.3
         @prop_kernel = false
         @balanced = false
@@ -398,14 +401,37 @@ module OpenTox
       def neighbors
         @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
         @neighbors = []
-        @fingerprints.each do |training_compound,training_features| # AM: access all compounds
+        @fingerprints.each do |training_compound, training_features | # AM: access all compounds
+          #LOGGER.debug "dv ---------------- training_features: #{training_features.class}, #{training_features}, #{training_compound.class}, #{training_compound} "
           add_neighbor training_features, training_compound
         end
       end
 
       # Adds a neighbor to @neighbors if it passes the similarity threshold.
       def add_neighbor(training_features, training_compound)
+        #LOGGER.debug "dv ------ xyz ----- compound_features: '#{@compound_features}' \n training_features: '#{training_features}'\n training_compound: '#{training_compound}'"
+        sim = 0.0 
+        #if @frequencies.empty?
+        #  LOGGER.debug "dv ----------------- frequencies is empty goto #{@similarity_algorithm}"
+        #  sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values)")
+        #else
+        #  LOGGER.debug "dv ----------------- with frequencies goto #{@similarity_algorithm}, training_compound #{training_compound}" 
+        #  t_compound_freq = {} 
+        #  training_features.each do |f|
+        #    #LOGGER.debug "dv ----------------- with feature:  #{f}, training_compound: #{training_compound}\n"
+        #    @frequencies[f.to_s].each do |cf|
+        #      if cf.keys.to_s == training_compound.to_s 
+        #        #LOGGER.debug "#{cf.keys} =?  #{training_compound}----------------- #{f}         #{cf[training_compound.to_s]}"
+        #        t_compound_freq[f] = cf[training_compound.to_s]
+        #        #LOGGER.debug "t_compound_freq: #{t_compound_freq}"
+        #      end
+        #    end
+        #  end
+        #  #LOGGER.debug "t_compound_freq: #{t_compound_freq}" 
+        #  sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values,t_compound_freq)")
+        #end
         sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values)")
+        LOGGER.debug "sim is: #{sim}"
         if sim > @min_sim
           @activities[training_compound].each do |act|
             @neighbors << {
