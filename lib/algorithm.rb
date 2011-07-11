@@ -245,7 +245,7 @@ module OpenTox
 
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
-          puts "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
 
 
@@ -304,14 +304,15 @@ module OpenTox
           acts = neighbors.collect{ |n| n[:activity].to_f }
           sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) }
           prediction = (props.nil? ? local_svm(neighbors, acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr", params))
-          prediction = transform.back_transform([prediction])[0]
+          transformer = eval "#{transform[:class]}.new ([#{prediction}], #{transform[:offset]})"
+          prediction = transformer.values[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           conf = sims.inject{|sum,x| sum + x }
           confidence = conf/neighbors.size
           {:prediction => prediction, :confidence => confidence}
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
-          puts "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
         
       end
@@ -335,7 +336,7 @@ module OpenTox
           {:prediction => prediction, :confidence => confidence}
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
-          puts "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
         
       end
@@ -409,7 +410,7 @@ module OpenTox
             @r.quit # free R
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
-            puts "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
 
         end
@@ -472,7 +473,7 @@ module OpenTox
               @r.quit # free R
             rescue Exception => e
               LOGGER.debug "#{e.class}: #{e.message}"
-              puts "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+              LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
             end
           end
           prediction
@@ -503,50 +504,55 @@ module OpenTox
       include Algorithm
 
       class Inverter # to improve normality conditions on a vector
-        attr_accessor :values
+        attr_accessor :offset, :values
 
-        def initialize(values)
-          @values=values
-          raise "Cannot transform, values empty." if @values.size==0
-          @values = @values.collect { |v| -1.0 * v }  
-          @offset = 1.0 - @values.minmax[0] 
-          @offset = -1.0 * @offset if @offset>0.0 
-          @values = @values.collect { |v| v - @offset }   # slide >1
-          @values = @values.collect { |v| 1 / v }         # invert
+        def initialize *args
+          case args.size
+          when 1
+            begin
+              @values=args[0]
+              raise "Cannot transform, values empty." if @values.size==0
+              @values = @values.collect { |v| -1.0 * v }  
+              @offset = 1.0 - @values.minmax[0] 
+              @offset = -1.0 * @offset if @offset>0.0 
+              @values = @values.collect { |v| v - @offset }   # slide >1
+              @values = @values.collect { |v| 1 / v }         # invert to [0,1]
+            rescue Exception => e
+              LOGGER.debug "#{e.class}: #{e.message}"
+              LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+            end
+          when 2
+            @offset = args[1].to_f
+            @values = args[0].collect { |v| 1 / v }
+            @values = @values.collect { |v| v + @offset }
+            @values = @values.collect { |v| -1.0 * v }
+          end
         end
-
-        def back_transform(values)
-          values = values.collect { |v| 1 / v }
-          values = values.collect { |v| v + @offset }
-          values = values.collect { |v| -1.0 * v }
-        end
-
       end
 
       class Log10 # to improve normality conditions on a vector
-        attr_accessor :values
+        attr_accessor :offset, :values
 
-        def initialize(values)
-          @values=values
-          raise "Cannot transform, values empty." if @values.size==0
-          has_negatives = false
-          @values.each { |v| 
-            if v<0.0 
-              has_negatives = true 
-            end 
-          }
-          has_negatives ? @anchor_point = 1.0 : @anchor_point = 0.0
-          @offset = @anchor_point - @values.minmax[0] 
-          @offset = -1.0 * @offset if @offset>0.0 
-          @values = @values.collect { |v| v - @offset }   # slide > anchor
-          @values = @values.collect { |v| Math::log10 v } # log10
+        def initialize *args
+          case args.size
+          when 1
+            begin
+              @values=args[0]
+              raise "Cannot transform, values empty." if @values.size==0
+              @offset = @values.minmax[0] 
+              @offset = -1.0 * @offset if @offset>0.0 
+              @values = @values.collect { |v| v - @offset }   # slide > anchor
+              @values = @values.collect { |v| Math::log10 v } # log10 (can fail)
+            rescue Exception => e
+              LOGGER.debug "#{e.class}: #{e.message}"
+              LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+            end
+          when 2
+            @offset = args[1].to_f
+            @values = args[0].collect { |v| 10**v }
+            @values = @values.collect { |v| v + @offset }
+          end
         end
-
-        def back_transform(values)
-          values = values.collect { |v| 10**v }
-          values = values.collect { |v| v + @offset }
-        end
-
       end
     end
     
