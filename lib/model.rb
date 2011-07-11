@@ -136,10 +136,10 @@ module OpenTox
       # Create a new lazar model
       # @param [optional,Hash] params Parameters for the lazar algorithm (OpenTox::Algorithm::Lazar)
       # @return [OpenTox::Model::Lazar] lazar model
-      def self.create(params)
+      def self.create(params, waiting_task=nil )
         subjectid = params[:subjectid]
         lazar_algorithm = OpenTox::Algorithm::Generic.new File.join( CONFIG[:services]["opentox-algorithm"],"lazar")
-        model_uri = lazar_algorithm.run(params)
+        model_uri = lazar_algorithm.run(params, waiting_task)
         OpenTox::Model::Lazar.find(model_uri, subjectid)      
       end
 
