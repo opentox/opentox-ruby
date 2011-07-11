@@ -218,14 +218,44 @@ module OpenTox
           n_prop_x_size = n_prop[0].size
           n_prop_y_size = n_prop.size
 
+          data = n_prop << q_prop # attach q_prop
+          begin
+            nr_cases = data.size
+            nr_features = data[0].size
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          end
+          
+          # Auto-Scaling
+          LOGGER.debug "Scaling ..."
+          data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
+          (0..nr_features-1).each { |i|
+            column_view = data_matrix.col(i)
+            OpenTox::Algorithm::AutoScale.new(column_view)
+          }
+
+          # PCA
+          LOGGER.debug "PCA ..."
+          data_matrix_hash = Hash.new
+          (0..nr_features-1).each { |i|
+            column_view = data_matrix.col(i)
+            data_matrix_hash[i] = column_view.to_scale
+          }
+          ds = data_matrix_hash.to_dataset
+          pca = OpenTox::Algorithm::PCA.new(dataset)
+
+          # Mangle data
+          n_prop = pca.dataset_transformed_matrix.transpose.to_a
+          q_prop = n_prop.pop # Restore query
           n_prop.flatten!
           y_x_rel = n_prop_y_size.to_f / n_prop_x_size
           repeat_factor = (1/y_x_rel).ceil
           n_prop_tmp = Array.new ; repeat_factor.times { n_prop_tmp.concat n_prop } ; n_prop = n_prop_tmp
           acts_tmp = Array.new ; repeat_factor.times { acts_tmp.concat acts } ; acts = acts_tmp
 
-          LOGGER.debug "Setting GSL data ..."
           # set data
+          LOGGER.debug "Setting prop data ..."
           prop_matrix = GSL::Matrix[n_prop, n_prop_y_size * repeat_factor, n_prop_x_size]
           y = GSL::Vector[acts]
           q_prop = GSL::Vector[q_prop]
@@ -512,11 +542,11 @@ module OpenTox
             begin
               @values=args[0]
               raise "Cannot transform, values empty." if @values.size==0
-              @values = @values.collect { |v| -1.0 * v }  
+              @values.collect! { |v| -1.0 * v }  
               @offset = 1.0 - @values.minmax[0] 
               @offset = -1.0 * @offset if @offset>0.0 
-              @values = @values.collect { |v| v - @offset }   # slide >1
-              @values = @values.collect { |v| 1 / v }         # invert to [0,1]
+              @values.collect! { |v| v - @offset }   # slide >1
+              @values.collect! { |v| 1 / v }         # invert to [0,1]
             rescue Exception => e
               LOGGER.debug "#{e.class}: #{e.message}"
               LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
@@ -524,8 +554,8 @@ module OpenTox
           when 2
             @offset = args[1].to_f
             @values = args[0].collect { |v| 1 / v }
-            @values = @values.collect { |v| v + @offset }
-            @values = @values.collect { |v| -1.0 * v }
+            @values.collect! { |v| v + @offset }
+            @values.collect! { |v| -1.0 * v }
           end
         end
       end
@@ -541,8 +571,8 @@ module OpenTox
               raise "Cannot transform, values empty." if @values.size==0
               @offset = @values.minmax[0] 
               @offset = -1.0 * @offset if @offset>0.0 
-              @values = @values.collect { |v| v - @offset }   # slide > anchor
-              @values = @values.collect { |v| Math::log10 v } # log10 (can fail)
+              @values.collect! { |v| v - @offset }   # slide > anchor
+              @values.collect! { |v| Math::log10 v } # log10 (can fail)
             rescue Exception => e
               LOGGER.debug "#{e.class}: #{e.message}"
               LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
@@ -550,10 +580,46 @@ module OpenTox
           when 2
             @offset = args[1].to_f
             @values = args[0].collect { |v| 10**v }
-            @values = @values.collect { |v| v + @offset }
+            @values.collect! { |v| v + @offset }
           end
         end
       end
+
+      class AutoScale # center on mean and divide by stdev
+        attr_accessor :values
+
+        def initialize values
+          mean = values.to_scale.mean
+          stdev = values.to_scale.standard_deviation_sample
+          @values = values.collect{|vi| vi - mean }
+          @values.collect! {|vi| vi / stdev }
+        end
+      end
+
+      class PCA
+        attr_accessor :dataset_transformed_matrix
+
+        def initialize dataset
+          @cor_matrix=Statsample::Bivariate.correlation_matrix(dataset)
+          pca=Statsample::Factor::PCA.new(@cor_matrix)
+
+          eigenvalue_sums = Array.new
+          (0..dataset.fields.size-1).each { |i|
+            eigenvalue_sums << pca.eigenvalues[0..i].inject{ |sum, ev| sum + ev }
+          }
+          # compression cutoff @0.9
+          @eigenvectors_selected = Array.new
+          pca.eigenvectors.each_with_index { |ev, i|
+            if (eigenvalue_sums[i] <= 0.9) || (@eigenvectors_selected.size == 0)
+              @eigenvectors_selected << ev.to_a
+            end
+          }
+          eigenvector_matrix = GSL::Matrix.alloc(@eigenvectors_selected.flatten, dataset.fields.size, @eigenvectors_selected.size).transpose
+          dataset_matrix = dataset.to_gsl.transpose
+          @dataset_transformed_matrix =  eigenvector_matrix * dataset_matrix # dataset_transformed_matrix is in row-wise notation now
+        end
+      end
+
     end
     
     # Gauss kernel
