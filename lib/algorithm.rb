@@ -209,7 +209,6 @@ module OpenTox
         begin
 
           acts = neighbors.collect do |n|
-            puts n.to_yaml
             act = n[:activity] 
             act.to_f
           end # activities of neighbors for supervised learning
