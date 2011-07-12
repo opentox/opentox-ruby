@@ -383,6 +383,8 @@ module OpenTox
           XSD.boolean
         elsif value.is_a? Float
           XSD.float
+        elsif value.is_a? Integer
+          XSD.integer
         else
           XSD.string
         end
@@ -392,6 +394,8 @@ module OpenTox
         if value.is_a? TrueClass or value.is_a? FalseClass
           datatype = OT.NominalFeature
         elsif value.is_a? Float
+          datatype = OT.NumericFeature
+        elsif value.is_a? Integer
           datatype = OT.NumericFeature
         else
           datatype = OT.StringFeature

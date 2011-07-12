@@ -208,6 +208,75 @@ module OpenTox
 
     module Neighbors
 
+      # Local multi-linear regression (MLR) prediction from neighbors. 
+      # Uses propositionalized setting.
+      # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
+      # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
+      # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
+      # @return [Numeric] A prediction value.
+      def self.local_mlr_prop(neighbors, params, props)
+
+        take_logs=true
+
+        neighbors.each do |n| 
+          if (! n[:activity].nil?) && (n[:activity].to_f < 0.0)
+            take_logs = false
+          end
+        end
+
+        acts = neighbors.collect do |n|
+          act = n[:activity] 
+          take_logs ? Math.log10(act.to_f) : act.to_f
+        end # activities of neighbors for supervised learning
+
+
+        begin
+
+          LOGGER.debug "Local MLR (Propositionalization / GSL)."
+          n_prop = props[0] # is a matrix, i.e. two nested Arrays.
+          q_prop = props[1] # is an Array.
+          n_prop_x_size = n_prop[0].size
+          n_prop_y_size = n_prop.size
+
+          n_prop.flatten!
+          y_x_rel = n_prop_y_size.to_f / n_prop_x_size
+          repeat_factor = (1/y_x_rel).ceil
+          n_prop_tmp = Array.new ; repeat_factor.times { n_prop_tmp.concat n_prop } ; n_prop = n_prop_tmp
+          acts_tmp = Array.new ; repeat_factor.times { acts_tmp.concat acts } ; acts = acts_tmp
+
+          if n_prop.size == 0
+            raise "No neighbors found."
+          else
+            begin
+              LOGGER.debug "Setting GSL data ..."
+              # set data
+              prop_matrix = GSL::Matrix[n_prop, n_prop_y_size * repeat_factor, n_prop_x_size]
+              y = GSL::Vector[acts]
+              q_prop = GSL::Vector[q_prop]
+
+              # model + support vectors
+              LOGGER.debug "Creating MLR model ..."
+              work = GSL::MultiFit::Workspace.alloc(n_prop_y_size * repeat_factor, n_prop_x_size)
+              c, cov, chisq, status = GSL::MultiFit::linear(prop_matrix, y, work)
+              LOGGER.debug "Predicting ..."
+              prediction = GSL::MultiFit::linear_est(q_prop, c, cov)[0]
+            rescue Exception => e
+              LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
+            end
+          end
+
+          prediction = (take_logs ? 10**(prediction.to_f) : prediction.to_f)
+          LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
+        rescue Exception => e
+          LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
+        end
+
+        sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
+        conf = sims.inject{|sum,x| sum + x }
+        confidence = conf/neighbors.size if neighbors.size > 0
+        {:prediction => prediction, :confidence => confidence}
+    end
+
       # Classification with majority vote from neighbors weighted by similarity
       # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity`
       # @param [optional] params Ignored (only for compatibility with local_svm_regression)
@@ -336,67 +405,67 @@ module OpenTox
       # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
       # @return [Numeric] A prediction value.
       def self.local_svm(neighbors, acts, sims, type, params)
-          LOGGER.debug "Local SVM (Weighted Tanimoto Kernel)."
-          neighbor_matches = neighbors.collect{ |n| n[:features] } # URIs of matches
-          gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
-          if neighbor_matches.size == 0
-            raise "No neighbors found."
-          else
-            # gram matrix
-            (0..(neighbor_matches.length-1)).each do |i|
-              gram_matrix[i] = [] unless gram_matrix[i]
-              # upper triangle
-              ((i+1)..(neighbor_matches.length-1)).each do |j|
-                sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values])")
-                gram_matrix[i][j] = Algorithm.gauss(sim)
-                gram_matrix[j] = [] unless gram_matrix[j] 
-                gram_matrix[j][i] = gram_matrix[i][j] # lower triangle
-              end
-              gram_matrix[i][i] = 1.0
+        LOGGER.debug "Local SVM (Weighted Tanimoto Kernel)."
+        neighbor_matches = neighbors.collect{ |n| n[:features] } # URIs of matches
+        gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
+        if neighbor_matches.size == 0
+          raise "No neighbors found."
+        else
+          # gram matrix
+          (0..(neighbor_matches.length-1)).each do |i|
+            gram_matrix[i] = [] unless gram_matrix[i]
+            # upper triangle
+            ((i+1)..(neighbor_matches.length-1)).each do |j|
+              sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values])")
+              gram_matrix[i][j] = Algorithm.gauss(sim)
+              gram_matrix[j] = [] unless gram_matrix[j] 
+              gram_matrix[j][i] = gram_matrix[i][j] # lower triangle
             end
-
-            #LOGGER.debug gram_matrix.to_yaml
-            @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
-            @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
-            LOGGER.debug "Setting R data ..."
-            # set data
-            @r.gram_matrix = gram_matrix.flatten
-            @r.n = neighbor_matches.size
-            @r.y = acts
-            @r.sims = sims
-
-            begin
-              LOGGER.debug "Preparing R data ..."
-              # prepare data
-              @r.eval "y<-as.vector(y)"
-              @r.eval "gram_matrix<-as.kernelMatrix(matrix(gram_matrix,n,n))"
-              @r.eval "sims<-as.vector(sims)"
-              
-              # model + support vectors
-              LOGGER.debug "Creating SVM model ..."
-              @r.eval "model<-ksvm(gram_matrix, y, kernel=matrix, type=\"#{type}\", nu=0.5)"
-              @r.eval "sv<-as.vector(SVindex(model))"
-              @r.eval "sims<-sims[sv]"
-              @r.eval "sims<-as.kernelMatrix(matrix(sims,1))"
-              LOGGER.debug "Predicting ..."
-              if type == "nu-svr" 
-                @r.eval "p<-predict(model,sims)[1,1]"
-              elsif type == "C-bsvc"
-                @r.eval "p<-predict(model,sims)"
-              end
-              if type == "nu-svr"
-                prediction = @r.p
-              elsif type == "C-bsvc"
-                #prediction = (@r.p.to_f == 1.0 ? true : false)
-                prediction = @r.p
-              end
-              @r.quit # free R
-            rescue Exception => e
-              LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
-            end
-
+            gram_matrix[i][i] = 1.0
           end
-          prediction
+
+          #LOGGER.debug gram_matrix.to_yaml
+          @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
+          @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
+          LOGGER.debug "Setting R data ..."
+          # set data
+          @r.gram_matrix = gram_matrix.flatten
+          @r.n = neighbor_matches.size
+          @r.y = acts
+          @r.sims = sims
+
+          begin
+            LOGGER.debug "Preparing R data ..."
+            # prepare data
+            @r.eval "y<-as.vector(y)"
+            @r.eval "gram_matrix<-as.kernelMatrix(matrix(gram_matrix,n,n))"
+            @r.eval "sims<-as.vector(sims)"
+            
+            # model + support vectors
+            LOGGER.debug "Creating SVM model ..."
+            @r.eval "model<-ksvm(gram_matrix, y, kernel=matrix, type=\"#{type}\", nu=0.5)"
+            @r.eval "sv<-as.vector(SVindex(model))"
+            @r.eval "sims<-sims[sv]"
+            @r.eval "sims<-as.kernelMatrix(matrix(sims,1))"
+            LOGGER.debug "Predicting ..."
+            if type == "nu-svr" 
+              @r.eval "p<-predict(model,sims)[1,1]"
+            elsif type == "C-bsvc"
+              @r.eval "p<-predict(model,sims)"
+            end
+            if type == "nu-svr"
+              prediction = @r.p
+            elsif type == "C-bsvc"
+              #prediction = (@r.p.to_f == 1.0 ? true : false)
+              prediction = @r.p
+            end
+            @r.quit # free R
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message} #{e.backtrace}"
+          end
+
+        end
+        prediction
       end
 
       # Local support vector prediction from neighbors. 
@@ -419,19 +488,6 @@ module OpenTox
           if n_prop.size == 0
             raise "No neighbors found."
           else
-            # gram matrix
-            #(0..(neighbor_matches.length-1)).each do |i|
-            #  gram_matrix[i] = [] unless gram_matrix[i]
-            #  # upper triangle
-            #  ((i+1)..(neighbor_matches.length-1)).each do |j|
-            #    sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values])")
-            #    gram_matrix[i][j] = Algorithm.gauss(sim)
-            #    gram_matrix[j] = [] unless gram_matrix[j] 
-            #    gram_matrix[j][i] = gram_matrix[i][j] # lower triangle
-            #  end
-            #  gram_matrix[i][i] = 1.0
-            #end
-
             #LOGGER.debug gram_matrix.to_yaml
             @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
             @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
@@ -575,7 +631,7 @@ module OpenTox
         Math.sqrt(variance)
       end
     end
-    Array.send :include, Variance 
+    Array.send :include, Variance
 
   end
 end

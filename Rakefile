@@ -43,6 +43,7 @@ begin
     gem.add_dependency "dm-validations",  "=1.1.0"
     gem.add_dependency "dm-sqlite-adapter", "=1.1.0"
     gem.add_dependency "ruby-plot", "=0.5.0"
+    gem.add_dependency "gsl", "=1.14.7"
 
     gem.add_development_dependency 'jeweler'
     gem.files =  FileList["[A-Z]*", "{bin,generators,lib,test}/**/*", 'lib/jeweler/templates/.gitignore']
