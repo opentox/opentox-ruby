@@ -218,44 +218,41 @@ module OpenTox
           q_prop = props[1] # is an Array.
  
           n_prop = n_prop << q_prop # attach q_prop
-          begin
-            nr_cases = n_prop.size
-            nr_features = n_prop[0].size
-          rescue Exception => e
-            LOGGER.debug "#{e.class}: #{e.message}"
-            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-          end
+          nr_cases, nr_features = get_sizes n_prop
+          
 
-          # Auto-Scaling
+          # Centering and Scaling
           LOGGER.debug "Scaling ..."
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
-          (0..nr_cases-1).each { |i|
+          (0..nr_features-1).each { |i|
             column_view = data_matrix.col(i)
             OpenTox::Algorithm::Transform::AutoScale.new(column_view)
           }
 
-          # PCA
+          # Principal Components Analysis
           LOGGER.debug "PCA ..."
           data_matrix_hash = Hash.new
-          (0..nr_cases-1).each { |i|
+          (0..nr_features-1).each { |i|
             column_view = data_matrix.col(i)
             data_matrix_hash[i] = column_view.to_scale
           }
           dataset_hash = data_matrix_hash.to_dataset
           pca = OpenTox::Algorithm::Transform::PCA.new(dataset_hash)
+          n_prop = pca.dataset_transformed_matrix.transpose.to_a
+          nr_cases, nr_features = get_sizes n_prop
+
+          # Normalizing along each Principal Component
+          LOGGER.debug "Normalizing..."
+          data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
+          (0..nr_features-1).each { |i|
+            column_view = data_matrix.col(i)
+            normalizer = OpenTox::Algorithm::Transform::Log10.new(column_view.to_a)
+            column_view = normalizer.values.to_gv
+          }
 
           # Mangle data
-          n_prop = pca.dataset_transformed_matrix.transpose.to_a
-          q_prop = n_prop.pop # Restore query
-
-          begin
-            nr_cases = n_prop.size
-            nr_features = n_prop[0].size
-          rescue Exception => e
-            LOGGER.debug "#{e.class}: #{e.message}"
-            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-          end
-
+          q_prop = n_prop.pop 
+          nr_cases, nr_features = get_sizes n_prop
           n_prop.flatten!
           y_x_rel = nr_cases.to_f / nr_features
           repeat_factor = (1/y_x_rel).ceil
@@ -286,8 +283,7 @@ module OpenTox
           LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
 
-
-    end
+      end
 
       # Classification with majority vote from neighbors weighted by similarity
       # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity`
@@ -517,6 +513,18 @@ module OpenTox
           prediction
       end
 
+      # Get X and Y size of a nested Array
+      def self.get_sizes(matrix)
+        begin
+          nr_cases = matrix.size
+          nr_features = matrix[0].size
+        rescue Exception => e
+          LOGGER.debug "#{e.class}: #{e.message}"
+          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+        end
+        puts "NRC: #{nr_cases}, NRF: #{nr_features}"
+        [ nr_cases, nr_features ]
+      end
 
     end
 
@@ -572,6 +580,7 @@ module OpenTox
         attr_accessor :offset, :values
 
         def initialize *args
+          @distance_to_zero = 0.000001
           case args.size
           when 1
             begin
@@ -580,6 +589,7 @@ module OpenTox
               @offset = @values.minmax[0] 
               @offset = -1.0 * @offset if @offset>0.0 
               @values.collect! { |v| v - @offset }   # slide > anchor
+              @values.collect! { |v| v + @distance_to_zero }  #
               @values.collect! { |v| Math::log10 v } # log10 (can fail)
             rescue Exception => e
               LOGGER.debug "#{e.class}: #{e.message}"
@@ -588,6 +598,7 @@ module OpenTox
           when 2
             @offset = args[1].to_f
             @values = args[0].collect { |v| 10**v }
+            @values.collect! { |v| v - @distance_to_zero }
             @values.collect! { |v| v + @offset }
           end
         end
@@ -608,10 +619,8 @@ module OpenTox
         attr_accessor :dataset_transformed_matrix
 
         def initialize dataset
-
           @cor_matrix=Statsample::Bivariate.correlation_matrix(dataset)
           pca=Statsample::Factor::PCA.new(@cor_matrix)
-
           eigenvalue_sums = Array.new
           (0..dataset.fields.size-1).each { |i|
             eigenvalue_sums << pca.eigenvalues[0..i].inject{ |sum, ev| sum + ev }
@@ -619,7 +628,7 @@ module OpenTox
           # compression cutoff @0.9
           @eigenvectors_selected = Array.new
           pca.eigenvectors.each_with_index { |ev, i|
-            if (eigenvalue_sums[i] <= (0.9*dataset.cases)) || (@eigenvectors_selected.size == 0)
+            if (eigenvalue_sums[i] <= (0.9*dataset.fields.size)) || (@eigenvectors_selected.size == 0)
               @eigenvectors_selected << ev.to_a
             end
           }
