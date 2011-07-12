@@ -209,6 +209,7 @@ module OpenTox
         begin
 
           acts = neighbors.collect do |n|
+            puts n.to_yaml
             act = n[:activity] 
             act.to_f
           end # activities of neighbors for supervised learning
@@ -221,16 +222,15 @@ module OpenTox
           nr_cases, nr_features = get_sizes n_prop
           
 
+          LOGGER.debug "PCA..."
           # Centering and Scaling
-          LOGGER.debug "Scaling ..."
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
           (0..nr_features-1).each { |i|
-            column_view = data_matrix.col(i)
-            OpenTox::Algorithm::Transform::AutoScale.new(column_view)
+            autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(data_matrix.col(i))
+            data_matrix.col(i)[0..nr_cases-1] = autoscaler.values
           }
 
           # Principal Components Analysis
-          LOGGER.debug "PCA ..."
           data_matrix_hash = Hash.new
           (0..nr_features-1).each { |i|
             column_view = data_matrix.col(i)
@@ -242,16 +242,14 @@ module OpenTox
           nr_cases, nr_features = get_sizes n_prop
 
           # Normalizing along each Principal Component
-          LOGGER.debug "Normalizing..."
-          data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
-          (0..nr_features-1).each { |i|
-            column_view = data_matrix.col(i)
-            normalizer = OpenTox::Algorithm::Transform::Log10.new(column_view.to_a)
-            column_view = normalizer.values.to_gv
-          }
+          #data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
+          #(0..nr_features-1).each { |i|
+          #  normalizer = OpenTox::Algorithm::Transform::Log10.new(data_matrix.col(i).to_a)
+          #  data_matrix.col(i)[0..nr_cases-1] = normalizer.values
+          #}
 
           # Mangle data
-          q_prop = n_prop.pop 
+          q_prop = n_prop.pop # detach query instance
           nr_cases, nr_features = get_sizes n_prop
           n_prop.flatten!
           y_x_rel = nr_cases.to_f / nr_features
@@ -271,6 +269,8 @@ module OpenTox
           c, cov, chisq, status = GSL::MultiFit::linear(prop_matrix, y, work)
           LOGGER.debug "Predicting ..."
           prediction = GSL::MultiFit::linear_est(q_prop, c, cov)[0]
+          transformer = eval "#{transform[:class]}.new ([#{prediction}], #{transform[:offset]})"
+          prediction = transformer.values[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
 
           sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
@@ -556,9 +556,9 @@ module OpenTox
           case args.size
           when 1
             begin
-              @values=args[0]
+              values=args[0]
               raise "Cannot transform, values empty." if @values.size==0
-              @values.collect! { |v| -1.0 * v }  
+              @values = values.collect { |v| -1.0 * v }  
               @offset = 1.0 - @values.minmax[0] 
               @offset = -1.0 * @offset if @offset>0.0 
               @values.collect! { |v| v - @offset }   # slide >1
@@ -584,11 +584,11 @@ module OpenTox
           case args.size
           when 1
             begin
-              @values=args[0]
-              raise "Cannot transform, values empty." if @values.size==0
-              @offset = @values.minmax[0] 
+              values=args[0]
+              raise "Cannot transform, values empty." if values.size==0
+              @offset = values.minmax[0] 
               @offset = -1.0 * @offset if @offset>0.0 
-              @values.collect! { |v| v - @offset }   # slide > anchor
+              @values = values.collect { |v| v - @offset }   # slide > anchor
               @values.collect! { |v| v + @distance_to_zero }  #
               @values.collect! { |v| Math::log10 v } # log10 (can fail)
             rescue Exception => e
@@ -628,7 +628,7 @@ module OpenTox
           # compression cutoff @0.9
           @eigenvectors_selected = Array.new
           pca.eigenvectors.each_with_index { |ev, i|
-            if (eigenvalue_sums[i] <= (0.9*dataset.fields.size)) || (@eigenvectors_selected.size == 0)
+            if (eigenvalue_sums[i] <= (0.95*dataset.fields.size)) || (@eigenvectors_selected.size == 0)
               @eigenvectors_selected << ev.to_a
             end
           }
