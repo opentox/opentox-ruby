@@ -223,12 +223,13 @@ module OpenTox
           
 
           LOGGER.debug "PCA..."
-          # Centering and Scaling
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
-          (0..nr_features-1).each { |i|
-            autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(data_matrix.col(i))
-            data_matrix.col(i)[0..nr_cases-1] = autoscaler.values
-          }
+
+          # Centering and Scaling
+          #(0..nr_features-1).each { |i|
+          #  autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(data_matrix.col(i))
+          #  data_matrix.col(i)[0..nr_cases-1] = autoscaler.values
+          #}
 
           # Principal Components Analysis
           data_matrix_hash = Hash.new
@@ -239,9 +240,9 @@ module OpenTox
           dataset_hash = data_matrix_hash.to_dataset
           pca = OpenTox::Algorithm::Transform::PCA.new(dataset_hash)
           n_prop = pca.dataset_transformed_matrix.transpose.to_a
-          nr_cases, nr_features = get_sizes n_prop
 
-          # Normalizing along each Principal Component
+          ## Normalizing along each Principal Component
+          #nr_cases, nr_features = get_sizes n_prop
           #data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
           #(0..nr_features-1).each { |i|
           #  normalizer = OpenTox::Algorithm::Transform::Log10.new(data_matrix.col(i).to_a)
@@ -587,6 +588,7 @@ module OpenTox
               values=args[0]
               raise "Cannot transform, values empty." if values.size==0
               @offset = values.minmax[0] 
+              puts @offset
               @offset = -1.0 * @offset if @offset>0.0 
               @values = values.collect { |v| v - @offset }   # slide > anchor
               @values.collect! { |v| v + @distance_to_zero }  #
