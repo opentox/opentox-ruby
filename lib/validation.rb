@@ -84,6 +84,10 @@ module OpenTox
     def load_metadata( subjectid=nil )
       @metadata = YAML.load(OpenTox::RestClientWrapper.get(uri,{:subjectid => subjectid, :accept => "application/x-yaml"}))
     end
+    
+    def confusion_matrix
+      [[nil,"true","false","osterhase"],["true",1,2,3],["false",2,3,4],["osterhase",5,6,7]]
+    end
   end
   
   class Crossvalidation
