@@ -85,8 +85,27 @@ module OpenTox
       @metadata = YAML.load(OpenTox::RestClientWrapper.get(uri,{:subjectid => subjectid, :accept => "application/x-yaml"}))
     end
     
+    # returns confusion matrix as array, predicted values are in rows
+    # example:
+    # [[nil,"active","moderate","inactive"],["active",1,3,99],["moderate",4,2,8],["inactive",3,8,6]]
+    # -> 99 inactive compounds have been predicted as active 
     def confusion_matrix
-      [[nil,"true","false","osterhase"],["true",1,2,3],["false",2,3,4],["osterhase",5,6,7]]
+      raise "no classification statistics, probably a regression valdiation" unless @metadata[OT.classificationStatistics]
+      matrix =  @metadata[OT.classificationStatistics][OT.confusionMatrix][OT.confusionMatrixCell]
+      values = matrix.collect{|cell| cell[OT.confusionMatrixPredicted]}.uniq
+      table = [[nil]+values]
+      values.each do |c|
+        table << [c]
+        values.each do |r|
+          matrix.each do |cell|
+            if cell[OT.confusionMatrixPredicted]==c and cell[OT.confusionMatrixActual]==r
+              table[-1] << cell[OT.confusionMatrixValue].to_f
+              break
+            end
+          end
+        end
+      end
+      table
     end
   end
   
