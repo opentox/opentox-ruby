@@ -84,36 +84,6 @@ module OpenTox
     def load_metadata( subjectid=nil )
       @metadata = YAML.load(OpenTox::RestClientWrapper.get(uri,{:subjectid => subjectid, :accept => "application/x-yaml"}))
     end
-    
-    # PENDING: creates summary as used for ToxCreate
-    def summary
-      if @metadata[OT.classificationStatistics]
-        res = {
-          :nr_predictions => @metadata[OT.numInstances].to_i - @metadata[OT.numUnpredicted].to_i,
-          :correct_predictions => @metadata[OT.classificationStatistics][OT.percentCorrect],
-          :weighted_area_under_roc => @metadata[OT.classificationStatistics][OT.weightedAreaUnderRoc],
-        }
-        @metadata[OT.classificationStatistics][OT.classValueStatistics].each do |s|
-          if s[OT.classValue].to_s=="true"
-            res[:true_positives] = s[OT.numTruePositives]
-            res[:false_positives] = s[OT.numFalsePositives]
-            res[:true_negatives] = s[OT.numTrueNegatives]
-            res[:false_negatives] = s[OT.numFalseNegatives]
-            res[:sensitivity] = s[OT.truePositiveRate]
-            res[:specificity] = s[OT.trueNegativeRate]
-            break
-          end
-        end
-        res
-      elsif @metadata[OT.regressionStatistics]
-        {
-          :nr_predictions => @metadata[OT.numInstances].to_i - @metadata[OT.numUnpredicted].to_i,
-          :r_square => @metadata[OT.regressionStatistics][OT.rSquare],
-          :root_mean_squared_error => @metadata[OT.regressionStatistics][OT.rootMeanSquaredError],
-          :mean_absolute_error => @metadata[OT.regressionStatistics][OT.meanAbsoluteError],
-        }
-      end
-    end
   end
   
   class Crossvalidation
@@ -171,9 +141,9 @@ module OpenTox
       @metadata = YAML.load(OpenTox::RestClientWrapper.get(uri,{:subjectid => subjectid, :accept => "application/x-yaml"}))
     end
     
-    # PENDING: creates summary as used for ToxCreate
-    def summary( subjectid=nil )
-      Validation.from_cv_statistics( @uri, subjectid ).summary
+    # returns a Validation object containing the statistics of the crossavlidation
+    def statistics( subjectid=nil )
+      Validation.from_cv_statistics( @uri, subjectid )
     end
   end
   
