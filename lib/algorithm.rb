@@ -208,6 +208,9 @@ module OpenTox
         raise "No neighbors found." unless neighbors.size>0
         begin
 
+          weights = neighbors.collect do |n|
+            Algorithm.gauss(n[:similarity])
+          end
           acts = neighbors.collect do |n|
             act = n[:activity] 
             act.to_f
@@ -216,57 +219,50 @@ module OpenTox
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
           n_prop = props[0] # is a matrix, i.e. two nested Arrays.
           q_prop = props[1] # is an Array.
- 
+
           n_prop = n_prop << q_prop # attach q_prop
           nr_cases, nr_features = get_sizes n_prop
-          
 
           LOGGER.debug "PCA..."
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
+          # GSL matrix operations: 
+          # to_a : row-wise conversion to nested array
+          # Statsample operations (build on GSL):
+          # to_scale: convert into Statsample format
 
-          # Centering and Scaling
-          #(0..nr_features-1).each { |i|
-          #  autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(data_matrix.col(i))
-          #  data_matrix.col(i)[0..nr_cases-1] = autoscaler.values
-          #}
 
           # Principal Components Analysis
-          data_matrix_hash = Hash.new
-          (0..nr_features-1).each { |i|
-            column_view = data_matrix.col(i)
-            data_matrix_hash[i] = column_view.to_scale
-          }
-          dataset_hash = data_matrix_hash.to_dataset
-          pca = OpenTox::Algorithm::Transform::PCA.new(dataset_hash)
+          pca = OpenTox::Algorithm::Transform::PCA.new(data_matrix)
           n_prop = pca.dataset_transformed_matrix.transpose.to_a
 
           ## Normalizing along each Principal Component
-          #nr_cases, nr_features = get_sizes n_prop
           #data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
           #(0..nr_features-1).each { |i|
           #  normalizer = OpenTox::Algorithm::Transform::Log10.new(data_matrix.col(i).to_a)
           #  data_matrix.col(i)[0..nr_cases-1] = normalizer.values
           #}
 
-          # Mangle data
+          # attach intercept column
+          #nr_cases, nr_features = get_sizes n_prop
+          #data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
+          #intercept = GSL::Matrix.alloc(Array.new(nr_cases,1.0),nr_cases,1)
+          #data_matrix = data_matrix.horzcat(intercept)
+          #n_prop = data_matrix.to_a
+
+
+          # set data
           q_prop = n_prop.pop # detach query instance
           nr_cases, nr_features = get_sizes n_prop
           n_prop.flatten!
-          y_x_rel = nr_cases.to_f / nr_features
-          repeat_factor = (1/y_x_rel).ceil
-          n_prop_tmp = Array.new ; repeat_factor.times { n_prop_tmp.concat n_prop } ; n_prop = n_prop_tmp
-          acts_tmp = Array.new ; repeat_factor.times { acts_tmp.concat acts } ; acts = acts_tmp
-
-          # set data
-          LOGGER.debug "Setting prop data ..."
-          prop_matrix = GSL::Matrix[n_prop, nr_cases * repeat_factor, nr_features]
-          y = GSL::Vector[acts]
-          q_prop = GSL::Vector[q_prop]
+          prop_matrix = GSL::Matrix.alloc(n_prop, nr_cases, nr_features)
+          y = GSL::Vector.alloc(acts)
+          w = GSL::Vector.alloc(weights)
+          q_prop = GSL::Vector.alloc(q_prop)
 
           # model + support vectors
           LOGGER.debug "Creating MLR model ..."
-          work = GSL::MultiFit::Workspace.alloc(nr_cases * repeat_factor, nr_features)
-          c, cov, chisq, status = GSL::MultiFit::linear(prop_matrix, y, work)
+#          work = GSL::MultiFit::Workspace.alloc(nr_cases * repeat_factor, nr_features)
+          c, cov, chisq, status = GSL::MultiFit::wlinear(prop_matrix, w, y)
           LOGGER.debug "Predicting ..."
           prediction = GSL::MultiFit::linear_est(q_prop, c, cov)[0]
           transformer = eval "#{transform[:class]}.new ([#{prediction}], #{transform[:offset]})"
@@ -280,7 +276,7 @@ module OpenTox
 
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
-          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          #LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
 
       end
@@ -513,7 +509,7 @@ module OpenTox
           prediction
       end
 
-      # Get X and Y size of a nested Array
+      # Get X and Y size of a nested Array (Matrix)
       def self.get_sizes(matrix)
         begin
           nr_cases = matrix.size
@@ -580,14 +576,13 @@ module OpenTox
         attr_accessor :offset, :values
 
         def initialize *args
-          @distance_to_zero = 0.000001
+          @distance_to_zero = 0.000000001 # 1 / 1 billion
           case args.size
           when 1
             begin
               values=args[0]
               raise "Cannot transform, values empty." if values.size==0
               @offset = values.minmax[0] 
-              puts @offset
               @offset = -1.0 * @offset if @offset>0.0 
               @values = values.collect { |v| v - @offset }   # slide > anchor
               @values.collect! { |v| v + @distance_to_zero }  #
@@ -605,38 +600,120 @@ module OpenTox
         end
       end
 
-      class AutoScale # center on mean and divide by stdev
-        attr_accessor :values
+      # The transformer that does nothing.
+      class NOP
+        attr_accessor :offset, :values
 
-        def initialize values
-          mean = values.to_scale.mean
-          stdev = values.to_scale.standard_deviation_sample
-          @values = values.collect{|vi| vi - mean }
-          @values.collect! {|vi| vi / stdev }
+        def initialize *args
+          @offset = 0.0
+          @distance_to_zero = 0.0
+          case args.size
+          when 1
+            begin
+              values=args[0]
+              raise "Cannot transform, values empty." if values.size==0
+              @offset = values.minmax[0] 
+              @offset = -1.0 * @offset if @offset>0.0 
+              @values = values.collect { |v| v - @offset }   # slide > anchor
+              @values.collect! { |v| v + @distance_to_zero }  #
+              @values.collect! { |v| Math::log10 v } # log10 (can fail)
+            rescue Exception => e
+              LOGGER.debug "#{e.class}: #{e.message}"
+              LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+            end
+          when 2
+            @offset = args[1].to_f
+            @values = args[0].collect { |v| 10**v }
+            @values.collect! { |v| v - @distance_to_zero }
+            @values.collect! { |v| v + @offset }
+          end
         end
       end
 
-      class PCA
-        attr_accessor :dataset_transformed_matrix
 
-        def initialize dataset
-          @cor_matrix=Statsample::Bivariate.correlation_matrix(dataset)
-          pca=Statsample::Factor::PCA.new(@cor_matrix)
-          eigenvalue_sums = Array.new
-          (0..dataset.fields.size-1).each { |i|
-            eigenvalue_sums << pca.eigenvalues[0..i].inject{ |sum, ev| sum + ev }
-          }
-          # compression cutoff @0.9
-          @eigenvectors_selected = Array.new
-          pca.eigenvectors.each_with_index { |ev, i|
-            if (eigenvalue_sums[i] <= (0.95*dataset.fields.size)) || (@eigenvectors_selected.size == 0)
-              @eigenvectors_selected << ev.to_a
-            end
-          }
-          eigenvector_matrix = GSL::Matrix.alloc(@eigenvectors_selected.flatten, dataset.fields.size, @eigenvectors_selected.size).transpose
-          dataset_matrix = dataset.to_gsl.transpose
-          @dataset_transformed_matrix =  eigenvector_matrix * dataset_matrix # dataset_transformed_matrix is in row-wise notation now
+      # Auto-Scaler for Arrays
+      # Center on mean and divide by standard deviation
+      class AutoScale 
+        attr_accessor :scaled_values, :mean, :stdev
+        def initialize values
+          @scaled_values = values
+          @mean = @scaled_values.to_scale.mean
+          @stdev = @scaled_values.to_scale.standard_deviation_sample
+          @scaled_values = @scaled_values.collect {|vi| vi - @mean }
+          @scaled_values.collect! {|vi| vi / @stdev }
         end
+      end
+
+      # Principal Components Analysis
+      # Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
+      class PCA
+        attr_accessor :data_matrix, :data_transformed_matrix, :eigenvector_matrix, :eigenvalue_sums, :autoscaler
+
+        # Creates a transformed dataset as GSL::Matrix.
+        # @param [GSL::Matrix] Data matrix.
+        # @param [Float] Compression ratio from [0,1].
+        # @return [GSL::Matrix] Data transformed matrix.
+        def initialize data_matrix, compression=0.05
+          begin
+            @data_matrix = data_matrix
+            @data_matrix_scaled = GSL::Matrix.alloc(@data_matrix.size1, @data_matrix.size2)
+            @compression = compression.to_f
+            @stdev = Array.new
+            @mean = Array.new
+
+            # Scaling of Axes
+            (0..@data_matrix.size2-1).each { |i|
+              @autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(@data_matrix.col(i))
+              @data_matrix_scaled.col(i)[0..@data_matrix.size1-1] = @autoscaler.scaled_values
+              @stdev << @autoscaler.stdev
+              @mean << @autoscaler.mean
+            }
+
+            data_matrix_hash = Hash.new
+            (0..@data_matrix.size2-1).each { |i|
+              column_view = @data_matrix_scaled.col(i)
+              data_matrix_hash[i] = column_view.to_scale
+            }
+            dataset_hash = data_matrix_hash.to_dataset # see http://goo.gl/7XcW9
+            cor_matrix=Statsample::Bivariate.correlation_matrix(dataset_hash)
+            pca=Statsample::Factor::PCA.new(cor_matrix)
+            pca.eigenvalues.each { |ev| raise "PCA failed!" unless !ev.nan? }
+            @eigenvalue_sums = Array.new
+            (0..dataset_hash.fields.size-1).each { |i|
+              @eigenvalue_sums << pca.eigenvalues[0..i].inject{ |sum, ev| sum + ev }
+            }
+            eigenvectors_selected = Array.new
+            pca.eigenvectors.each_with_index { |ev, i|
+              if (@eigenvalue_sums[i] <= ((1.0-@compression)*dataset_hash.fields.size)) || (eigenvectors_selected.size == 0)
+                eigenvectors_selected << ev.to_a
+              end
+            }
+            @eigenvector_matrix = GSL::Matrix.alloc(eigenvectors_selected.flatten, eigenvectors_selected.size, dataset_hash.fields.size).transpose
+            dataset_matrix = dataset_hash.to_gsl.transpose
+            @data_transformed_matrix = (@eigenvector_matrix.transpose * dataset_matrix).transpose
+          rescue Exception => e
+              LOGGER.debug "#{e.class}: #{e.message}"
+              LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          end
+        end
+
+        # Restores data in the original feature space (possibly with compression loss).
+        # @return [GSL::Matrix] Data matrix.
+        def restore
+          begin 
+            data_matrix_restored = (@eigenvector_matrix * @data_transformed_matrix.transpose).transpose # reverse pca
+            # reverse scaling
+            (0..data_matrix_restored.size2-1).each { |i|
+              data_matrix_restored.col(i)[0..data_matrix_restored.size1-1] *= @stdev[i]
+              data_matrix_restored.col(i)[0..data_matrix_restored.size1-1] += @mean[i]
+            }
+            data_matrix_restored
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          end
+        end
+
       end
 
     end
