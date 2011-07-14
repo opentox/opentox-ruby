@@ -91,7 +91,7 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :balanced, :transform
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :transform
 
       def initialize(uri=nil)
 
@@ -116,7 +116,6 @@ module OpenTox
 
         @min_sim = 0.3
         @prop_kernel = false
-        @balanced = false
         @transform = { "class" => "NOP"  }
 
       end
@@ -213,77 +212,14 @@ module OpenTox
 
         unless database_activity(subjectid) # adds database activity to @prediction_dataset
 
-          if @balanced && OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "classification"
-            # AM: Balancing, see http://www.maunz.de/wordpress/opentox/2011/balanced-lazar
-            l = Array.new # larger 
-            s = Array.new # smaller fraction
-
-            raise "no fingerprints in model" if @fingerprints.size==0
-
-            @fingerprints.each do |training_compound,training_features|
-              @activities[training_compound].each do |act|
-                case act.to_s
-                when "0" 
-                  l << training_compound
-                when "1"  
-                  s << training_compound
-                else
-                  LOGGER.warn "BLAZAR: Activity #{act.to_s} should not be reached (supports only two classes)."
-                end
-              end
-            end
-            if s.size > l.size then 
-              l,s = s,l # happy swapping
-              LOGGER.info "BLAZAR: |s|=#{s.size}, |l|=#{l.size}."
-            end
-            # determine ratio
-            modulo = l.size.divmod(s.size)# modulo[0]=ratio, modulo[1]=rest
-            LOGGER.info "BLAZAR: Balance: #{modulo[0]}, rest #{modulo[1]}."
-
-            # AM: Balanced predictions
-            addon = (modulo[1].to_f/modulo[0]).ceil # what will be added in each round 
-            slack = (addon!=0 ? modulo[1].divmod(addon)[1] : 0) # what remains for the last round
-            position = 0
-            predictions = Array.new
-
-            prediction_best=nil
-            neighbors_best=nil
-
-            begin
-              for i in 1..modulo[0] do
-                (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
-                LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
-                neighbors_balanced(s, l, position, lr_size) # get ratio fraction of larger part
-                if @prop_kernel && ( @prediction_algorithm.include?("svm") || @prediction_algorithm.include?("local_mlr_prop") )
-                  props = get_props 
-                else
-                  props = nil
-                end
-                prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values, :value_map => @value_map}, props)")
-                if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
-                  prediction_best=prediction 
-                  neighbors_best=@neighbors
-                end
-                position = position + lr_size
-              end
-            rescue Exception => e
-              LOGGER.error "BLAZAR failed in prediction: "+e.class.to_s+": "+e.message
-            end
-
-            prediction=prediction_best
-            @neighbors=neighbors_best
-            ### END AM balanced predictions
-
-          else # AM: no balancing or regression
-            LOGGER.info "LAZAR: Unbalanced."
-            neighbors
-            if @prop_kernel && ( @prediction_algorithm.include?("svm") || @prediction_algorithm.include?("local_mlr_prop") )
-             props = get_props 
-            else
-             props = nil
-            end
-            prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values, :value_map => @value_map}, props, @transform)")
+          neighbors
+          if @prop_kernel && ( @prediction_algorithm.include?("svm") || @prediction_algorithm.include?("local_mlr_prop") )
+           props = get_props 
+          else
+           props = nil
           end
+          prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values, :value_map => @value_map}, props, @transform)")
+
           
           value_feature_uri = File.join( @uri, "predicted", "value")
           confidence_feature_uri = File.join( @uri, "predicted", "confidence")
@@ -382,17 +318,6 @@ module OpenTox
           LOGGER.debug "get_props failed with '" + $! + "'"
         end
         [ matrix, row ]
-      end
-
-      # Find neighbors and store them as object variable, access only a subset of compounds for that.
-      def neighbors_balanced(s, l, start, offset)
-        @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
-        @neighbors = []
-        [ l[start, offset ] , s ].flatten.each do |training_compound| # AM: access only a balanced subset
-          training_features = @fingerprints[training_compound]
-          add_neighbor training_features, training_compound
-        end
-
       end
 
       # Find neighbors and store them as object variable, access all compounds for that.
