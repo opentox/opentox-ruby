@@ -8,7 +8,7 @@ begin
     gem.summary = %Q{Ruby wrapper for the OpenTox REST API}
     gem.description = %Q{Ruby wrapper for the OpenTox REST API (http://www.opentox.org)}
     gem.email = "helma@in-silico.ch"
-    gem.homepage = "http://github.com/helma/opentox-ruby"
+    gem.homepage = "http://github.com/opentox/opentox-ruby"
     gem.authors = ["Christoph Helma, Martin Guetlein, Andreas Maunz, Micha Rautenberg, David Vorgrimmler"]
     # dependencies with versions
     gem.add_dependency "sinatra", "=1.2.6"
