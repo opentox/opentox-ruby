@@ -257,7 +257,7 @@ module OpenTox
           LOGGER.debug "Creating MLR model ..."
           c, cov, chisq, status = GSL::MultiFit::wlinear(data_matrix, w, y)
           prediction = GSL::MultiFit::linear_est(q_prop, c, cov)[0]
-          transformer = eval "#{transform[:class]}.new ([#{prediction}], #{transform[:offset]})"
+          transformer = eval "OpenTox::Algorithm::Transform::#{transform["class"]}.new ([#{prediction}], #{transform["offset"]})"
           prediction = transformer.values[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
 
@@ -325,7 +325,7 @@ module OpenTox
           acts = neighbors.collect{ |n| n[:activity].to_f }
           sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) }
           prediction = (props.nil? ? local_svm(neighbors, acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr", params))
-          transformer = eval "#{transform[:class]}.new ([#{prediction}], #{transform[:offset]})"
+          transformer = eval "OpenTox::Algorithm::Transform::#{transform["class"]}.new ([#{prediction}], #{transform["offset"]})"
           prediction = transformer.values[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           conf = sims.inject{|sum,x| sum + x }
