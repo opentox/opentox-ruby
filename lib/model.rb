@@ -117,7 +117,7 @@ module OpenTox
         @min_sim = 0.3
         @prop_kernel = false
         @balanced = false
-        @transform = nil
+        @transform = { "class" => "NOP"  }
 
       end
 

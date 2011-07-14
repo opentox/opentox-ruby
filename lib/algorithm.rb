@@ -204,6 +204,10 @@ module OpenTox
       # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
       # @return [Numeric] A prediction value.
       def self.local_mlr_prop(neighbors, params, props, transform=nil)
+        # GSL matrix operations: 
+        # to_a : row-wise conversion to nested array
+        # Statsample operations (build on GSL):
+        # to_scale: convert into Statsample format
 
         raise "No neighbors found." unless neighbors.size>0
         begin
@@ -222,18 +226,12 @@ module OpenTox
 
           n_prop = n_prop << q_prop # attach q_prop
           nr_cases, nr_features = get_sizes n_prop
-
-          LOGGER.debug "PCA..."
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
-          # GSL matrix operations: 
-          # to_a : row-wise conversion to nested array
-          # Statsample operations (build on GSL):
-          # to_scale: convert into Statsample format
-
 
           # Principal Components Analysis
+          LOGGER.debug "PCA..."
           pca = OpenTox::Algorithm::Transform::PCA.new(data_matrix)
-          n_prop = pca.dataset_transformed_matrix.transpose.to_a
+          data_matrix = pca.data_transformed_matrix
 
           ## Normalizing along each Principal Component
           #data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
@@ -242,28 +240,22 @@ module OpenTox
           #  data_matrix.col(i)[0..nr_cases-1] = normalizer.values
           #}
 
-          # attach intercept column
-          #nr_cases, nr_features = get_sizes n_prop
-          #data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
-          #intercept = GSL::Matrix.alloc(Array.new(nr_cases,1.0),nr_cases,1)
-          #data_matrix = data_matrix.horzcat(intercept)
-          #n_prop = data_matrix.to_a
+          # Attach intercept column to data
+          intercept = GSL::Matrix.alloc(Array.new(nr_cases,1.0),nr_cases,1)
+          data_matrix = data_matrix.horzcat(intercept)
 
-
-          # set data
-          q_prop = n_prop.pop # detach query instance
+          # detach query instance
+          n_prop = data_matrix.to_a
+          q_prop = n_prop.pop 
           nr_cases, nr_features = get_sizes n_prop
-          n_prop.flatten!
-          prop_matrix = GSL::Matrix.alloc(n_prop, nr_cases, nr_features)
+          data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
           y = GSL::Vector.alloc(acts)
           w = GSL::Vector.alloc(weights)
           q_prop = GSL::Vector.alloc(q_prop)
 
           # model + support vectors
           LOGGER.debug "Creating MLR model ..."
-#          work = GSL::MultiFit::Workspace.alloc(nr_cases * repeat_factor, nr_features)
-          c, cov, chisq, status = GSL::MultiFit::wlinear(prop_matrix, w, y)
-          LOGGER.debug "Predicting ..."
+          c, cov, chisq, status = GSL::MultiFit::wlinear(data_matrix, w, y)
           prediction = GSL::MultiFit::linear_est(q_prop, c, cov)[0]
           transformer = eval "#{transform[:class]}.new ([#{prediction}], #{transform[:offset]})"
           prediction = transformer.values[0]
@@ -276,7 +268,6 @@ module OpenTox
 
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
-          #LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
 
       end
@@ -545,9 +536,13 @@ module OpenTox
     module Transform
       include Algorithm
 
-      class Inverter # to improve normality conditions on a vector
+      # The transformer that inverts values.
+      # 1/x is used, after values have been moved >= 1.
+      class Inverter
         attr_accessor :offset, :values
 
+        # @params[Array] Values to transform.
+        # @params[Float] Offset for restore.
         def initialize *args
           case args.size
           when 1
@@ -572,9 +567,13 @@ module OpenTox
         end
       end
 
-      class Log10 # to improve normality conditions on a vector
+      # The transformer that takes logs.
+      # Log10 is used, after values have been moved > 0.
+      class Log10
         attr_accessor :offset, :values
 
+        # @params[Array] Values to transform / restore.
+        # @params[Float] Offset for restore.
         def initialize *args
           @distance_to_zero = 0.000000001 # 1 / 1 billion
           case args.size
@@ -600,32 +599,20 @@ module OpenTox
         end
       end
 
-      # The transformer that does nothing.
+      # The transformer that does nothing (No OPeration).
       class NOP
         attr_accessor :offset, :values
 
+        # @params[Array] Values to transform / restore.
+        # @params[Float] Offset for restore.
         def initialize *args
           @offset = 0.0
           @distance_to_zero = 0.0
           case args.size
           when 1
-            begin
-              values=args[0]
-              raise "Cannot transform, values empty." if values.size==0
-              @offset = values.minmax[0] 
-              @offset = -1.0 * @offset if @offset>0.0 
-              @values = values.collect { |v| v - @offset }   # slide > anchor
-              @values.collect! { |v| v + @distance_to_zero }  #
-              @values.collect! { |v| Math::log10 v } # log10 (can fail)
-            rescue Exception => e
-              LOGGER.debug "#{e.class}: #{e.message}"
-              LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-            end
+            @values = args[0]
           when 2
-            @offset = args[1].to_f
-            @values = args[0].collect { |v| 10**v }
-            @values.collect! { |v| v - @distance_to_zero }
-            @values.collect! { |v| v + @offset }
+            @values = args[0]
           end
         end
       end
@@ -635,6 +622,8 @@ module OpenTox
       # Center on mean and divide by standard deviation
       class AutoScale 
         attr_accessor :scaled_values, :mean, :stdev
+
+        # @params[Array] Values to transform.
         def initialize values
           @scaled_values = values
           @mean = @scaled_values.to_scale.mean
