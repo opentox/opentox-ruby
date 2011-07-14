@@ -212,13 +212,8 @@ module OpenTox
         raise "No neighbors found." unless neighbors.size>0
         begin
 
-          weights = neighbors.collect do |n|
-            Algorithm.gauss(n[:similarity])
-          end
-          acts = neighbors.collect do |n|
-            act = n[:activity] 
-            act.to_f
-          end # activities of neighbors for supervised learning
+          acts = neighbors.collect { |n| act = n[:activity].to_f }
+          sims = neighbors.collect { |n| Algorithm.gauss(n[:similarity]) }
 
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
           n_prop = props[0] # is a matrix, i.e. two nested Arrays.
@@ -233,30 +228,20 @@ module OpenTox
           pca = OpenTox::Algorithm::Transform::PCA.new(data_matrix)
           data_matrix = pca.data_transformed_matrix
 
-          ## Normalizing along each Principal Component
-          #data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
-          #(0..nr_features-1).each { |i|
-          #  normalizer = OpenTox::Algorithm::Transform::Log10.new(data_matrix.col(i).to_a)
-          #  data_matrix.col(i)[0..nr_cases-1] = normalizer.values
-          #}
-
           # Attach intercept column to data
           intercept = GSL::Matrix.alloc(Array.new(nr_cases,1.0),nr_cases,1)
           data_matrix = data_matrix.horzcat(intercept)
 
-          # detach query instance
+          # Detach query instance
           n_prop = data_matrix.to_a
           q_prop = n_prop.pop 
           nr_cases, nr_features = get_sizes n_prop
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
-          y = GSL::Vector.alloc(acts)
-          w = GSL::Vector.alloc(weights)
-          q_prop = GSL::Vector.alloc(q_prop)
 
           # model + support vectors
           LOGGER.debug "Creating MLR model ..."
-          c, cov, chisq, status = GSL::MultiFit::wlinear(data_matrix, w, y)
-          prediction = GSL::MultiFit::linear_est(q_prop, c, cov)[0]
+          c, cov, chisq, status = GSL::MultiFit::wlinear(data_matrix, sims.to_scale.to_gsl, acts.to_scale.to_gsl)
+          prediction = GSL::MultiFit::linear_est(q_prop.to_scale.to_gsl, c, cov)[0]
           transformer = eval "OpenTox::Algorithm::Transform::#{transform["class"]}.new ([#{prediction}], #{transform["offset"]})"
           prediction = transformer.values[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
@@ -348,9 +333,8 @@ module OpenTox
         raise "No neighbors found." unless neighbors.size>0
         begin 
           acts = neighbors.collect { |n| act = n[:activity] }
-          acts_f = acts
           sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
-          prediction = (props.nil? ? local_svm(neighbors, acts_f, sims, "C-bsvc", params) : local_svm_prop(props, acts_f, "C-bsvc", params))
+          prediction = (props.nil? ? local_svm(neighbors, acts, sims, "C-bsvc", params) : local_svm_prop(props, acts, "C-bsvc", params))
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           conf = sims.inject{|sum,x| sum + x }
           confidence = conf/neighbors.size if neighbors.size > 0

@@ -213,14 +213,10 @@ module OpenTox
         unless database_activity(subjectid) # adds database activity to @prediction_dataset
 
           neighbors
-          if @prop_kernel && ( @prediction_algorithm.include?("svm") || @prediction_algorithm.include?("local_mlr_prop") )
-           props = get_props 
-          else
-           props = nil
-          end
+          props=nil
+          props = get_props if @prop_kernel && ( @prediction_algorithm.include?("svm") || @prediction_algorithm.include?("local_mlr_prop") )
           prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values, :value_map => @value_map}, props, @transform)")
 
-          
           value_feature_uri = File.join( @uri, "predicted", "value")
           confidence_feature_uri = File.join( @uri, "predicted", "confidence")
 
