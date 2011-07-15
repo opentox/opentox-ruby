@@ -203,13 +203,7 @@ module OpenTox
       # @return [Numeric] A prediction value.
       def self.local_mlr_prop(params)
 
-        # GSL matrix operations: 
-        # to_a : row-wise conversion to nested array
-        #
-        # Statsample operations (build on GSL):
-        # to_scale: convert into Statsample format
-
-        raise "No neighbors found." unless neighbors.size>0
+        raise "No neighbors found." unless params[:neighbors].size>0
         begin
 
           props = params[:prop_kernel] ? get_props(params) : nil
@@ -217,10 +211,33 @@ module OpenTox
           sims = params[:neighbors].collect { |n| Algorithm.gauss(n[:similarity]) }
 
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
-          n_prop = props[0] # is a matrix, i.e. two nested Arrays.
-          q_prop = props[1] # is an Array.
+          prediction = mlr ( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :act => acts} )
+          transformer = eval "OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})"
+          prediction = transformer.values[0]
+          LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
+          sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
+          conf = sims.inject{|sum,x| sum + x }
+          confidence = conf/params[:neighbors].size if params[:neighbors].size > 0
+          {:prediction => prediction, :confidence => confidence}
 
-          n_prop = n_prop << q_prop # attach q_prop
+        rescue Exception => e
+          LOGGER.debug "#{e.class}: #{e.message}"
+        end
+
+      end
+
+      def self.mlr(params)
+
+        # GSL matrix operations: 
+        # to_a : row-wise conversion to nested array
+        #
+        # Statsample operations (build on GSL):
+        # to_scale: convert into Statsample format
+
+        begin
+          n_prop = params[:n_prop].collect { |v| v }
+          q_prop = params[:q_prop].collect { |v| v }
+          n_prop << q_prop # attach q_prop
           nr_cases, nr_features = get_sizes n_prop
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
 
@@ -241,17 +258,8 @@ module OpenTox
 
           # model + support vectors
           LOGGER.debug "Creating MLR model ..."
-          c, cov, chisq, status = GSL::MultiFit::wlinear(data_matrix, sims.to_scale.to_gsl, acts.to_scale.to_gsl)
-          prediction = GSL::MultiFit::linear_est(q_prop.to_scale.to_gsl, c, cov)[0]
-          transformer = eval "OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})"
-          prediction = transformer.values[0]
-          LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
-
-          sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
-          conf = sims.inject{|sum,x| sum + x }
-          confidence = conf/params[:neighbors].size if params[:neighbors].size > 0
-          {:prediction => prediction, :confidence => confidence}
-
+          c, cov, chisq, status = GSL::MultiFit::wlinear(data_matrix, params[:sims].to_scale.to_gsl, params[:acts].to_scale.to_gsl)
+          GSL::MultiFit::linear_est(q_prop.to_scale.to_gsl, c, cov)[0]
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
         end
@@ -489,7 +497,7 @@ module OpenTox
           LOGGER.debug "#{e.class}: #{e.message}"
           LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
-        puts "NRC: #{nr_cases}, NRF: #{nr_features}"
+        #puts "NRC: #{nr_cases}, NRF: #{nr_features}"
         [ nr_cases, nr_features ]
       end
 
