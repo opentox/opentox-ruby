@@ -213,9 +213,15 @@ module OpenTox
         unless database_activity(subjectid) # adds database activity to @prediction_dataset
 
           neighbors
-          props=nil
-          props = get_props if @prop_kernel && ( @prediction_algorithm.include?("svm") || @prediction_algorithm.include?("local_mlr_prop") )
-          prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values, :value_map => @value_map}, props, @transform)")
+          prediction = eval("#{@prediction_algorithm} ( { :neighbors => @neighbors, 
+                                                          :compound => @compound,
+                                                          :features => @features, 
+                                                          :p_values => @p_values, 
+                                                          :fingerprints => @fingerprints,
+                                                          :similarity_algorithm => @similarity_algorithm, 
+                                                          :prop_kernel => @prop_kernel,
+                                                          :value_map => @value_map, 
+                                                          :transform => @transform } ) ")
 
           value_feature_uri = File.join( @uri, "predicted", "value")
           confidence_feature_uri = File.join( @uri, "predicted", "confidence")
@@ -289,32 +295,7 @@ module OpenTox
         @prediction_dataset
       end
 
-      # Calculate the propositionalization matrix aka instantiation matrix (0/1 entries for features)
-      # Same for the vector describing the query compound
-      def get_props
-        matrix = Array.new
-        begin 
-          @neighbors.each do |n|
-            n = n[:compound]
-            row = []
-            @features.each do |f|
-              if ! @fingerprints[n].nil? 
-                row << (@fingerprints[n].include?(f) ? 0.0 : @p_values[f])
-              else
-                row << 0.0
-              end
-            end
-            matrix << row
-          end
-          row = []
-          @features.each do |f|
-            row << (@compound.match([f]).size == 0 ? 0.0 : @p_values[f])
-          end
-        rescue Exception => e
-          LOGGER.debug "get_props failed with '" + $! + "'"
-        end
-        [ matrix, row ]
-      end
+      
 
       # Find neighbors and store them as object variable, access all compounds for that.
       def neighbors

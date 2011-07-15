@@ -199,21 +199,22 @@ module OpenTox
 
       # Local multi-linear regression (MLR) prediction from neighbors. 
       # Uses propositionalized setting.
-      # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
-      # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
-      # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
+      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map,:transform` are required
       # @return [Numeric] A prediction value.
-      def self.local_mlr_prop(neighbors, params, props, transform=nil)
+      def self.local_mlr_prop(params)
+
         # GSL matrix operations: 
         # to_a : row-wise conversion to nested array
+        #
         # Statsample operations (build on GSL):
         # to_scale: convert into Statsample format
 
         raise "No neighbors found." unless neighbors.size>0
         begin
 
-          acts = neighbors.collect { |n| act = n[:activity].to_f }
-          sims = neighbors.collect { |n| Algorithm.gauss(n[:similarity]) }
+          props = params[:prop_kernel] ? get_props(params) : nil
+          acts = params[:neighbors].collect { |n| act = n[:activity].to_f }
+          sims = params[:neighbors].collect { |n| Algorithm.gauss(n[:similarity]) }
 
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
           n_prop = props[0] # is a matrix, i.e. two nested Arrays.
@@ -242,13 +243,13 @@ module OpenTox
           LOGGER.debug "Creating MLR model ..."
           c, cov, chisq, status = GSL::MultiFit::wlinear(data_matrix, sims.to_scale.to_gsl, acts.to_scale.to_gsl)
           prediction = GSL::MultiFit::linear_est(q_prop.to_scale.to_gsl, c, cov)[0]
-          transformer = eval "OpenTox::Algorithm::Transform::#{transform["class"]}.new ([#{prediction}], #{transform["offset"]})"
+          transformer = eval "OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})"
           prediction = transformer.values[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
 
-          sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
+          sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
           conf = sims.inject{|sum,x| sum + x }
-          confidence = conf/neighbors.size if neighbors.size > 0
+          confidence = conf/params[:neighbors].size if params[:neighbors].size > 0
           {:prediction => prediction, :confidence => confidence}
 
         rescue Exception => e
@@ -258,10 +259,10 @@ module OpenTox
       end
 
       # Classification with majority vote from neighbors weighted by similarity
-      # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity`
-      # @param [optional] params Ignored (only for compatibility with local_svm_regression)
-      # @return [Hash] Hash with keys `:prediction, :confidence`
-      def self.weighted_majority_vote(neighbors,params={}, props=nil, transform=nil)
+      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map,:transform` are required
+      # @return [Numeric] A prediction value.
+      def self.weighted_majority_vote(params)
+
         neighbor_contribution = 0.0
         confidence_sum = 0.0
         confidence = 0.0
@@ -269,7 +270,7 @@ module OpenTox
         positive_map_value= nil
         negative_map_value= nil
 
-        neighbors.each do |neighbor|
+        params[:neighbors].each do |neighbor|
           neighbor_weight = Algorithm.gauss(neighbor[:similarity]).to_f
           neighbor_contribution += neighbor[:activity].to_f * neighbor_weight
 
@@ -287,34 +288,34 @@ module OpenTox
 
         if params[:value_map].size == 2 
           if confidence_sum >= 0.0
-            prediction = 2 unless neighbors.size==0
+            prediction = 2 unless params[:neighbors].size==0
           elsif confidence_sum < 0.0
-            prediction = 1 unless neighbors.size==0
+            prediction = 1 unless params[:neighbors].size==0
           end
         else 
-          prediction = (neighbor_contribution/confidence_sum).round  unless neighbors.size==0  # AM: new multinomial prediction
+          prediction = (neighbor_contribution/confidence_sum).round  unless params[:neighbors].size==0  # AM: new multinomial prediction
         end 
 
-        confidence = confidence_sum/neighbors.size if neighbors.size > 0
+        confidence = confidence_sum/params[:neighbors].size if params[:neighbors].size > 0
         return {:prediction => prediction, :confidence => confidence.abs}
       end
 
       # Local support vector regression from neighbors 
-      # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
-      # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
-      # @return [Hash] Hash with keys `:prediction, :confidence`
-      def self.local_svm_regression(neighbors, params, props=nil, transform=nil)
+      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map,:transform` are required
+      # @return [Numeric] A prediction value.
+      def self.local_svm_regression(params)
 
-        raise "No neighbors found." unless neighbors.size>0
+        raise "No neighbors found." unless params[:neighbors].size>0
         begin
-          acts = neighbors.collect{ |n| n[:activity].to_f }
-          sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) }
-          prediction = (props.nil? ? local_svm(neighbors, acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr", params))
-          transformer = eval "OpenTox::Algorithm::Transform::#{transform["class"]}.new ([#{prediction}], #{transform["offset"]})"
+          props = params[:prop_kernel] ? get_props(params) : nil
+          acts = params[:neighbors].collect{ |n| n[:activity].to_f }
+          sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) }
+          prediction = props.nil? ? local_svm(acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr")
+          transformer = eval "OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})"
           prediction = transformer.values[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           conf = sims.inject{|sum,x| sum + x }
-          confidence = conf/neighbors.size
+          confidence = conf/params[:neighbors].size
           {:prediction => prediction, :confidence => confidence}
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
@@ -324,20 +325,19 @@ module OpenTox
       end
 
       # Local support vector classification from neighbors 
-      # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
-      # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
-      # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
-      # @return [Hash] Hash with keys `:prediction, :confidence`
-      def self.local_svm_classification(neighbors, params, props=nil, transform=nil)
+      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map,:transform` are required
+      # @return [Numeric] A prediction value.
+      def self.local_svm_classification(params)
 
-        raise "No neighbors found." unless neighbors.size>0
+        raise "No neighbors found." unless params[:neighbors].size>0
         begin 
-          acts = neighbors.collect { |n| act = n[:activity] }
-          sims = neighbors.collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
-          prediction = (props.nil? ? local_svm(neighbors, acts, sims, "C-bsvc", params) : local_svm_prop(props, acts, "C-bsvc", params))
+          props = params[:prop_kernel] ? get_props(params) : nil
+          acts = params[:neighbors].collect { |n| act = n[:activity] }
+          sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
+          prediction = props.nil? ? local_svm(acts, sims, "C-bsvc", params) : local_svm_prop(props, acts, "C-bsvc")
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           conf = sims.inject{|sum,x| sum + x }
-          confidence = conf/neighbors.size if neighbors.size > 0
+          confidence = conf/params[:neighbors].size if params[:neighbors].size > 0
           {:prediction => prediction, :confidence => confidence}
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
@@ -350,16 +350,14 @@ module OpenTox
       # Local support vector prediction from neighbors. 
       # Uses pre-defined Kernel Matrix.
       # Not to be called directly (use local_svm_regression or local_svm_classification).
-      # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
       # @param [Array] acts, activities for neighbors.
       # @param [Array] sims, similarities for neighbors.
       # @param [String] type, one of "nu-svr" (regression) or "C-bsvc" (classification).
-      # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
-      # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
+      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map,:transform` are required
       # @return [Numeric] A prediction value.
-      def self.local_svm(neighbors, acts, sims, type, params)
+      def self.local_svm(acts, sims, type, params)
         LOGGER.debug "Local SVM (Weighted Tanimoto Kernel)."
-        neighbor_matches = neighbors.collect{ |n| n[:features] } # URIs of matches
+        neighbor_matches = params[:neighbors].collect{ |n| n[:features] } # URIs of matches
         gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
         if neighbor_matches.size == 0
           raise "No neighbors found."
@@ -425,13 +423,11 @@ module OpenTox
       # Local support vector prediction from neighbors. 
       # Uses propositionalized setting.
       # Not to be called directly (use local_svm_regression or local_svm_classification).
-      # @param [Array] neighbors, each neighbor is a hash with keys `:similarity, :activity, :features`
-      # @param [Array] acts, activities for neighbors.
       # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
+      # @param [Array] acts, activities for neighbors.
       # @param [String] type, one of "nu-svr" (regression) or "C-bsvc" (classification).
-      # @param [Hash] params Keys `:similarity_algorithm,:p_values` are required
       # @return [Numeric] A prediction value.
-      def self.local_svm_prop(props, acts, type, params)
+      def self.local_svm_prop(props, acts, type)
 
           LOGGER.debug "Local SVM (Propositionalization / Kernlab Kernel)."
           n_prop = props[0] # is a matrix, i.e. two nested Arrays.
@@ -495,6 +491,38 @@ module OpenTox
         end
         puts "NRC: #{nr_cases}, NRF: #{nr_features}"
         [ nr_cases, nr_features ]
+      end
+
+      # Calculate the propositionalization matrix aka instantiation matrix (0/1 entries for features)
+      # Same for the vector describing the query compound
+      # @param[Array] neighbors.
+      # @param[OpenTox::Compound] query compound.
+      # @param[Array] Dataset Features.
+      # @param[Array] Fingerprints of neighbors.
+      # @param[Float] p-values of Features.
+      def self.get_props (params)
+        matrix = Array.new
+        begin 
+          params[:neighbors].each do |n|
+            n = n[:compound]
+            row = []
+            params[:features].each do |f|
+              if ! params[:fingerprints][n].nil? 
+                row << (params[:fingerprints][n].include?(f) ? 0.0 : params[:p_values][f])
+              else
+                row << 0.0
+              end
+            end
+            matrix << row
+          end
+          row = []
+          params[:features].each do |f|
+            row << (params[:compound].match([f]).size == 0 ? 0.0 : params[:p_values][f])
+          end
+        rescue Exception => e
+          LOGGER.debug "get_props failed with '" + $! + "'"
+        end
+        [ matrix, row ]
       end
 
     end
@@ -723,7 +751,6 @@ module OpenTox
       array.each { |e| sum += e.size }
       return sum
     end
-
 
     # Minimum Frequency
     # @param [Integer] per-mil value
