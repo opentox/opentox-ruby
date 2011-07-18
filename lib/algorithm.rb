@@ -753,9 +753,14 @@ module OpenTox
       Math.exp(-(d*d)/(2*sigma*sigma))
     end
 
+    # For symbolic features
+    # @param [Array] Array to test, must indicate non-occurrence with 0.
+    # @return [Boolean] Whether the feature is singular or non-occurring or present everywhere.
     def self.isnull_or_singular?(array)
       nr_zeroes = array.count(0)
-      return ((nr_zeroes == array.size) || (nr_zeroes == array.size-1) )
+      return (nr_zeroes == array.size) ||    # remove non-occurring feature
+             (nr_zeroes == array.size-1) ||  # remove singular feature
+             (nr_zeroes == 0)                # also remove feature present everywhere
     end
     
     # Median of an array
