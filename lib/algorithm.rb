@@ -211,7 +211,7 @@ module OpenTox
           sims = params[:neighbors].collect { |n| Algorithm.gauss(n[:similarity]) }
 
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
-          prediction = mlr ( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :act => acts} )
+          prediction = mlr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts} )
           transformer = eval "OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})"
           prediction = transformer.values[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
@@ -249,6 +249,10 @@ module OpenTox
           # Attach intercept column to data
           intercept = GSL::Matrix.alloc(Array.new(nr_cases,1.0),nr_cases,1)
           data_matrix = data_matrix.horzcat(intercept)
+          (0..data_matrix.size2-2).each { |i|
+            autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(data_matrix.col(i))
+            data_matrix.col(i)[0..data_matrix.size1-1] = autoscaler.scaled_values
+          }
 
           # Detach query instance
           n_prop = data_matrix.to_a
@@ -649,7 +653,7 @@ module OpenTox
           @mean = @scaled_values.to_scale.mean
           @stdev = @scaled_values.to_scale.standard_deviation_sample
           @scaled_values = @scaled_values.collect {|vi| vi - @mean }
-          @scaled_values.collect! {|vi| vi / @stdev }
+          @scaled_values.collect! {|vi| vi / @stdev } unless @stdev == 0.0
         end
       end
 
@@ -665,21 +669,36 @@ module OpenTox
         def initialize data_matrix, compression=0.05
           begin
             @data_matrix = data_matrix
-            @data_matrix_scaled = GSL::Matrix.alloc(@data_matrix.size1, @data_matrix.size2)
             @compression = compression.to_f
             @stdev = Array.new
             @mean = Array.new
 
-            # Scaling of Axes
+            # Objective Feature Selection
+            raise "Error! PCA needs at least two dimensions." if data_matrix.size2 < 2
+            @data_matrix_selected = nil
             (0..@data_matrix.size2-1).each { |i|
-              @autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(@data_matrix.col(i))
+              if !Algorithm::isnull_or_singular?(@data_matrix.col(i).to_a)
+                if @data_matrix_selected.nil?
+                  @data_matrix_selected = GSL::Matrix.alloc(@data_matrix.size1, 1) 
+                  @data_matrix_selected.col(0)[0..@data_matrix.size1-1] = @data_matrix.col(i)
+                else
+                  @data_matrix_selected = @data_matrix_selected.horzcat(GSL::Matrix.alloc(@data_matrix.col(i).to_a,@data_matrix.size1, 1))
+                end
+              end             
+            }
+            raise "Error! PCA needs at least two dimensions." if (@data_matrix_selected.nil? || @data_matrix_selected.size2 < 2)
+
+            # Scaling of Axes
+            @data_matrix_scaled = GSL::Matrix.alloc(@data_matrix_selected.size1, @data_matrix_selected.size2)
+            (0..@data_matrix_selected.size2-1).each { |i|
+              @autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(@data_matrix_selected.col(i))
               @data_matrix_scaled.col(i)[0..@data_matrix.size1-1] = @autoscaler.scaled_values
               @stdev << @autoscaler.stdev
               @mean << @autoscaler.mean
             }
 
             data_matrix_hash = Hash.new
-            (0..@data_matrix.size2-1).each { |i|
+            (0..@data_matrix_scaled.size2-1).each { |i|
               column_view = @data_matrix_scaled.col(i)
               data_matrix_hash[i] = column_view.to_scale
             }
@@ -713,7 +732,7 @@ module OpenTox
             data_matrix_restored = (@eigenvector_matrix * @data_transformed_matrix.transpose).transpose # reverse pca
             # reverse scaling
             (0..data_matrix_restored.size2-1).each { |i|
-              data_matrix_restored.col(i)[0..data_matrix_restored.size1-1] *= @stdev[i]
+              data_matrix_restored.col(i)[0..data_matrix_restored.size1-1] *= @stdev[i] unless @stdev[i] == 0.0
               data_matrix_restored.col(i)[0..data_matrix_restored.size1-1] += @mean[i]
             }
             data_matrix_restored
@@ -732,6 +751,11 @@ module OpenTox
     def self.gauss(x, sigma = 0.3) 
       d = 1.0 - x.to_f
       Math.exp(-(d*d)/(2*sigma*sigma))
+    end
+
+    def self.isnull_or_singular?(array)
+      nr_zeroes = array.count(0)
+      return ((nr_zeroes == array.size) || (nr_zeroes == 0) || (nr_zeroes == 1) || (nr_zeroes == array.size-1) )
     end
     
     # Median of an array
