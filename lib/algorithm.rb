@@ -520,7 +520,7 @@ module OpenTox
             row = []
             params[:features].each do |f|
               if ! params[:fingerprints][n].nil? 
-                row << (params[:fingerprints][n].include?(f) ? 0.0 : params[:p_values][f])
+                row << (params[:fingerprints][n].include?(f) ? params[:p_values][f] : 0.0)
               else
                 row << 0.0
               end
