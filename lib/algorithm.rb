@@ -755,7 +755,7 @@ module OpenTox
 
     def self.isnull_or_singular?(array)
       nr_zeroes = array.count(0)
-      return ((nr_zeroes == array.size) || (nr_zeroes == 0) || (nr_zeroes == 1) || (nr_zeroes == array.size-1) )
+      return ((nr_zeroes == array.size) || (nr_zeroes == array.size-1) )
     end
     
     # Median of an array
