@@ -310,14 +310,12 @@ module OpenTox
 
       # Adds a neighbor to @neighbors if it passes the similarity threshold.
       def add_neighbor(training_features, training_compound)
-        compound_match_hits = {}
+        compound_features_hits = {}
         if @nr_hits == "true"
-          compound_match_hits = @compound.match_hits(@compound_features) #OpenTox::Compound.new(training_compound).match_hits(@compound_features)
-          LOGGER.debug "dv ------------ training_compound: #{training_compound}"
-          LOGGER.debug "dv ------------ training_features: #{training_features}"
-          LOGGER.debug "dv ------------ compound_features: #{@compound_features}"
+          compound_features_hits = @compound.match_hits(@compound_features) #OpenTox::Compound.new(training_compound).match_hits(@compound_features)
+          LOGGER.debug "dv ------------ compound_features_hits: #{@compound_features_hits}"
         end
-        sim = eval("#{@similarity_algorithm}(training_features, @compound_features, @p_values, ( { :compound => training_compound, :fingerprints => @fingerprints, :nr_hits => @nr_hits, :compound_hits => compound_match_hits } ) )")
+        sim = eval("#{@similarity_algorithm}(training_features, @compound_features, @p_values, ( { :training_compound => training_compound, :compound => @compound.uri, :fingerprints => @fingerprints, :nr_hits => @nr_hits, :compound_features_hits => compound_features_hits } ) )")
         if sim > @min_sim
           @activities[training_compound].each do |act|
             @neighbors << {

@@ -178,9 +178,9 @@ module OpenTox
 			obconversion.read_string(obmol,@inchi) 
 			smarts_pattern = OpenBabel::OBSmartsPattern.new
 			smarts_hits = {}
-      LOGGER.debug "dv ----------- obmol  #{Compound.new(@inchi).to_smiles}"
+      #LOGGER.debug "dv ----------- obmol  #{Compound.new(@inchi).to_smiles}"
       smarts_array.collect do |smarts|
-        LOGGER.debug "dv ----------- all smarts  #{smarts}"
+        #LOGGER.debug "dv ----------- all smarts  #{smarts}"
         smarts_pattern.init(smarts)
         if smarts_pattern.match(obmol)
           hits = smarts_pattern.get_map_list

@@ -153,20 +153,41 @@ module OpenTox
       # @param [Array] features_a Features of first compound
       # @param [Array] features_b Features of second compound
       # @param [optional, Hash] weights Weights for all features
-      # @param [optional, Hash] params Keys: `fingerprints:, compound:, nr_hits:` are required
-
+      # @param [optional, Hash] params Keys: `:training_compound, :compound, :fingerprints, :nr_hits, :compound_features_hits` are required
       # @return [Float] (Weighted) tanimoto similarity
       def self.tanimoto(features_a,features_b,weights=nil,params=nil)
         common_features = features_a & features_b
         all_features = (features_a + features_b).uniq
-        common_p_sum = 0.0
+        #LOGGER.debug "dv --------------- common: #{common_features}, all: #{all_features}"
         if common_features.size > 0
           if weights
-            LOGGER.debug "dv --------------- common_features: #{common_features}, params_hits: #{params[:compound_hits]}"
-            common_features.each{|f| common_p_sum += Algorithm.gauss(weights[f]*Algorithm.support(f,params))}
-            all_p_sum = 0.0
-            LOGGER.debug "dv --------------- all_features: #{all_features}"
-            all_features.each{|f| all_p_sum += Algorithm.gauss(weights[f]*Algorithm.support(f,params))}
+            if params[:nr_hits] == "true"
+              params[:weights] = weights
+              params[:mode] = "min"
+              params[:features] = common_features
+              common_p_sum = Algorithm.p_sum_support(params)
+              params[:mode] = "max"
+              params[:features] = all_features
+              all_p_sum = Algorithm.p_sum_support(params)
+              #common_p_sum = 0.0
+              #common_features.each{|f| 
+              #  compound_hits = params[:compound_features_hits][f]
+              #  neighbor_hits = Algorithm.support(f,params) 
+              #  common_p = weights[f] * [compound_hits, neighbor_hits].min
+              #  common_p_sum += Algorithm.gauss(common_p)
+              #}
+#              all_p_sum = 0.0
+              #all_features.each{|f| 
+              #  compound_hits = params[:compound_features_hits][f]
+              #  neighbor_hits = Algorithm.support(f,params) 
+              #  all_p = weights[f] * [compound_hits, neighbor_hits].max
+              #  all_p_sum += Algorithm.gauss(all_p)
+              #}
+            else
+              common_features.each{|f| common_p_sum += Algorithm.gauss(weights[f])}#*Algorithm.support(f,params))}
+              all_p_sum = 0.0
+              all_features.each{|f| all_p_sum += Algorithm.gauss(weights[f])}#*Algorithm.support(f,params))}
+            end
             common_p_sum/all_p_sum
           else
             common_features.to_f/all_features
@@ -824,12 +845,26 @@ module OpenTox
     # @param [Hash] params Keys: `fingerprints:, compound:, nr_hits:` are required
     # return [Numeric] Support value 
     def self.support(feature,params)
-      LOGGER.debug "dv ------------- feature: #{feature}"
-      LOGGER.debug "dv ------------- compound #{params[:compound]}"
-      LOGGER.debug "dv ------------- feature value #{params[:fingerprints][params[:compound]][feature]}"
-      params[:fingerprints][params[:compound]][feature]
+      params[:fingerprints][params[:training_compound]][feature]
     end
 
+    # Returns Support value of an fingerprint
+    # @param [Hash] params Keys: `:weights, :fingerprints, :features, :compound, :nr_hits:, :mode` are required
+    # return [Numeric] Support value 
+    def self.p_sum_support(params)
+      p_sum = 0.0
+        params[:features].each{|f|
+        #LOGGER.debug "compound_features_hits: #{params[:compound_features_hits][f]}"  
+        compound_hits = params[:compound_features_hits][f]
+        #LOGGER.debug "compound_hits: #{compound_hits}"
+        neighbor_hits = Algorithm.support(f,params) 
+        #LOGGER.debug "neighbor_hits: #{neighbor_hits}"
+        p_sum += eval "(Algorithm.gauss(params[:weights][f]) * ([compound_hits, neighbor_hits].compact.#{params[:mode]}))"
+        #LOGGER.debug "p_sum: #{p_sum}"
+      }
+      p_sum 
+    end
+                
   end
 end
 
