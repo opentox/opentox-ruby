@@ -85,34 +85,27 @@ module OpenTox
       @metadata = YAML.load(OpenTox::RestClientWrapper.get(uri,{:subjectid => subjectid, :accept => "application/x-yaml"}))
     end
     
-    # PENDING: creates summary as used for ToxCreate
-    def summary
-      if @metadata[OT.classificationStatistics]
-        res = {
-          :nr_predictions => @metadata[OT.numInstances].to_i - @metadata[OT.numUnpredicted].to_i,
-          :correct_predictions => @metadata[OT.classificationStatistics][OT.percentCorrect],
-          :weighted_area_under_roc => @metadata[OT.classificationStatistics][OT.weightedAreaUnderRoc],
-        }
-        @metadata[OT.classificationStatistics][OT.classValueStatistics].each do |s|
-          if s[OT.classValue].to_s=="true"
-            res[:true_positives] = s[OT.numTruePositives]
-            res[:false_positives] = s[OT.numFalsePositives]
-            res[:true_negatives] = s[OT.numTrueNegatives]
-            res[:false_negatives] = s[OT.numFalseNegatives]
-            res[:sensitivity] = s[OT.truePositiveRate]
-            res[:specificity] = s[OT.trueNegativeRate]
-            break
+    # returns confusion matrix as array, predicted values are in rows
+    # example:
+    # [[nil,"active","moderate","inactive"],["active",1,3,99],["moderate",4,2,8],["inactive",3,8,6]]
+    # -> 99 inactive compounds have been predicted as active 
+    def confusion_matrix
+      raise "no classification statistics, probably a regression valdiation" unless @metadata[OT.classificationStatistics]
+      matrix =  @metadata[OT.classificationStatistics][OT.confusionMatrix][OT.confusionMatrixCell]
+      values = matrix.collect{|cell| cell[OT.confusionMatrixPredicted]}.uniq
+      table = [[nil]+values]
+      values.each do |c|
+        table << [c]
+        values.each do |r|
+          matrix.each do |cell|
+            if cell[OT.confusionMatrixPredicted]==c and cell[OT.confusionMatrixActual]==r
+              table[-1] << cell[OT.confusionMatrixValue].to_f
+              break
+            end
           end
         end
-        res
-      elsif @metadata[OT.regressionStatistics]
-        {
-          :nr_predictions => @metadata[OT.numInstances].to_i - @metadata[OT.numUnpredicted].to_i,
-          :r_square => @metadata[OT.regressionStatistics][OT.rSquare],
-          :root_mean_squared_error => @metadata[OT.regressionStatistics][OT.rootMeanSquaredError],
-          :mean_absolute_error => @metadata[OT.regressionStatistics][OT.meanAbsoluteError],
-        }
       end
+      table
     end
   end
   
@@ -171,9 +164,9 @@ module OpenTox
       @metadata = YAML.load(OpenTox::RestClientWrapper.get(uri,{:subjectid => subjectid, :accept => "application/x-yaml"}))
     end
     
-    # PENDING: creates summary as used for ToxCreate
-    def summary( subjectid=nil )
-      Validation.from_cv_statistics( @uri, subjectid ).summary
+    # returns a Validation object containing the statistics of the crossavlidation
+    def statistics( subjectid=nil )
+      Validation.from_cv_statistics( @uri, subjectid )
     end
   end
   
