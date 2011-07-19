@@ -91,8 +91,7 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :frequencies, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :balanced, :nr_hits
-
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :transform
 
       def initialize(uri=nil)
 
@@ -108,18 +107,17 @@ module OpenTox
         @effects = {}
         @activities = {}
         @p_values = {}
-        @frequencies = {}
         @fingerprints = {}
         @value_map = {}
 
         @feature_calculation_algorithm = "Substructure.match"
         @similarity_algorithm = "Similarity.tanimoto"
         @prediction_algorithm = "Neighbors.weighted_majority_vote"
-
+        
         @nr_hits = false
         @min_sim = 0.3
         @prop_kernel = false
-        @balanced = false
+        @transform = { "class" => "NOP"  }
 
       end
 
@@ -139,10 +137,10 @@ module OpenTox
       # Create a new lazar model
       # @param [optional,Hash] params Parameters for the lazar algorithm (OpenTox::Algorithm::Lazar)
       # @return [OpenTox::Model::Lazar] lazar model
-      def self.create(params)
+      def self.create(params, waiting_task=nil )
         subjectid = params[:subjectid]
         lazar_algorithm = OpenTox::Algorithm::Generic.new File.join( CONFIG[:services]["opentox-algorithm"],"lazar")
-        model_uri = lazar_algorithm.run(params)
+        model_uri = lazar_algorithm.run(params, waiting_task)
         OpenTox::Model::Lazar.find(model_uri, subjectid)      
       end
 
@@ -215,78 +213,18 @@ module OpenTox
 
         unless database_activity(subjectid) # adds database activity to @prediction_dataset
 
-          if @balanced && OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "classification"
-            # AM: Balancing, see http://www.maunz.de/wordpress/opentox/2011/balanced-lazar
-            l = Array.new # larger 
-            s = Array.new # smaller fraction
+          neighbors
+          prediction = eval("#{@prediction_algorithm} ( { :neighbors => @neighbors, 
+                                                          :compound => @compound,
+                                                          :features => @features, 
+                                                          :p_values => @p_values, 
+                                                          :fingerprints => @fingerprints,
+                                                          :similarity_algorithm => @similarity_algorithm, 
+                                                          :prop_kernel => @prop_kernel,
+                                                          :value_map => @value_map,
+                                                          :nr_hits => @nr_hits,
+                                                          :transform => @transform } ) ")
 
-            raise "no fingerprints in model" if @fingerprints.size==0
-
-            @fingerprints.each do |training_compound,training_features|
-              @activities[training_compound].each do |act|
-                case act.to_s
-                when "0" 
-                  l << training_compound
-                when "1"  
-                  s << training_compound
-                else
-                  LOGGER.warn "BLAZAR: Activity #{act.to_s} should not be reached (supports only two classes)."
-                end
-              end
-            end
-            if s.size > l.size then 
-              l,s = s,l # happy swapping
-              LOGGER.info "BLAZAR: |s|=#{s.size}, |l|=#{l.size}."
-            end
-            # determine ratio
-            modulo = l.size.divmod(s.size)# modulo[0]=ratio, modulo[1]=rest
-            LOGGER.info "BLAZAR: Balance: #{modulo[0]}, rest #{modulo[1]}."
-
-            # AM: Balanced predictions
-            addon = (modulo[1].to_f/modulo[0]).ceil # what will be added in each round 
-            slack = (addon!=0 ? modulo[1].divmod(addon)[1] : 0) # what remains for the last round
-            position = 0
-            predictions = Array.new
-
-            prediction_best=nil
-            neighbors_best=nil
-
-            begin
-              for i in 1..modulo[0] do
-                (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
-                LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
-                neighbors_balanced(s, l, position, lr_size) # get ratio fraction of larger part
-                if @prop_kernel && ( @prediction_algorithm.include?("svm") || @prediction_algorithm.include?("local_mlr_prop") )
-                  props = get_props 
-                else
-                  props = nil
-                end
-                prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values, :value_map => @value_map}, props)")
-                if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
-                  prediction_best=prediction 
-                  neighbors_best=@neighbors
-                end
-                position = position + lr_size
-              end
-            rescue Exception => e
-              LOGGER.error "BLAZAR failed in prediction: "+e.class.to_s+": "+e.message
-            end
-
-            prediction=prediction_best
-            @neighbors=neighbors_best
-            ### END AM balanced predictions
-
-          else # AM: no balancing or regression
-            LOGGER.info "LAZAR: Unbalanced."
-            neighbors
-            if @prop_kernel && ( @prediction_algorithm.include?("svm") || @prediction_algorithm.include?("local_mlr_prop") )
-             props = get_props 
-            else
-             props = nil
-            end
-            prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values, :value_map => @value_map}, props)")
-          end
-          
           value_feature_uri = File.join( @uri, "predicted", "value")
           confidence_feature_uri = File.join( @uri, "predicted", "confidence")
 
@@ -359,79 +297,27 @@ module OpenTox
         @prediction_dataset
       end
 
-      # Calculate the propositionalization matrix aka instantiation matrix (0/1 entries for features)
-      # Same for the vector describing the query compound
-      def get_props
-        matrix = Array.new
-        begin 
-          @neighbors.each do |n|
-            n = n[:compound]
-            row = []
-            @features.each do |f|
-              if ! @fingerprints[n].nil? 
-                row << (@fingerprints[n].include?(f) ? 0.0 : @p_values[f])
-              else
-                row << 0.0
-              end
-            end
-            matrix << row
-          end
-          row = []
-          @features.each do |f|
-            row << (@compound.match([f]).size == 0 ? 0.0 : @p_values[f])
-          end
-        rescue Exception => e
-          LOGGER.debug "get_props failed with '" + $! + "'"
-        end
-        [ matrix, row ]
-      end
-
-      # Find neighbors and store them as object variable, access only a subset of compounds for that.
-      def neighbors_balanced(s, l, start, offset)
-        @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
-        @neighbors = []
-        [ l[start, offset ] , s ].flatten.each do |training_compound| # AM: access only a balanced subset
-          training_features = @fingerprints[training_compound]
-          add_neighbor training_features, training_compound
-        end
-
-      end
+      
 
       # Find neighbors and store them as object variable, access all compounds for that.
       def neighbors
         @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
         @neighbors = []
-        @fingerprints.each do |training_compound, training_features | # AM: access all compounds
-          #LOGGER.debug "dv ---------------- training_features: #{training_features.class}, #{training_features}, #{training_compound.class}, #{training_compound} "
-          add_neighbor training_features, training_compound
+        @fingerprints.keys.each do |training_compound| # AM: access all compounds
+          add_neighbor @fingerprints[training_compound].keys, training_compound
         end
       end
 
       # Adds a neighbor to @neighbors if it passes the similarity threshold.
       def add_neighbor(training_features, training_compound)
-        #LOGGER.debug "dv ------ xyz ----- compound_features: '#{@compound_features}' \n training_features: '#{training_features}'\n training_compound: '#{training_compound}'"
-        sim = 0.0 
-        #if @frequencies.empty?
-        #  LOGGER.debug "dv ----------------- frequencies is empty goto #{@similarity_algorithm}"
-        #  sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values)")
-        #else
-        #  LOGGER.debug "dv ----------------- with frequencies goto #{@similarity_algorithm}, training_compound #{training_compound}" 
-        #  t_compound_freq = {} 
-        #  training_features.each do |f|
-        #    #LOGGER.debug "dv ----------------- with feature:  #{f}, training_compound: #{training_compound}\n"
-        #    @frequencies[f.to_s].each do |cf|
-        #      if cf.keys.to_s == training_compound.to_s 
-        #        #LOGGER.debug "#{cf.keys} =?  #{training_compound}----------------- #{f}         #{cf[training_compound.to_s]}"
-        #        t_compound_freq[f] = cf[training_compound.to_s]
-        #        #LOGGER.debug "t_compound_freq: #{t_compound_freq}"
-        #      end
-        #    end
-        #  end
-        #  #LOGGER.debug "t_compound_freq: #{t_compound_freq}" 
-        #  sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values,t_compound_freq)")
-        #end
-        sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values)")
-        LOGGER.debug "sim is: #{sim}"
+        compound_match_hits = {}
+        if @nr_hits == "true"
+          compound_match_hits = OpenTox::Compound.new(training_compound).match_hits(@compound_features)
+          LOGGER.debug "dv ------------ training_compound: #{training_compound}"
+          LOGGER.debug "dv ------------ training_features: #{training_features}"
+          LOGGER.debug "dv ------------ compound_features: #{@compound_features}"
+        end
+        sim = eval("#{@similarity_algorithm}(training_features, @compound_features, @p_values, ( { :compound => training_compound, :fingerprints => @fingerprints, :nr_hits => @nr_hits, :compound_hits => compound_match_hits } ) )")
         if sim > @min_sim
           @activities[training_compound].each do |act|
             @neighbors << {
