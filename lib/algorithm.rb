@@ -153,6 +153,8 @@ module OpenTox
       # @param [Array] features_a Features of first compound
       # @param [Array] features_b Features of second compound
       # @param [optional, Hash] weights Weights for all features
+      # @param [optional, Hash] params Keys: `fingerprints:, compound:, nr_hits:` are required
+
       # @return [Float] (Weighted) tanimoto similarity
       def self.tanimoto(features_a,features_b,weights=nil,params=nil)
         common_features = features_a & features_b
@@ -824,7 +826,7 @@ module OpenTox
     def self.support(feature,params)
       LOGGER.debug "dv ------------- feature: #{feature}"
       LOGGER.debug "dv ------------- compound #{params[:compound]}"
-      LOGGER.debug "dv ------------- value #{params[:fingerprints][params[:compound]][feature]}"
+      LOGGER.debug "dv ------------- feature value #{params[:fingerprints][params[:compound]][feature]}"
       params[:fingerprints][params[:compound]][feature]
     end
 

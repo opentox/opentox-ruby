@@ -312,7 +312,7 @@ module OpenTox
       def add_neighbor(training_features, training_compound)
         compound_match_hits = {}
         if @nr_hits == "true"
-          compound_match_hits = OpenTox::Compound.new(training_compound).match_hits(@compound_features)
+          compound_match_hits = @compound.match_hits(@compound_features) #OpenTox::Compound.new(training_compound).match_hits(@compound_features)
           LOGGER.debug "dv ------------ training_compound: #{training_compound}"
           LOGGER.debug "dv ------------ training_features: #{training_features}"
           LOGGER.debug "dv ------------ compound_features: #{@compound_features}"
