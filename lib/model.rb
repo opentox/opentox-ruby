@@ -91,7 +91,7 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :transform
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :transform
 
       def initialize(uri=nil)
 
@@ -113,7 +113,8 @@ module OpenTox
         @feature_calculation_algorithm = "Substructure.match"
         @similarity_algorithm = "Similarity.tanimoto"
         @prediction_algorithm = "Neighbors.weighted_majority_vote"
-
+        
+        @nr_hits = false
         @min_sim = 0.3
         @prop_kernel = false
         @transform = { "class" => "NOP"  }
@@ -220,7 +221,8 @@ module OpenTox
                                                           :fingerprints => @fingerprints,
                                                           :similarity_algorithm => @similarity_algorithm, 
                                                           :prop_kernel => @prop_kernel,
-                                                          :value_map => @value_map, 
+                                                          :value_map => @value_map,
+                                                          :nr_hits => @nr_hits,
                                                           :transform => @transform } ) ")
 
           value_feature_uri = File.join( @uri, "predicted", "value")
@@ -301,14 +303,26 @@ module OpenTox
       def neighbors
         @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
         @neighbors = []
-        @fingerprints.each do |training_compound,training_features| # AM: access all compounds
-          add_neighbor training_features, training_compound
+        @fingerprints.keys.each do |training_compound| # AM: access all compounds
+          add_neighbor @fingerprints[training_compound].keys, training_compound
         end
       end
 
       # Adds a neighbor to @neighbors if it passes the similarity threshold.
       def add_neighbor(training_features, training_compound)
-        sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values)")
+        compound_features_hits = {}
+        if @nr_hits == "true"
+          compound_features_hits = @compound.match_hits(@compound_features) #OpenTox::Compound.new(training_compound).match_hits(@compound_features)
+          LOGGER.debug "dv ------------ compound_features_hits: #{@compound_features_hits}"
+        end
+        params = {}
+        params[:training_compound] = training_compound
+        params[:compound] = @compound.uri #query compound
+        params[:fingerprints] = @fingerprints
+        params[:nr_hits] = nr_hits
+        params[:compound_features_hits] = compound_features_hits
+
+        sim = eval("#{@similarity_algorithm}(training_features, @compound_features, @p_values, params )")
         if sim > @min_sim
           @activities[training_compound].each do |act|
             @neighbors << {
