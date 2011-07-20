@@ -161,6 +161,7 @@ module OpenTox
         #LOGGER.debug "dv --------------- common: #{common_features}, all: #{all_features}"
         if common_features.size > 0
           if weights
+            LOGGER.debug "nr_hits: #{params[:nr_hits]}"
             if params[:nr_hits] == "true"
               params[:weights] = weights
               params[:mode] = "min"
@@ -175,9 +176,11 @@ module OpenTox
               all_p_sum = 0.0
               all_features.each{|f| all_p_sum += Algorithm.gauss(weights[f])}
             end
+            LOGGER.debug "common_p_sum: #{common_p_sum}, all_p_sum: #{all_p_sum}, c/a: #{common_p_sum/all_p_sum}"
             common_p_sum/all_p_sum
           else
-            common_features.to_f/all_features
+            LOGGER.debug "common_features : #{common_features}, all_features: #{all_features}, c/a: #{(common_features.size/all_features.size).to_f}"
+            (common_features.size/all_features.size).to_f
           end
         else
           0.0
