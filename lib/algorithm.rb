@@ -161,8 +161,8 @@ module OpenTox
         #LOGGER.debug "dv --------------- common: #{common_features}, all: #{all_features}"
         if common_features.size > 0
           if weights
-            LOGGER.debug "nr_hits: #{params[:nr_hits]}"
-            if params[:nr_hits] == "true"
+            #LOGGER.debug "nr_hits: #{params[:nr_hits]}"
+            if !params.nil? && params[:nr_hits]
               params[:weights] = weights
               params[:mode] = "min"
               params[:features] = common_features
@@ -176,10 +176,10 @@ module OpenTox
               all_p_sum = 0.0
               all_features.each{|f| all_p_sum += Algorithm.gauss(weights[f])}
             end
-            LOGGER.debug "common_p_sum: #{common_p_sum}, all_p_sum: #{all_p_sum}, c/a: #{common_p_sum/all_p_sum}"
+            #LOGGER.debug "common_p_sum: #{common_p_sum}, all_p_sum: #{all_p_sum}, c/a: #{common_p_sum/all_p_sum}"
             common_p_sum/all_p_sum
           else
-            LOGGER.debug "common_features : #{common_features}, all_features: #{all_features}, c/a: #{(common_features.size/all_features.size).to_f}"
+            #LOGGER.debug "common_features : #{common_features}, all_features: #{all_features}, c/a: #{(common_features.size/all_features.size).to_f}"
             (common_features.size/all_features.size).to_f
           end
         else
@@ -225,7 +225,7 @@ module OpenTox
           sims = params[:neighbors].collect { |n| Algorithm.gauss(n[:similarity]) }
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
           prediction = mlr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts} )
-          transformer = eval "OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})"
+          transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})")
           prediction = transformer.values[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = "false" if params[:conf_stdev].nil?
@@ -334,7 +334,7 @@ module OpenTox
           acts = params[:neighbors].collect{ |n| n[:activity].to_f }
           sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) }
           prediction = props.nil? ? local_svm(acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr")
-          transformer = eval "OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})"
+          transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})")
           prediction = transformer.values[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = "false" if params[:conf_stdev].nil?
@@ -870,7 +870,7 @@ module OpenTox
         params[:features].each{|f|
         compound_hits = params[:compound_features_hits][f]
         neighbor_hits = Algorithm.support(f,params) 
-        p_sum += eval "(Algorithm.gauss(params[:weights][f]) * ([compound_hits, neighbor_hits].compact.#{params[:mode]}))"
+        p_sum += eval("(Algorithm.gauss(params[:weights][f]) * ([compound_hits, neighbor_hits].compact.#{params[:mode]}))")
       }
       p_sum 
     end

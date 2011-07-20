@@ -311,7 +311,7 @@ module OpenTox
       # Adds a neighbor to @neighbors if it passes the similarity threshold.
       def add_neighbor(training_features, training_compound)
         compound_features_hits = {}
-        if @nr_hits == "true"
+        if @nr_hits
           compound_features_hits = @compound.match_hits(@compound_features) #OpenTox::Compound.new(training_compound).match_hits(@compound_features)
           LOGGER.debug "dv ------------ compound_features_hits: #{@compound_features_hits}"
         end
@@ -319,7 +319,7 @@ module OpenTox
         params[:training_compound] = training_compound
         params[:compound] = @compound.uri #query compound
         params[:fingerprints] = @fingerprints
-        params[:nr_hits] = nr_hits
+        params[:nr_hits] = @nr_hits
         params[:compound_features_hits] = compound_features_hits
 
         sim = eval("#{@similarity_algorithm}(training_features, @compound_features, @p_values, params )")
