@@ -315,7 +315,14 @@ module OpenTox
           compound_features_hits = @compound.match_hits(@compound_features) #OpenTox::Compound.new(training_compound).match_hits(@compound_features)
           LOGGER.debug "dv ------------ compound_features_hits: #{@compound_features_hits}"
         end
-        sim = eval("#{@similarity_algorithm}(training_features, @compound_features, @p_values, ( { :training_compound => training_compound, :compound => @compound.uri, :fingerprints => @fingerprints, :nr_hits => @nr_hits, :compound_features_hits => compound_features_hits } ) )")
+        params = {}
+        params[:training_compound] = training_compound
+        params[:compound] = @compound.uri #query compound
+        params[:fingerprints] = @fingerprints
+        params[:nr_hits] = nr_hits
+        params[:compound_features_hits] = compound_features_hits
+
+        sim = eval("#{@similarity_algorithm}(training_features, @compound_features, @p_values, params )")
         if sim > @min_sim
           @activities[training_compound].each do |act|
             @neighbors << {

@@ -169,25 +169,11 @@ module OpenTox
               params[:mode] = "max"
               params[:features] = all_features
               all_p_sum = Algorithm.p_sum_support(params)
-              #common_p_sum = 0.0
-              #common_features.each{|f| 
-              #  compound_hits = params[:compound_features_hits][f]
-              #  neighbor_hits = Algorithm.support(f,params) 
-              #  common_p = weights[f] * [compound_hits, neighbor_hits].min
-              #  common_p_sum += Algorithm.gauss(common_p)
-              #}
-#              all_p_sum = 0.0
-              #all_features.each{|f| 
-              #  compound_hits = params[:compound_features_hits][f]
-              #  neighbor_hits = Algorithm.support(f,params) 
-              #  all_p = weights[f] * [compound_hits, neighbor_hits].max
-              #  all_p_sum += Algorithm.gauss(all_p)
-              #}
             else
               common_p_sum = 0.0
-              common_features.each{|f| common_p_sum += Algorithm.gauss(weights[f])}#*Algorithm.support(f,params))}
+              common_features.each{|f| common_p_sum += Algorithm.gauss(weights[f])}
               all_p_sum = 0.0
-              all_features.each{|f| all_p_sum += Algorithm.gauss(weights[f])}#*Algorithm.support(f,params))}
+              all_features.each{|f| all_p_sum += Algorithm.gauss(weights[f])}
             end
             common_p_sum/all_p_sum
           else
@@ -879,13 +865,9 @@ module OpenTox
     def self.p_sum_support(params)
       p_sum = 0.0
         params[:features].each{|f|
-        #LOGGER.debug "compound_features_hits: #{params[:compound_features_hits][f]}"  
         compound_hits = params[:compound_features_hits][f]
-        #LOGGER.debug "compound_hits: #{compound_hits}"
         neighbor_hits = Algorithm.support(f,params) 
-        #LOGGER.debug "neighbor_hits: #{neighbor_hits}"
         p_sum += eval "(Algorithm.gauss(params[:weights][f]) * ([compound_hits, neighbor_hits].compact.#{params[:mode]}))"
-        #LOGGER.debug "p_sum: #{p_sum}"
       }
       p_sum 
     end
