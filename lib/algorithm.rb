@@ -230,21 +230,17 @@ module OpenTox
 
         raise "No neighbors found." unless params[:neighbors].size>0
         begin
-
           props = params[:prop_kernel] ? get_props(params) : nil
           acts = params[:neighbors].collect { |n| act = n[:activity].to_f }
           sims = params[:neighbors].collect { |n| Algorithm.gauss(n[:similarity]) }
-
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
           prediction = mlr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts} )
           transformer = eval "OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})"
           prediction = transformer.values[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
-          sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
-          conf = sims.inject{|sum,x| sum + x }
-          confidence = conf/params[:neighbors].size if params[:neighbors].size > 0
+          params[:conf_stdev] = "false" if params[:conf_stdev].nil?
+          confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
           {:prediction => prediction, :confidence => confidence}
-
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
         end
@@ -351,8 +347,8 @@ module OpenTox
           transformer = eval "OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})"
           prediction = transformer.values[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
-          conf = sims.inject{|sum,x| sum + x }
-          confidence = conf/params[:neighbors].size
+          params[:conf_stdev] = "false" if params[:conf_stdev].nil?
+          confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
           {:prediction => prediction, :confidence => confidence}
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
@@ -517,6 +513,29 @@ module OpenTox
           prediction
       end
 
+      # Get confidence for regression, with standard deviation of neighbor activity if conf_stdev is set.
+      # @param[Hash] Required keys: :sims, :acts, :neighbors, :conf_stdev
+      # @return[Float] Confidence
+      def self.get_confidence(params)
+        if params[:conf_stdev] == "true"
+          sim_median = Algorithm.median(params[:sims])
+          if sim_median.nil?
+            confidence = nil
+          else
+            standard_deviation = params[:acts].std_dev
+            confidence = (sim_median*Math.exp(-1*standard_deviation)).abs
+            if confidence.nan?
+              confidence = nil
+            end
+          end
+        else
+          conf = params[:sims].inject{|sum,x| sum + x }
+          confidence = conf/params[:neighbors].size
+        end
+        LOGGER.debug "Confidence is: '" + confidence.to_s + "'."
+        return confidence
+      end
+
       # Get X and Y size of a nested Array (Matrix)
       def self.get_sizes(matrix)
         begin
@@ -545,7 +564,7 @@ module OpenTox
             row = []
             params[:features].each do |f|
               if ! params[:fingerprints][n].nil? 
-                row << (params[:fingerprints][n].include?(f) ? 0.0 : params[:p_values][f])
+                row << (params[:fingerprints][n].include?(f) ? params[:p_values][f] : 0.0)
               else
                 row << 0.0
               end
@@ -778,9 +797,14 @@ module OpenTox
       Math.exp(-(d*d)/(2*sigma*sigma))
     end
 
+    # For symbolic features
+    # @param [Array] Array to test, must indicate non-occurrence with 0.
+    # @return [Boolean] Whether the feature is singular or non-occurring or present everywhere.
     def self.isnull_or_singular?(array)
       nr_zeroes = array.count(0)
-      return ((nr_zeroes == array.size) || (nr_zeroes == 0) || (nr_zeroes == 1) || (nr_zeroes == array.size-1) )
+      return (nr_zeroes == array.size) ||    # remove non-occurring feature
+             (nr_zeroes == array.size-1) ||  # remove singular feature
+             (nr_zeroes == 0)                # also remove feature present everywhere
     end
     
     # Median of an array
@@ -865,6 +889,24 @@ module OpenTox
       p_sum 
     end
                 
+    # Adds variance, mean and standard deviation calculation to Array class
+    module Variance
+      def sum(&blk)
+        map(&blk).inject { |sum, element| sum + element }
+      end
+      def mean
+        (sum.to_f / size.to_f)
+      end
+      def variance
+        m = mean
+        sum { |i| ( i - m )**2 } / (size-1).to_f
+      end
+      def std_dev
+        Math.sqrt(variance)
+      end
+    end
+    Array.send :include, Variance
+
   end
 end
 
