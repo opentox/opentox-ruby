@@ -153,7 +153,7 @@ module OpenTox
       # @param [Array] features_a Features of first compound
       # @param [Array] features_b Features of second compound
       # @param [optional, Hash] weights Weights for all features
-      # @param [optional, Hash] params Keys: `:training_compound, :compound, :fingerprints, :nr_hits, :compound_features_hits` are required
+      # @param [optional, Hash] params Keys: `:training_compound, :compound, :training_compound_features_hits, :nr_hits, :compound_features_hits` are required
       # @return [Float] (Weighted) tanimoto similarity
       def self.tanimoto(features_a,features_b,weights=nil,params=nil)
         common_features = features_a & features_b
@@ -855,21 +855,13 @@ module OpenTox
     end
     
     # Returns Support value of an fingerprint
-    # @param [String] smiles of feature
-    # @param [Hash] params Keys: `fingerprints:, compound:, nr_hits:` are required
-    # return [Numeric] Support value 
-    def self.support(feature,params)
-      params[:fingerprints][params[:training_compound]][feature]
-    end
-
-    # Returns Support value of an fingerprint
-    # @param [Hash] params Keys: `:compound_features_hits, :weights, :fingerprints, :features, :compound, :nr_hits:, :mode` are required
+    # @param [Hash] params Keys: `:compound_features_hits, :weights, :training_compound_features_hits, :features, :nr_hits:, :mode` are required
     # return [Numeric] Support value 
     def self.p_sum_support(params)
       p_sum = 0.0
         params[:features].each{|f|
         compound_hits = params[:compound_features_hits][f]
-        neighbor_hits = Algorithm.support(f,params) 
+        neighbor_hits = params[:training_compound_features_hits][f] 
         p_sum += eval("(Algorithm.gauss(params[:weights][f]) * ([compound_hits, neighbor_hits].compact.#{params[:mode]}))")
       }
       p_sum 
