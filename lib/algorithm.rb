@@ -184,6 +184,7 @@ module OpenTox
               #  all_p_sum += Algorithm.gauss(all_p)
               #}
             else
+              common_p_sum = 0.0
               common_features.each{|f| common_p_sum += Algorithm.gauss(weights[f])}#*Algorithm.support(f,params))}
               all_p_sum = 0.0
               all_features.each{|f| all_p_sum += Algorithm.gauss(weights[f])}#*Algorithm.support(f,params))}
@@ -873,7 +874,7 @@ module OpenTox
     end
 
     # Returns Support value of an fingerprint
-    # @param [Hash] params Keys: `:weights, :fingerprints, :features, :compound, :nr_hits:, :mode` are required
+    # @param [Hash] params Keys: `:compound_features_hits, :weights, :fingerprints, :features, :compound, :nr_hits:, :mode` are required
     # return [Numeric] Support value 
     def self.p_sum_support(params)
       p_sum = 0.0
