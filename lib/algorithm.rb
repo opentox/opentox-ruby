@@ -726,7 +726,7 @@ module OpenTox
             raise "Error! PCA needs at least two dimensions." if data_matrix.size2 < 2
             @data_matrix_selected = nil
             (0..@data_matrix.size2-1).each { |i|
-              if !Algorithm::isnull_or_singular?(@data_matrix.col(i).to_a)
+              if !Algorithm::zero_variance?(@data_matrix.col(i).to_a)
                 if @data_matrix_selected.nil?
                   @data_matrix_selected = GSL::Matrix.alloc(@data_matrix.size1, 1) 
                   @data_matrix_selected.col(0)[0..@data_matrix.size1-1] = @data_matrix.col(i)
@@ -810,6 +810,13 @@ module OpenTox
       return (nr_zeroes == array.size) ||    # remove non-occurring feature
              (nr_zeroes == array.size-1) ||  # remove singular feature
              (nr_zeroes == 0)                # also remove feature present everywhere
+    end
+
+    # For symbolic features
+    # @param [Array] Array to test, must indicate non-occurrence with 0.
+    # @return [Boolean] Whether the feature has variance zero.
+    def self.zero_variance?(array)
+      return (array.to_scale.variance_sample == 0.0)
     end
     
     # Median of an array
