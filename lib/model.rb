@@ -91,7 +91,7 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :transform
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :transform, :conf_stdev
 
       def initialize(uri=nil)
 
@@ -118,6 +118,7 @@ module OpenTox
         @min_sim = 0.3
         @prop_kernel = false
         @transform = { "class" => "NOP"  }
+        @conf_stdev = false
 
       end
 
@@ -223,6 +224,7 @@ module OpenTox
                                                           :prop_kernel => @prop_kernel,
                                                           :value_map => @value_map,
                                                           :nr_hits => @nr_hits,
+                                                          :conf_stdev => @conf_stdev,
                                                           :transform => @transform } ) ")
 
           value_feature_uri = File.join( @uri, "predicted", "value")

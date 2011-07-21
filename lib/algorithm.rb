@@ -228,7 +228,7 @@ module OpenTox
           transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})")
           prediction = transformer.values[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
-          params[:conf_stdev] = "false" if params[:conf_stdev].nil?
+          params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
           {:prediction => prediction, :confidence => confidence}
         rescue Exception => e
@@ -339,7 +339,7 @@ module OpenTox
           transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})")
           prediction = transformer.values[0]
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
-          params[:conf_stdev] = "false" if params[:conf_stdev].nil?
+          params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
           {:prediction => prediction, :confidence => confidence}
         rescue Exception => e
@@ -517,7 +517,7 @@ module OpenTox
       # @param[Hash] Required keys: :sims, :acts, :neighbors, :conf_stdev
       # @return[Float] Confidence
       def self.get_confidence(params)
-        if params[:conf_stdev] == "true"
+        if params[:conf_stdev]
           sim_median = Algorithm.median(params[:sims])
           if sim_median.nil?
             confidence = nil
