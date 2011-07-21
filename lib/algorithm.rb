@@ -389,21 +389,18 @@ module OpenTox
         else
           # gram matrix
           (0..(neighbor_matches.length-1)).each do |i|
-            #neighbor_i_hits = params[:fingerprints][params[:neighbors][i]]
-            puts 
-            puts params[:fingerprints][params[:neighbors][i]]
-            puts
+            neighbor_i_hits = params[:fingerprints][params[:neighbors][i][:compound]]
             gram_matrix[i] = [] unless gram_matrix[i]
             # upper triangle
             ((i+1)..(neighbor_matches.length-1)).each do |j|
-              #neighbor_j_hits= params[:fingerprints][params[:neighbors][j]]
-              puts
-              puts params[:fingerprints][params[:neighbors][j]]
+              neighbor_j_hits= params[:fingerprints][params[:neighbors][j][:compound]]
               sim_params = {}
-              sim_params[:compound_features_hits] = neighbor_i_hits
-              sim_params[:training_compound_features_hits] = neighbor_j_hits
-              #sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values], sim_params)")
-              sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values])")
+              if params[:nr_hits]
+                sim_params[:nr_hits] = true
+                sim_params[:compound_features_hits] = neighbor_i_hits
+                sim_params[:training_compound_features_hits] = neighbor_j_hits
+              end
+              sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values], sim_params)")
               gram_matrix[i][j] = Algorithm.gauss(sim)
               gram_matrix[j] = [] unless gram_matrix[j] 
               gram_matrix[j][i] = gram_matrix[i][j] # lower triangle
