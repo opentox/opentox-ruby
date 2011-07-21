@@ -180,7 +180,7 @@ module OpenTox
             common_p_sum/all_p_sum
           else
             #LOGGER.debug "common_features : #{common_features}, all_features: #{all_features}, c/a: #{(common_features.size/all_features.size).to_f}"
-            (common_features.size/all_features.size).to_f
+            common_features.size.to_f/all_features.size.to_f
           end
         else
           0.0
@@ -237,6 +237,10 @@ module OpenTox
 
       end
 
+      # Multi-linear regression weighted by similarity.
+      # Objective Feature Selection, Principal Components Analysis, Scaling of Axes.
+      # @param [Hash] params Keys `:n_prop, :q_prop, :sims, :acts` are required
+      # @return [Numeric] A prediction value.
       def self.mlr(params)
 
         # GSL matrix operations: 
@@ -290,8 +294,6 @@ module OpenTox
         confidence_sum = 0.0
         confidence = 0.0
         prediction = nil
-        positive_map_value= nil
-        negative_map_value= nil
 
         params[:neighbors].each do |neighbor|
           neighbor_weight = Algorithm.gauss(neighbor[:similarity]).to_f
@@ -387,9 +389,20 @@ module OpenTox
         else
           # gram matrix
           (0..(neighbor_matches.length-1)).each do |i|
+            #neighbor_i_hits = params[:fingerprints][params[:neighbors][i]]
+            puts 
+            puts params[:fingerprints][params[:neighbors][i]]
+            puts
             gram_matrix[i] = [] unless gram_matrix[i]
             # upper triangle
             ((i+1)..(neighbor_matches.length-1)).each do |j|
+              #neighbor_j_hits= params[:fingerprints][params[:neighbors][j]]
+              puts
+              puts params[:fingerprints][params[:neighbors][j]]
+              sim_params = {}
+              sim_params[:compound_features_hits] = neighbor_i_hits
+              sim_params[:training_compound_features_hits] = neighbor_j_hits
+              #sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values], sim_params)")
               sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values])")
               gram_matrix[i][j] = Algorithm.gauss(sim)
               gram_matrix[j] = [] unless gram_matrix[j] 
