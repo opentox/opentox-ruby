@@ -234,7 +234,7 @@ module OpenTox
     # @return [String] SDF representation
     def to_sdf
       @compounds.inject { |sum, c|
-        sum + c.to_sdf
+        sum + OpenTox::Compound.new(c).to_sdf
       }
     end
 
