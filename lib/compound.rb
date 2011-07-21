@@ -187,7 +187,7 @@ module OpenTox
           smarts_hits[smarts] = hits.size 
         end
       end
-      LOGGER.debug "dv ----------- smarts => hits #{smarts_hits}"
+      #LOGGER.debug "dv ----------- smarts => hits #{smarts_hits}"
       return smarts_hits
       #smarts_array.collect { |s| s if match?(s)}.compact
 		end

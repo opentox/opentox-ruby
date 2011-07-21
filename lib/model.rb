@@ -318,8 +318,6 @@ module OpenTox
           #LOGGER.debug "dv ------------ training_compound_features_hits:#{training_compound_features_hits.class}  #{training_compound_features_hits}"
         end
         params = {}
-        params[:training_compound] = training_compound
-        params[:compound] = @compound.uri #query compound
         params[:nr_hits] = @nr_hits
         params[:compound_features_hits] = compound_features_hits
         params[:training_compound_features_hits] = training_compound_features_hits

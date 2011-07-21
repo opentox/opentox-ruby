@@ -180,7 +180,7 @@ module OpenTox
             common_p_sum/all_p_sum
           else
             #LOGGER.debug "common_features : #{common_features}, all_features: #{all_features}, c/a: #{(common_features.size/all_features.size).to_f}"
-            (common_features.size/all_features.size).to_f
+            common_features.size.to_f/all_features.size.to_f
           end
         else
           0.0
@@ -237,6 +237,10 @@ module OpenTox
 
       end
 
+      # Multi-linear regression weighted by similarity.
+      # Objective Feature Selection, Principal Components Analysis, Scaling of Axes.
+      # @param [Hash] params Keys `:n_prop, :q_prop, :sims, :acts` are required
+      # @return [Numeric] A prediction value.
       def self.mlr(params)
 
         # GSL matrix operations: 
@@ -290,8 +294,6 @@ module OpenTox
         confidence_sum = 0.0
         confidence = 0.0
         prediction = nil
-        positive_map_value= nil
-        negative_map_value= nil
 
         params[:neighbors].each do |neighbor|
           neighbor_weight = Algorithm.gauss(neighbor[:similarity]).to_f
@@ -387,10 +389,18 @@ module OpenTox
         else
           # gram matrix
           (0..(neighbor_matches.length-1)).each do |i|
+            neighbor_i_hits = params[:fingerprints][params[:neighbors][i][:compound]]
             gram_matrix[i] = [] unless gram_matrix[i]
             # upper triangle
             ((i+1)..(neighbor_matches.length-1)).each do |j|
-              sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values])")
+              neighbor_j_hits= params[:fingerprints][params[:neighbors][j][:compound]]
+              sim_params = {}
+              if params[:nr_hits]
+                sim_params[:nr_hits] = true
+                sim_params[:compound_features_hits] = neighbor_i_hits
+                sim_params[:training_compound_features_hits] = neighbor_j_hits
+              end
+              sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values], sim_params)")
               gram_matrix[i][j] = Algorithm.gauss(sim)
               gram_matrix[j] = [] unless gram_matrix[j] 
               gram_matrix[j][i] = gram_matrix[i][j] # lower triangle
@@ -554,7 +564,7 @@ module OpenTox
             row = []
             params[:features].each do |f|
               if ! params[:fingerprints][n].nil? 
-                row << (params[:fingerprints][n].include?(f) ? params[:p_values][f] : 0.0)
+                row << (params[:fingerprints][n].include?(f) ? (params[:p_values][f] * params[:fingerprints][n][f]) : 0.0)
               else
                 row << 0.0
               end
@@ -563,7 +573,12 @@ module OpenTox
           end
           row = []
           params[:features].each do |f|
-            row << (params[:compound].match([f]).size == 0 ? 0.0 : params[:p_values][f])
+            if params[:nr_hits]
+              compound_feature_hits = params[:compound].match_hits([f])
+              row << (compound_feature_hits.size == 0 ? 0.0 : (params[:p_values][f] * compound_feature_hits[f]))
+            else
+              row << (params[:compound].match([f]).size == 0 ? 0.0 : params[:p_values][f])
+            end
           end
         rescue Exception => e
           LOGGER.debug "get_props failed with '" + $! + "'"
@@ -711,7 +726,7 @@ module OpenTox
             raise "Error! PCA needs at least two dimensions." if data_matrix.size2 < 2
             @data_matrix_selected = nil
             (0..@data_matrix.size2-1).each { |i|
-              if !Algorithm::isnull_or_singular?(@data_matrix.col(i).to_a)
+              if !Algorithm::zero_variance?(@data_matrix.col(i).to_a)
                 if @data_matrix_selected.nil?
                   @data_matrix_selected = GSL::Matrix.alloc(@data_matrix.size1, 1) 
                   @data_matrix_selected.col(0)[0..@data_matrix.size1-1] = @data_matrix.col(i)
@@ -795,6 +810,13 @@ module OpenTox
       return (nr_zeroes == array.size) ||    # remove non-occurring feature
              (nr_zeroes == array.size-1) ||  # remove singular feature
              (nr_zeroes == 0)                # also remove feature present everywhere
+    end
+
+    # For symbolic features
+    # @param [Array] Array to test, must indicate non-occurrence with 0.
+    # @return [Boolean] Whether the feature has variance zero.
+    def self.zero_variance?(array)
+      return (array.to_scale.variance_sample == 0.0)
     end
     
     # Median of an array
