@@ -230,6 +230,14 @@ module OpenTox
       s.to_rdfxml
     end
 
+    # Get SDF representation of compounds
+    # @return [String] SDF representation
+    def to_sdf
+      @compounds.inject { |sum, c|
+        sum + c.to_sdf
+      }
+    end
+
     # Get name (DC.title) of a feature
     # @param [String] feature Feature URI
     # @return [String] Feture title
