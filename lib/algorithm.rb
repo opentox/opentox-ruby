@@ -218,8 +218,10 @@ module OpenTox
       # @return [Numeric] A prediction value.
       def self.local_mlr_prop(params)
 
-        raise "No neighbors found." unless params[:neighbors].size>0
-        begin
+        confidence=0.0
+        prediction=nil
+
+        if params[:neighbors].size>0
           props = params[:prop_kernel] ? get_props(params) : nil
           acts = params[:neighbors].collect { |n| act = n[:activity].to_f }
           sims = params[:neighbors].collect { |n| Algorithm.gauss(n[:similarity]) }
@@ -230,10 +232,8 @@ module OpenTox
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
-          {:prediction => prediction, :confidence => confidence}
-        rescue Exception => e
-          LOGGER.debug "#{e.class}: #{e.message}"
         end
+        {:prediction => prediction, :confidence => confidence}
 
       end
 
@@ -320,8 +320,9 @@ module OpenTox
         else 
           prediction = (neighbor_contribution/confidence_sum).round  unless params[:neighbors].size==0  # AM: new multinomial prediction
         end 
-
+        LOGGER.debug "Prediction is: '" + prediction.to_s + "'." unless prediction.nil?
         confidence = confidence_sum/params[:neighbors].size if params[:neighbors].size > 0
+        LOGGER.debug "Confidence is: '" + confidence.to_s + "'." unless prediction.nil?
         return {:prediction => prediction, :confidence => confidence.abs}
       end
 
@@ -330,8 +331,9 @@ module OpenTox
       # @return [Numeric] A prediction value.
       def self.local_svm_regression(params)
 
-        raise "No neighbors found." unless params[:neighbors].size>0
-        begin
+        confidence = 0.0
+        prediction = nil
+        if params[:neighbors].size>0
           props = params[:prop_kernel] ? get_props(params) : nil
           acts = params[:neighbors].collect{ |n| n[:activity].to_f }
           sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) }
@@ -341,11 +343,8 @@ module OpenTox
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
-          {:prediction => prediction, :confidence => confidence}
-        rescue Exception => e
-          LOGGER.debug "#{e.class}: #{e.message}"
-          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
+        {:prediction => prediction, :confidence => confidence}
         
       end
 
@@ -354,20 +353,18 @@ module OpenTox
       # @return [Numeric] A prediction value.
       def self.local_svm_classification(params)
 
-        raise "No neighbors found." unless params[:neighbors].size>0
-        begin 
+        confidence = 0.0
+        prediction = nil
+        if params[:neighbors].size>0
           props = params[:prop_kernel] ? get_props(params) : nil
           acts = params[:neighbors].collect { |n| act = n[:activity] }
           sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
           prediction = props.nil? ? local_svm(acts, sims, "C-bsvc", params) : local_svm_prop(props, acts, "C-bsvc")
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
-          conf = sims.inject{|sum,x| sum + x }
-          confidence = conf/params[:neighbors].size if params[:neighbors].size > 0
-          {:prediction => prediction, :confidence => confidence}
-        rescue Exception => e
-          LOGGER.debug "#{e.class}: #{e.message}"
-          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          params[:conf_stdev] = false if params[:conf_stdev].nil?
+          confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
         end
+        {:prediction => prediction, :confidence => confidence}
         
       end
 
@@ -384,8 +381,10 @@ module OpenTox
         LOGGER.debug "Local SVM (Weighted Tanimoto Kernel)."
         neighbor_matches = params[:neighbors].collect{ |n| n[:features] } # URIs of matches
         gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
-        if neighbor_matches.size == 0
-          raise "No neighbors found."
+
+        prediction = nil
+        if acts.to_scale.variance_population == 0
+          prediction = acts[0]
         else
           # gram matrix
           (0..(neighbor_matches.length-1)).each do |i|
@@ -407,6 +406,7 @@ module OpenTox
             end
             gram_matrix[i][i] = 1.0
           end
+
 
           #LOGGER.debug gram_matrix.to_yaml
           @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
@@ -466,10 +466,9 @@ module OpenTox
           n_prop = props[0] # is a matrix, i.e. two nested Arrays.
           q_prop = props[1] # is an Array.
 
-          #neighbor_matches = neighbors.collect{ |n| n[:features] } # URIs of matches
-          #gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
-          if n_prop.size == 0
-            raise "No neighbors found."
+          prediction = nil
+          if acts.to_scale.variance_population == 0
+            prediction = acts[0]
           else
             #LOGGER.debug gram_matrix.to_yaml
             @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
