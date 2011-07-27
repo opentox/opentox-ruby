@@ -233,8 +233,18 @@ module OpenTox
     # Get SDF representation of compounds
     # @return [String] SDF representation
     def to_sdf
+      sum=""
+      @compounds.each{ |c|
+        sum << OpenTox::Compound.new(c).to_inchi
+        sum << OpenTox::Compound.new(c).to_sdf
+      }
+      sum
+    end
+
+    def to_urilist
       @compounds.inject { |sum, c|
-        sum + OpenTox::Compound.new(c).to_sdf
+        sum << OpenTox::Compound.new(c).uri
+        sum + "\n"
       }
     end
 

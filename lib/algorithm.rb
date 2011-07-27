@@ -383,7 +383,7 @@ module OpenTox
         gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
 
         prediction = nil
-        if acts.to_scale.variance_population == 0
+        if Algorithm::zero_variance? acts
           prediction = acts[0]
         else
           # gram matrix
@@ -467,7 +467,7 @@ module OpenTox
           q_prop = props[1] # is an Array.
 
           prediction = nil
-          if acts.to_scale.variance_population == 0
+          if Algorithm::zero_variance? acts
             prediction = acts[0]
           else
             #LOGGER.debug gram_matrix.to_yaml
@@ -517,11 +517,11 @@ module OpenTox
       # @return[Float] Confidence
       def self.get_confidence(params)
         if params[:conf_stdev]
-          sim_median = Algorithm.median(params[:sims])
+          sim_median = params[:sims].to_scale.median
           if sim_median.nil?
             confidence = nil
           else
-            standard_deviation = params[:acts].std_dev
+            standard_deviation = params[:acts].to_scale.standard_deviation_sample
             confidence = (sim_median*Math.exp(-1*standard_deviation)).abs
             if confidence.nan?
               confidence = nil
@@ -818,23 +818,6 @@ module OpenTox
       return (array.to_scale.variance_sample == 0.0)
     end
     
-    # Median of an array
-    # @param [Array] Array with values
-    # @return [Float] Median
-    def self.median(array)
-      return nil if array.empty?
-      array.sort!
-      m_pos = array.size / 2
-      return array.size % 2 == 1 ? array[m_pos] : (array[m_pos-1] + array[m_pos])/2
-    end
-
-    # Sum of an array for Numeric values
-    # @param [Array] Array with values
-    # @return [Integer] Sum of values
-    def self.sum(array)
-      array.inject{|s,x| s + x }
-    end
-
     # Sum of an array for Arrays.
     # @param [Array] Array with values
     # @return [Integer] Sum of size of values
@@ -860,7 +843,7 @@ module OpenTox
       max=0
       max_value=0
       nr_o = self.sum_size(occurrences)
-      nr_db = self.sum(db_instances)
+      nr_db = db_instances.to_scale.sum
 
       occurrences.each_with_index { |o,i| # fminer outputs occurrences sorted reverse by activity.
         actual = o.size.to_f/nr_o
@@ -888,24 +871,6 @@ module OpenTox
       p_sum 
     end
                 
-    # Adds variance, mean and standard deviation calculation to Array class
-    module Variance
-      def sum(&blk)
-        map(&blk).inject { |sum, element| sum + element }
-      end
-      def mean
-        (sum.to_f / size.to_f)
-      end
-      def variance
-        m = mean
-        sum { |i| ( i - m )**2 } / (size-1).to_f
-      end
-      def std_dev
-        Math.sqrt(variance)
-      end
-    end
-    Array.send :include, Variance
-
   end
 end
 
