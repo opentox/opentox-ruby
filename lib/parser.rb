@@ -86,7 +86,11 @@ module OpenTox
       # @param [String] rdf
       # @param [String] type of the info (e.g. OT.Task, OT.ErrorReport) needed to get the subject-uri
       # @return [Owl] with uri and metadata set 
-      def self.from_rdf( rdf, type )
+      def self.from_rdf( rdf, type, allow_multiple = false )
+
+        uris = Array.new
+        owls = Array.new
+
         # write to file and read convert with rapper into tripples
         file = Tempfile.new("ot-rdfxml")
         file.puts rdf
@@ -99,20 +103,27 @@ module OpenTox
         triples.each_line do |line|
           triple = line.to_triple
           if triple[1] == RDF['type'] and triple[2]==type
-             raise "uri already set, two uris found with type: "+type.to_s if uri
+             if !allow_multiple
+               raise "uri already set, two uris found with type: "+type.to_s if uri
+             end
              uri = triple[0]
+             uris << uri
           end
         end
         File.delete(file.path)
+
         # load metadata
-        metadata = {}
-        triples.each_line do |line|
-          triple = line.to_triple
-          metadata[triple[1]] = triple[2].split('^^').first if triple[0] == uri and triple[1] != RDF['type']
-        end
-        owl = Owl::Generic.new(uri)
-        owl.metadata = metadata
-        owl
+        uris.each { |uri|
+          metadata = {}
+          triples.each_line do |line|
+            triple = line.to_triple
+            metadata[triple[1]] = triple[2].split('^^').first if triple[0] == uri and triple[1] != RDF['type']
+          end
+          owl = Owl::Generic.new(uri)
+          owl.metadata = metadata
+          owls << owl
+        }
+        allow_multiple ? owls : owls[0]
       end
       
       # Generic parser for all OpenTox classes
