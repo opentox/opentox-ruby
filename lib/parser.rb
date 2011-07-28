@@ -509,21 +509,25 @@ module OpenTox
         end
 
         @data.each do |compound,row|
-          row.each do |feature,value|
-            if numeric?(value)
-              value = value.to_f
-            elsif value.nil? or value.empty?
-              value = nil
-            else
-              value = value.to_s
-            end
-            feature_uri = File.join(dataset.uri,"feature",URI.encode(feature))
-            dataset.add(compound, feature_uri, value)
-            if feature_types(feature).include? OT.NumericFeature
-              dataset.features[feature_uri][RDF.type] = OT.NumericFeature
-            else
-              dataset.features[feature_uri][RDF.type] = OT.NominalFeature
-              dataset.features[feature_uri][OT.acceptValue] = feature_values(feature) 
+          unless row.empty?
+            row.each do |feature,value|
+              if numeric?(value)
+                value = value.to_f
+              elsif value.nil? or value.empty?
+                value = nil
+              else
+                value = value.to_s
+              end
+              feature_uri = File.join(dataset.uri,"feature",URI.encode(feature))
+              dataset.add(compound, feature_uri, value)
+              #dataset.features[feature_uri][RDF.type] = feature_types(feature)
+              #dataset.features[feature_uri][OT.acceptValue] = feature_values(feature)
+              if feature_types(feature).include? OT.NumericFeature
+                dataset.features[feature_uri][RDF.type] = [OT.NumericFeature]
+              else
+                dataset.features[feature_uri][RDF.type] = [OT.NominalFeature]
+                dataset.features[feature_uri][OT.acceptValue] = feature_values(feature) 
+              end
             end
           end
         end
@@ -552,7 +556,6 @@ module OpenTox
       def initialize
         @data = {}
 
-        #@format_errors = ""
         @compound_errors = []
         @activity_errors = []
         @duplicates = {}
@@ -572,7 +575,6 @@ module OpenTox
         properties.sort!
         properties.collect!{ |p| p.gsub(/<|>/,'').strip.chomp }
 
-        LOGGER.debug "SDF import"
         rec = 0
         sdf.split(/\$\$\$\$\r*\n/).each do |s|
           rec += 1
@@ -591,22 +593,9 @@ module OpenTox
           table.data[compound.uri] = row
         end
 
-        LOGGER.debug "Clean table"
-        #File.open("/home/ch/tmp_all.yaml","w+"){|f| f.puts table.to_yaml}
-        # REOVE ignored_features
+        # finda and remove ignored_features
         @activity_errors = table.clean_features
-        #File.open("/home/ch/tmp.yaml","w+"){|f| f.puts table.to_yaml}
-        LOGGER.debug "Dataset insert"
         table.add_to_dataset @dataset
-
-        warnings
-        @dataset
-
-       end
-
-      private
-
-      def warnings
 
         warnings = ''
         warnings += "<p>Incorrect Smiles structures (ignored):</p>" + @compound_errors.join("<br/>") unless @compound_errors.empty?
@@ -616,6 +605,7 @@ module OpenTox
         warnings += "<p>Duplicated structures (all structures/activities used for model building, please  make sure, that the results were obtained from <em>independent</em> experiments):</p>" + duplicate_warnings unless duplicate_warnings.empty?
 
         @dataset.metadata[OT.Warnings] = warnings 
+        @dataset
 
       end
 
