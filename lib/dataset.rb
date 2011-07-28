@@ -102,6 +102,13 @@ module OpenTox
       copy parser.load_uri(subjectid)
     end
 
+    def load_sdf(sdf,subjectid=nil)
+      save(subjectid) unless @uri # get a uri for creating features
+      parser = Parser::Sdf.new
+      parser.dataset = self
+      parser.load_sdf(sdf)
+    end
+
     # Load CSV string (format specification: http://toxcreate.org/help)
     # - loads data_entries, compounds, features
     # - sets metadata (warnings) for parser errors
