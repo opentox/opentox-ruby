@@ -239,6 +239,8 @@ module OpenTox
             @prediction_dataset.add @compound.uri, value_feature_uri, prediction[:prediction]
           end
           @prediction_dataset.add @compound.uri, confidence_feature_uri, prediction[:confidence]
+          @prediction_dataset.features[value_feature_uri][DC.title] = @prediction_dataset.metadata[DC.title]
+          @prediction_dataset.features[confidence_feature_uri][DC.title] = "Confidence"
 
           if verbose
             if @feature_calculation_algorithm == "Substructure.match"
