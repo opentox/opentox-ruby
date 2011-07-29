@@ -243,7 +243,13 @@ module OpenTox
       sum=""
       @compounds.each{ |c|
         sum << OpenTox::Compound.new(c).to_inchi
-        sum << OpenTox::Compound.new(c).to_sdf
+        sum << OpenTox::Compound.new(c).to_sdf.sub(/\n\$\$\$\$/,'')
+        @data_entries[c].each{ |f,v|
+          sum << ">  <\"#{f}\">\n"
+          sum << v.join(", ")
+          sum << "\n\n"
+        }
+        sum << "$$$$\n"
       }
       sum
     end
