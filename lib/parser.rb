@@ -447,12 +447,8 @@ module OpenTox
         end
       end
 
-      def numeric?(value)
-        true if Float(value) rescue false
-      end
-
       def feature_type(value)
-        if numeric? value
+        if OpenTox::Algorithm::numeric? value
           return OT.NumericFeature
         else
           return OT.NominalFeature
@@ -493,7 +489,7 @@ module OpenTox
             if feature_types(feature).size == 1 and feature_types(feature).first == OT.NumericFeature
               # REGRESSION
             elsif feature_types(feature).include? OT.NumericFeature
-              @data.each{|c,row| row[feature] = nil unless numeric?(row[feature]) } # delete nominal features
+              @data.each{|c,row| row[feature] = nil unless OpenTox::Algorithm::numeric?(row[feature]) } # delete nominal features
               @activity_errors << "Nominal feature values of #{feature} ignored (using numeric features for regression models)."
             else
               @activity_errors << "Feature #{feature} ignored (more than 5 nominal feature values and no numeric values)."
@@ -522,7 +518,7 @@ module OpenTox
         @data.each do |compound,row|
           unless row.empty?
             row.each do |feature,value|
-              if numeric?(value)
+              if OpenTox::Algorithm::numeric?(value)
                 value = value.to_f
               elsif value.nil? or value.empty?
                 value = nil
@@ -545,12 +541,9 @@ module OpenTox
       end
 
       private
-      def numeric?(value)
-        true if Float(value) rescue false
-      end
 
       def feature_type(value)
-        if numeric? value
+        if OpenTox::Algorithm::numeric? value
           return OT.NumericFeature
         else
           return OT.NominalFeature
