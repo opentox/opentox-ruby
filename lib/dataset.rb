@@ -102,6 +102,13 @@ module OpenTox
       copy parser.load_uri(subjectid)
     end
 
+    def load_sdf(sdf,subjectid=nil)
+      save(subjectid) unless @uri # get a uri for creating features
+      parser = Parser::Sdf.new
+      parser.dataset = self
+      parser.load_sdf(sdf)
+    end
+
     # Load CSV string (format specification: http://toxcreate.org/help)
     # - loads data_entries, compounds, features
     # - sets metadata (warnings) for parser errors
@@ -236,7 +243,13 @@ module OpenTox
       sum=""
       @compounds.each{ |c|
         sum << OpenTox::Compound.new(c).to_inchi
-        sum << OpenTox::Compound.new(c).to_sdf
+        sum << OpenTox::Compound.new(c).to_sdf.sub(/\n\$\$\$\$/,'')
+        @data_entries[c].each{ |f,v|
+          sum << ">  <\"#{f}\">\n"
+          sum << v.join(", ")
+          sum << "\n\n"
+        }
+        sum << "$$$$\n"
       }
       sum
     end

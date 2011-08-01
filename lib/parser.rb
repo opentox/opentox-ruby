@@ -86,7 +86,11 @@ module OpenTox
       # @param [String] rdf
       # @param [String] type of the info (e.g. OT.Task, OT.ErrorReport) needed to get the subject-uri
       # @return [Owl] with uri and metadata set 
-      def self.from_rdf( rdf, type )
+      def self.from_rdf( rdf, type, allow_multiple = false )
+
+        uris = Array.new
+        owls = Array.new
+
         # write to file and read convert with rapper into tripples
         file = Tempfile.new("ot-rdfxml")
         file.puts rdf
@@ -99,20 +103,27 @@ module OpenTox
         triples.each_line do |line|
           triple = line.to_triple
           if triple[1] == RDF['type'] and triple[2]==type
-             raise "uri already set, two uris found with type: "+type.to_s if uri
+             if !allow_multiple
+               raise "uri already set, two uris found with type: "+type.to_s if uri
+             end
              uri = triple[0]
+             uris << uri
           end
         end
         File.delete(file.path)
+
         # load metadata
-        metadata = {}
-        triples.each_line do |line|
-          triple = line.to_triple
-          metadata[triple[1]] = triple[2].split('^^').first if triple[0] == uri and triple[1] != RDF['type']
-        end
-        owl = Owl::Generic.new(uri)
-        owl.metadata = metadata
-        owl
+        uris.each { |uri|
+          metadata = {}
+          triples.each_line do |line|
+            triple = line.to_triple
+            metadata[triple[1]] = triple[2].split('^^').first if triple[0] == uri and triple[1] != RDF['type']
+          end
+          owl = Owl::Generic.new(uri)
+          owl.metadata = metadata
+          owls << owl
+        }
+        allow_multiple ? owls : owls[0]
       end
       
       # Generic parser for all OpenTox classes
@@ -350,7 +361,6 @@ module OpenTox
         @dataset
       end
 
-
       private
 
       def warnings
@@ -437,12 +447,8 @@ module OpenTox
         end
       end
 
-      def numeric?(value)
-        true if Float(value) rescue false
-      end
-
       def feature_type(value)
-        if numeric? value
+        if OpenTox::Algorithm::numeric? value
           return OT.NumericFeature
         else
           return OT.NominalFeature
@@ -451,6 +457,160 @@ module OpenTox
 
       def split_row(row)
         row.chomp.gsub(/["']/,'').split(/\s*[,;\t]\s*/) # remove quotes
+      end
+
+    end
+
+    class Table
+
+      attr_accessor :data, :features, :compounds
+
+      def initialize
+        @data = {}
+        @activity_errors = []
+      end
+
+      def feature_values(feature)
+        @data.collect{|c, row| row[feature]}.uniq.compact
+      end
+
+      def feature_types(feature)
+        @data.collect{|c, row| feature_type(row[feature])}.uniq.compact
+      end
+
+      def features
+        @data.collect{|c,row| row.keys}.flatten.uniq
+      end
+
+      def clean_features
+        ignored_features = []
+        features.each do |feature|
+          if feature_values(feature).size > 5
+            if feature_types(feature).size == 1 and feature_types(feature).first == OT.NumericFeature
+              # REGRESSION
+            elsif feature_types(feature).include? OT.NumericFeature
+              @data.each{|c,row| row[feature] = nil unless OpenTox::Algorithm::numeric?(row[feature]) } # delete nominal features
+              @activity_errors << "Nominal feature values of #{feature} ignored (using numeric features for regression models)."
+            else
+              @activity_errors << "Feature #{feature} ignored (more than 5 nominal feature values and no numeric values)."
+              ignored_features << feature
+              next
+            end
+          elsif feature_values(feature).size <= 1
+              @activity_errors << "Feature #{feature} ignored (less than 2 feature values)."
+              ignored_features << feature
+          else
+            # CLASSIFICATION
+          end
+        end
+        ignored_features.each do |feature|
+          @data.each{ |c,row| row.delete feature }
+        end
+        @activity_errors
+      end
+
+      def add_to_dataset(dataset)
+        features.each do |feature_name|
+          feature_uri = File.join(dataset.uri,"feature",URI.encode(feature_name))
+          dataset.add_feature(feature_uri,{DC.title => feature_name})
+        end
+
+        @data.each do |compound,row|
+          unless row.empty?
+            row.each do |feature,value|
+              if OpenTox::Algorithm::numeric?(value)
+                value = value.to_f
+              elsif value.nil? or value.empty?
+                value = nil
+              else
+                value = value.to_s
+              end
+              feature_uri = File.join(dataset.uri,"feature",URI.encode(feature))
+              dataset.add(compound, feature_uri, value)
+              #dataset.features[feature_uri][RDF.type] = feature_types(feature)
+              #dataset.features[feature_uri][OT.acceptValue] = feature_values(feature)
+              if feature_types(feature).include? OT.NumericFeature
+                dataset.features[feature_uri][RDF.type] = [OT.NumericFeature]
+              else
+                dataset.features[feature_uri][RDF.type] = [OT.NominalFeature]
+                dataset.features[feature_uri][OT.acceptValue] = feature_values(feature) 
+              end
+            end
+          end
+        end
+      end
+
+      private
+
+      def feature_type(value)
+        if OpenTox::Algorithm::numeric? value
+          return OT.NumericFeature
+        else
+          return OT.NominalFeature
+        end
+      end
+    end
+
+    # quick hack to enable sdf import via csv
+    # should be refactored 
+    class Sdf
+
+      attr_accessor :dataset
+
+      def initialize
+        @data = {}
+
+        @compound_errors = []
+        @activity_errors = []
+        @duplicates = {}
+      end
+
+      def load_sdf(sdf)
+
+        obconversion = OpenBabel::OBConversion.new
+        obmol = OpenBabel::OBMol.new
+        obconversion.set_in_and_out_formats "sdf", "inchi"
+
+        table = Table.new
+
+        properties = []
+        sdf.each_line { |l| properties << l.to_s if l.match(/</) }
+        properties.uniq!
+        properties.sort!
+        properties.collect!{ |p| p.gsub(/<|>/,'').strip.chomp }
+
+        rec = 0
+        sdf.split(/\$\$\$\$\r*\n/).each do |s|
+          rec += 1
+          obconversion.read_string obmol, s
+          begin
+            inchi = obconversion.write_string(obmol).gsub(/\s/,'').chomp 
+            @duplicates[inchi] = [] unless @duplicates[inchi]
+            @duplicates[inchi] << rec #inchi#+", "+row.join(", ")
+            compound = Compound.from_inchi inchi
+          rescue
+            @compound_errors << "Could not convert structure to InChI, all entries for this compound (record #{rec} have been ignored! \n#{s}"
+            next
+          end
+          row = {}
+          obmol.get_data.each { |d| row[d.get_attribute] = d.get_value if properties.include?(d.get_attribute) }
+          table.data[compound.uri] = row
+        end
+
+        # finda and remove ignored_features
+        @activity_errors = table.clean_features
+        table.add_to_dataset @dataset
+
+        warnings = ''
+        warnings += "<p>Incorrect Smiles structures (ignored):</p>" + @compound_errors.join("<br/>") unless @compound_errors.empty?
+        warnings += "<p>Irregular activities (ignored):</p>" + @activity_errors.join("<br/>") unless @activity_errors.empty?
+        duplicate_warnings = ''
+        @duplicates.each {|inchi,lines| duplicate_warnings << "<p>#{lines.join('<br/>')}</p>" if lines.size > 1 }
+        warnings += "<p>Duplicated structures (all structures/activities used for model building, please  make sure, that the results were obtained from <em>independent</em> experiments):</p>" + duplicate_warnings unless duplicate_warnings.empty?
+
+        @dataset.metadata[OT.Warnings] = warnings 
+        @dataset
+
       end
 
     end

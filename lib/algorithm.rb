@@ -4,6 +4,7 @@
 R = nil
 require "rinruby" 
 require "statsample"
+require 'uri'
 
 module OpenTox
 
@@ -208,6 +209,106 @@ module OpenTox
           0.0
         end
       end
+    end
+
+    # Structural Graph Clustering by TU Munich
+    # Finds clusters similar to a query structure in a given training dataset
+    # May be queried for cluster membership of an unknown compound
+    class StructuralClustering
+      attr_accessor :training_dataset_uri, :training_threshold, :query_dataset_uri, :query_threshold, :target_clusters_array
+
+      # @params[String] Training dataset_uri
+      # @params[Float]  Similarity threshold for training (optional)
+      # @params[String] Cluster service uri (no AA)
+      def initialize training_dataset_uri, training_threshold=0.8, cluster_service_uri = "http://opentox-dev.informatik.tu-muenchen.de:8080/OpenTox/algorithm/StructuralClustering"
+
+        if (training_dataset_uri =~ URI::regexp).nil? || (cluster_service_uri =~ URI::regexp).nil? 
+          raise "Invalid URI."
+        end
+        @training_dataset_uri = training_dataset_uri
+        if !OpenTox::Algorithm.numeric? training_threshold || training_threshold <0 || training_threshold >1
+          raise "Training threshold out of bounds."
+        end
+        @training_threshold = training_threshold.to_f
+
+        # Train a cluster model
+        params = {:dataset_uri => @training_dataset_uri, :threshold => @training_threshold }
+        @cluster_model_uri = OpenTox::RestClientWrapper.post cluster_service_uri, params
+        cluster_model_rdf = OpenTox::RestClientWrapper.get @cluster_model_uri
+        @datasets = OpenTox::Parser::Owl.from_rdf cluster_model_rdf, OT.Dataset, true # must extract OT.Datasets from model
+
+        # Process parsed OWL objects
+        @clusterid_dataset_map = Hash.new
+        @datasets.each { |d|
+          begin
+            d.metadata[OT.hasSource]["Structural Clustering cluster "] = "" # must parse in metadata for string (not elegant)
+            @clusterid_dataset_map[d.metadata[OT.hasSource].to_i] = d.uri
+          rescue Exception => e
+            # ignore other entries!
+          end
+        }
+      end
+
+      # Whether a model has been trained
+      def trained?
+        !@cluster_model_uri.nil?
+      end
+
+      # Instance query: clusters for a compound
+      # @params[String] Query compound
+      # @params[Float]  Similarity threshold for query to clusters (optional)
+      def get_clusters query_compound_uri, query_threshold = 0.5
+
+        if !OpenTox::Algorithm.numeric? query_threshold || query_threshold <0 || query_threshold >1
+          raise "Query threshold out of bounds."
+        end
+        @query_threshold = query_threshold.to_f
+
+
+        # Preparing a query dataset
+        query_dataset = OpenTox::Dataset.new
+        @query_dataset_uri = query_dataset.save
+        query_dataset = OpenTox::Dataset.find @query_dataset_uri
+        query_dataset.add_compound query_compound_uri
+        @query_dataset_uri = query_dataset.save
+
+        # Obtaining a clustering for query compound
+        params = { :dataset_uri => @query_dataset_uri, :threshold => @query_threshold }
+        cluster_query_dataset_uri = OpenTox::RestClientWrapper.post @cluster_model_uri, params
+        cluster_query_dataset = OpenTox::Dataset.new cluster_query_dataset_uri
+        cluster_query_dataset.load_all
+
+        # Reading cluster ids for features from metadata
+        feature_clusterid_map = Hash.new
+        pattern="Prediction feature for cluster assignment " # must parse for string in metadata (not elegant)
+        cluster_query_dataset.features.each { |feature_uri,metadata|
+          metadata[DC.title][pattern]=""
+          feature_clusterid_map[feature_uri] = metadata[DC.title].to_i
+        }
+        
+        # Integrity check
+        unless cluster_query_dataset.compounds.size == 1
+          raise "Number of predicted compounds is != 1."
+        end
+
+        # Process data entry
+        query_compound_uri = cluster_query_dataset.compounds[0]
+        @target_clusters_array = Array.new
+        cluster_query_dataset.features.keys.each { |cluster_membership_feature|
+        
+          # Getting dataset URI for cluster
+          target_cluster = feature_clusterid_map[cluster_membership_feature]
+          dataset = @clusterid_dataset_map[target_cluster]
+        
+          # Finally look up presence
+          data_entry = cluster_query_dataset.data_entries[query_compound_uri]
+          present = data_entry[cluster_membership_feature][0]
+
+          # Store result
+          @target_clusters_array << dataset if present > 0.5 # 0.0 for absence, 1.0 for presence
+        }
+      end
+
     end
 
     module Neighbors
@@ -813,6 +914,13 @@ module OpenTox
       return (nr_zeroes == array.size) ||    # remove non-occurring feature
              (nr_zeroes == array.size-1) ||  # remove singular feature
              (nr_zeroes == 0)                # also remove feature present everywhere
+    end
+
+    # Numeric value test
+    # @param[Object] value
+    # @return [Boolean] Whether value is a number
+    def self.numeric?(value)
+      true if Float(value) rescue false
     end
 
     # For symbolic features

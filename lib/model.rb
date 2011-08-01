@@ -50,38 +50,49 @@ module OpenTox
         @predicted_variable
       end
 
+      def predicted_variables( subjectid )
+        load_predicted_variables( subjectid, false ) unless @predicted_variables
+        @predicted_variables
+      end
+
       def predicted_confidence( subjectid )
         load_predicted_variables( subjectid ) unless @predicted_confidence
         @predicted_confidence
       end
   
       private
-      def load_predicted_variables( subjectid=nil )
+      def load_predicted_variables( subjectid=nil, use_confidence=true )
         load_metadata(subjectid) if @metadata==nil or @metadata.size==0 or (@metadata.size==1 && @metadata.values[0]==@uri)
         if @metadata[OT.predictedVariables]
           predictedVariables = @metadata[OT.predictedVariables]
           if predictedVariables.is_a?(Array)
             if (predictedVariables.size==1)
               @predicted_variable = predictedVariables[0]
-            elsif (predictedVariables.size==2)
+            elsif (predictedVariables.size>=2)
               # PENDING identify confidence
-              conf_index = -1
-              predictedVariables.size.times do |i|
-                f = OpenTox::Feature.find(predictedVariables[i])
-                conf_index = i if f.metadata[DC.title]=~/(?i)confidence/
+              if use_confidence
+                conf_index = -1
+                predictedVariables.size.times do |i|
+                  f = OpenTox::Feature.find(predictedVariables[i])
+                  conf_index = i if f.metadata[DC.title]=~/(?i)confidence/
+                end
+                raise "could not estimate predicted variable from model: '"+uri.to_s+
+                  "', number of predicted-variables==2, but no confidence found" if conf_index==-1
               end
-              raise "could not estimate predicted variable from model: '"+uri.to_s+
-                "', number of predicted-variables==2, but no confidence found" if conf_index==-1
-              @predicted_variable = predictedVariables[1-conf_index]
-              @predicted_confidence = predictedVariables[conf_index]
+              if (predictedVariables.size==2) && use_confidence
+                @predicted_variable = predictedVariables[1-conf_index]
+                @predicted_confidence = predictedVariables[conf_index]
+              else
+                @predicted_variables = predictedVariables
+              end
             else
-              raise "could not estimate predicted variable from model: '"+uri.to_s+"', number of predicted-variables > 2"  
+              raise "could not estimate predicted variable from model: '"+uri.to_s+"', number of predicted-variables == 0"  
             end
           else
             raise "could not estimate predicted variable from model: '"+uri.to_s+"', predicted-variables is no array"
           end        
         end
-        raise "could not estimate predicted variable from model: '"+uri.to_s+"'" unless @predicted_variable
+        raise "could not estimate predicted variable from model: '"+uri.to_s+"'" unless (@predicted_variable || @predicted_variables)
       end
     end
 
