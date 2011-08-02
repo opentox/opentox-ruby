@@ -264,7 +264,7 @@ module OpenTox
             @prediction_dataset.add @compound.uri, value_feature_uri, @value_map[prediction[:prediction]]
           else
             @prediction_dataset.add @compound.uri, value_feature_uri, prediction[:prediction]
-         end
+          end
           @prediction_dataset.add @compound.uri, confidence_feature_uri, prediction[:confidence]
           @prediction_dataset.features[value_feature_uri][DC.title] = @prediction_dataset.metadata[DC.title]
           @prediction_dataset.features[confidence_feature_uri][DC.title] = "Confidence"
