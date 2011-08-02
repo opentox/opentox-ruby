@@ -224,16 +224,19 @@ module OpenTox
           } )
         end
 
-        #if OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "regression"
-        #  all_activities = [] 
-          #all_activities = @activities.values.flatten.collect! { |i| i.to_f }
+        if OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "regression"
+          #t1 = Time.now
+          #LOGGER.debug "dv ----------- start"
+          all_activities = [] 
+          all_activities = @activities.values.flatten.collect! { |i| i.to_f }
           #LOGGER.debug "dv ------------------ min_toscale: #{all_activities.to_scale.min}"  
           #LOGGER.debug "dv ------------------ max_toscale: #{all_activities.to_scale.max}"  
           #LOGGER.debug "dv ------------------ min: #{@activities.values.flatten.to_scale.min}"  
           #LOGGER.debug "dv ------------------ max: #{@activities.values.max}"  
-          #@prediction_min_max[0] = (all_activities.to_scale.min/2)
-          #@prediction_min_max[1] = (all_activities.to_scale.max*2)
-        #end
+          @prediction_min_max[0] = (all_activities.to_scale.min/2)
+          @prediction_min_max[1] = (all_activities.to_scale.max*2)
+          #LOGGER.debug "dv ----------- end. Duration: '#{Time.now - t1}'"
+        end
 
         unless database_activity(subjectid) # adds database activity to @prediction_dataset
 
@@ -261,7 +264,7 @@ module OpenTox
             @prediction_dataset.add @compound.uri, value_feature_uri, @value_map[prediction[:prediction]]
           else
             @prediction_dataset.add @compound.uri, value_feature_uri, prediction[:prediction]
-          end
+         end
           @prediction_dataset.add @compound.uri, confidence_feature_uri, prediction[:confidence]
           @prediction_dataset.features[value_feature_uri][DC.title] = @prediction_dataset.metadata[DC.title]
           @prediction_dataset.features[confidence_feature_uri][DC.title] = "Confidence"
