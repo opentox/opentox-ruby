@@ -73,7 +73,7 @@ module OpenTox
               if use_confidence
                 conf_index = -1
                 predictedVariables.size.times do |i|
-                  f = OpenTox::Feature.find(predictedVariables[i])
+                  f = OpenTox::Feature.find(predictedVariables[i], subjectid)
                   conf_index = i if f.metadata[DC.title]=~/(?i)confidence/
                 end
                 raise "could not estimate predicted variable from model: '"+uri.to_s+
@@ -182,6 +182,7 @@ module OpenTox
       # @param [optional,OpenTox::Task] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
       # @return [OpenTox::Dataset] Dataset with predictions
       def predict_dataset(dataset_uri, subjectid=nil, waiting_task=nil)
+      
         @prediction_dataset = Dataset.create(CONFIG[:services]["opentox-dataset"], subjectid)
         @prediction_dataset.add_metadata({
           OT.hasSource => @uri,
@@ -253,7 +254,7 @@ module OpenTox
           @prediction_dataset.metadata[OT.dependentVariables] = @metadata[OT.dependentVariables] unless @prediction_dataset.metadata[OT.dependentVariables] 
           @prediction_dataset.metadata[OT.predictedVariables] = [value_feature_uri, confidence_feature_uri] unless @prediction_dataset.metadata[OT.predictedVariables] 
 
-          if OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "classification"
+          if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "classification"
             @prediction_dataset.add @compound.uri, value_feature_uri, @value_map[prediction[:prediction]]
           else
             @prediction_dataset.add @compound.uri, value_feature_uri, prediction[:prediction]

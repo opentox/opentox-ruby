@@ -52,11 +52,11 @@ module OpenTox
       include Algorithm
       attr_accessor :prediction_feature, :training_dataset, :minfreq, :compounds, :db_class_sizes, :all_activities, :smi
       
-      def check_params(params,per_mil)
+      def check_params(params,per_mil,subjectid=nil)
         raise OpenTox::NotFoundError.new "Please submit a dataset_uri." unless params[:dataset_uri] and  !params[:dataset_uri].nil?
         raise OpenTox::NotFoundError.new "Please submit a prediction_feature." unless params[:prediction_feature] and  !params[:prediction_feature].nil?
-        @prediction_feature = OpenTox::Feature.find params[:prediction_feature], @subjectid
-        @training_dataset = OpenTox::Dataset.find "#{params[:dataset_uri]}", @subjectid
+        @prediction_feature = OpenTox::Feature.find params[:prediction_feature], subjectid
+        @training_dataset = OpenTox::Dataset.find "#{params[:dataset_uri]}", subjectid
         raise OpenTox::NotFoundError.new "No feature #{params[:prediction_feature]} in dataset #{params[:dataset_uri]}" unless @training_dataset.features and @training_dataset.features.include?(params[:prediction_feature])
 
         unless params[:min_frequency].nil? 
