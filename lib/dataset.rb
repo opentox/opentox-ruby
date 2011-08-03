@@ -102,6 +102,13 @@ module OpenTox
       copy parser.load_uri(subjectid)
     end
 
+    def load_sdf(sdf,subjectid=nil)
+      save(subjectid) unless @uri # get a uri for creating features
+      parser = Parser::Sdf.new
+      parser.dataset = self
+      parser.load_sdf(sdf)
+    end
+
     # Load CSV string (format specification: http://toxcreate.org/help)
     # - loads data_entries, compounds, features
     # - sets metadata (warnings) for parser errors
@@ -228,6 +235,30 @@ module OpenTox
       s = Serializer::Owl.new
       s.add_dataset(self)
       s.to_rdfxml
+    end
+
+    # Get SDF representation of compounds
+    # @return [String] SDF representation
+    def to_sdf
+      sum=""
+      @compounds.each{ |c|
+        sum << OpenTox::Compound.new(c).to_inchi
+        sum << OpenTox::Compound.new(c).to_sdf.sub(/\n\$\$\$\$/,'')
+        @data_entries[c].each{ |f,v|
+          sum << ">  <\"#{f}\">\n"
+          sum << v.join(", ")
+          sum << "\n\n"
+        }
+        sum << "$$$$\n"
+      }
+      sum
+    end
+
+    def to_urilist
+      @compounds.inject { |sum, c|
+        sum << OpenTox::Compound.new(c).uri
+        sum + "\n"
+      }
     end
 
     # Get name (DC.title) of a feature

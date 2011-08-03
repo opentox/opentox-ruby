@@ -50,38 +50,49 @@ module OpenTox
         @predicted_variable
       end
 
+      def predicted_variables( subjectid )
+        load_predicted_variables( subjectid, false ) unless @predicted_variables
+        @predicted_variables
+      end
+
       def predicted_confidence( subjectid )
         load_predicted_variables( subjectid ) unless @predicted_confidence
         @predicted_confidence
       end
   
       private
-      def load_predicted_variables( subjectid=nil )
+      def load_predicted_variables( subjectid=nil, use_confidence=true )
         load_metadata(subjectid) if @metadata==nil or @metadata.size==0 or (@metadata.size==1 && @metadata.values[0]==@uri)
         if @metadata[OT.predictedVariables]
           predictedVariables = @metadata[OT.predictedVariables]
           if predictedVariables.is_a?(Array)
             if (predictedVariables.size==1)
               @predicted_variable = predictedVariables[0]
-            elsif (predictedVariables.size==2)
+            elsif (predictedVariables.size>=2)
               # PENDING identify confidence
-              conf_index = -1
-              predictedVariables.size.times do |i|
-                f = OpenTox::Feature.find(predictedVariables[i])
-                conf_index = i if f.metadata[DC.title]=~/(?i)confidence/
+              if use_confidence
+                conf_index = -1
+                predictedVariables.size.times do |i|
+                  f = OpenTox::Feature.find(predictedVariables[i], subjectid)
+                  conf_index = i if f.metadata[DC.title]=~/(?i)confidence/
+                end
+                raise "could not estimate predicted variable from model: '"+uri.to_s+
+                  "', number of predicted-variables==2, but no confidence found" if conf_index==-1
               end
-              raise "could not estimate predicted variable from model: '"+uri.to_s+
-                "', number of predicted-variables==2, but no confidence found" if conf_index==-1
-              @predicted_variable = predictedVariables[1-conf_index]
-              @predicted_confidence = predictedVariables[conf_index]
+              if (predictedVariables.size==2) && use_confidence
+                @predicted_variable = predictedVariables[1-conf_index]
+                @predicted_confidence = predictedVariables[conf_index]
+              else
+                @predicted_variables = predictedVariables
+              end
             else
-              raise "could not estimate predicted variable from model: '"+uri.to_s+"', number of predicted-variables > 2"  
+              raise "could not estimate predicted variable from model: '"+uri.to_s+"', number of predicted-variables == 0"  
             end
           else
             raise "could not estimate predicted variable from model: '"+uri.to_s+"', predicted-variables is no array"
           end        
         end
-        raise "could not estimate predicted variable from model: '"+uri.to_s+"'" unless @predicted_variable
+        raise "could not estimate predicted variable from model: '"+uri.to_s+"'" unless (@predicted_variable || @predicted_variables)
       end
     end
 
@@ -91,7 +102,7 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :balanced
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :transform, :conf_stdev
 
       def initialize(uri=nil)
 
@@ -113,10 +124,12 @@ module OpenTox
         @feature_calculation_algorithm = "Substructure.match"
         @similarity_algorithm = "Similarity.tanimoto"
         @prediction_algorithm = "Neighbors.weighted_majority_vote"
-
+        
+        @nr_hits = false
         @min_sim = 0.3
         @prop_kernel = false
-        @balanced = false
+        @transform = { "class" => "NOP"  }
+        @conf_stdev = false
 
       end
 
@@ -168,6 +181,7 @@ module OpenTox
       # @param [optional,OpenTox::Task] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
       # @return [OpenTox::Dataset] Dataset with predictions
       def predict_dataset(dataset_uri, subjectid=nil, waiting_task=nil)
+      
         @prediction_dataset = Dataset.create(CONFIG[:services]["opentox-dataset"], subjectid)
         @prediction_dataset.add_metadata({
           OT.hasSource => @uri,
@@ -212,90 +226,33 @@ module OpenTox
 
         unless database_activity(subjectid) # adds database activity to @prediction_dataset
 
-          if @balanced && OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "classification"
-            # AM: Balancing, see http://www.maunz.de/wordpress/opentox/2011/balanced-lazar
-            l = Array.new # larger 
-            s = Array.new # smaller fraction
+          neighbors
+          prediction = eval("#{@prediction_algorithm} ( { :neighbors => @neighbors, 
+                                                          :compound => @compound,
+                                                          :features => @features, 
+                                                          :p_values => @p_values, 
+                                                          :fingerprints => @fingerprints,
+                                                          :similarity_algorithm => @similarity_algorithm, 
+                                                          :prop_kernel => @prop_kernel,
+                                                          :value_map => @value_map,
+                                                          :nr_hits => @nr_hits,
+                                                          :conf_stdev => @conf_stdev,
+                                                          :transform => @transform } ) ")
 
-            raise "no fingerprints in model" if @fingerprints.size==0
-
-            @fingerprints.each do |training_compound,training_features|
-              @activities[training_compound].each do |act|
-                case act.to_s
-                when "0" 
-                  l << training_compound
-                when "1"  
-                  s << training_compound
-                else
-                  LOGGER.warn "BLAZAR: Activity #{act.to_s} should not be reached (supports only two classes)."
-                end
-              end
-            end
-            if s.size > l.size then 
-              l,s = s,l # happy swapping
-              LOGGER.info "BLAZAR: |s|=#{s.size}, |l|=#{l.size}."
-            end
-            # determine ratio
-            modulo = l.size.divmod(s.size)# modulo[0]=ratio, modulo[1]=rest
-            LOGGER.info "BLAZAR: Balance: #{modulo[0]}, rest #{modulo[1]}."
-
-            # AM: Balanced predictions
-            addon = (modulo[1].to_f/modulo[0]).ceil # what will be added in each round 
-            slack = (addon!=0 ? modulo[1].divmod(addon)[1] : 0) # what remains for the last round
-            position = 0
-            predictions = Array.new
-
-            prediction_best=nil
-            neighbors_best=nil
-
-            begin
-              for i in 1..modulo[0] do
-                (i == modulo[0]) && (slack>0) ? lr_size = s.size + slack : lr_size = s.size + addon  # determine fraction
-                LOGGER.info "BLAZAR: Neighbors round #{i}: #{position} + #{lr_size}."
-                neighbors_balanced(s, l, position, lr_size) # get ratio fraction of larger part
-                if @prop_kernel && ( @prediction_algorithm.include?("svm") || @prediction_algorithm.include?("local_mlr_prop") )
-                  props = get_props 
-                else
-                  props = nil
-                end
-                prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values, :value_map => @value_map}, props)")
-                if prediction_best.nil? || prediction[:confidence].abs > prediction_best[:confidence].abs 
-                  prediction_best=prediction 
-                  neighbors_best=@neighbors
-                end
-                position = position + lr_size
-              end
-            rescue Exception => e
-              LOGGER.error "BLAZAR failed in prediction: "+e.class.to_s+": "+e.message
-            end
-
-            prediction=prediction_best
-            @neighbors=neighbors_best
-            ### END AM balanced predictions
-
-          else # AM: no balancing or regression
-            LOGGER.info "LAZAR: Unbalanced."
-            neighbors
-            if @prop_kernel && ( @prediction_algorithm.include?("svm") || @prediction_algorithm.include?("local_mlr_prop") )
-             props = get_props 
-            else
-             props = nil
-            end
-            prediction = eval("#{@prediction_algorithm}(@neighbors,{:similarity_algorithm => @similarity_algorithm, :p_values => @p_values, :value_map => @value_map}, props)")
-          end
-          
           value_feature_uri = File.join( @uri, "predicted", "value")
           confidence_feature_uri = File.join( @uri, "predicted", "confidence")
 
           @prediction_dataset.metadata[OT.dependentVariables] = @metadata[OT.dependentVariables] unless @prediction_dataset.metadata[OT.dependentVariables] 
           @prediction_dataset.metadata[OT.predictedVariables] = [value_feature_uri, confidence_feature_uri] unless @prediction_dataset.metadata[OT.predictedVariables] 
 
-          if OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "classification"
+          if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "classification"
             @prediction_dataset.add @compound.uri, value_feature_uri, @value_map[prediction[:prediction]]
           else
             @prediction_dataset.add @compound.uri, value_feature_uri, prediction[:prediction]
           end
           @prediction_dataset.add @compound.uri, confidence_feature_uri, prediction[:confidence]
+          @prediction_dataset.features[value_feature_uri][DC.title] = @prediction_dataset.metadata[DC.title]
+          @prediction_dataset.features[confidence_feature_uri][DC.title] = "Confidence"
 
           if verbose
             if @feature_calculation_algorithm == "Substructure.match"
@@ -356,56 +313,32 @@ module OpenTox
         @prediction_dataset
       end
 
-      # Calculate the propositionalization matrix aka instantiation matrix (0/1 entries for features)
-      # Same for the vector describing the query compound
-      def get_props
-        matrix = Array.new
-        begin 
-          @neighbors.each do |n|
-            n = n[:compound]
-            row = []
-            @features.each do |f|
-              if ! @fingerprints[n].nil? 
-                row << (@fingerprints[n].include?(f) ? 0.0 : @p_values[f])
-              else
-                row << 0.0
-              end
-            end
-            matrix << row
-          end
-          row = []
-          @features.each do |f|
-            row << (@compound.match([f]).size == 0 ? 0.0 : @p_values[f])
-          end
-        rescue Exception => e
-          LOGGER.debug "get_props failed with '" + $! + "'"
-        end
-        [ matrix, row ]
-      end
-
-      # Find neighbors and store them as object variable, access only a subset of compounds for that.
-      def neighbors_balanced(s, l, start, offset)
-        @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
-        @neighbors = []
-        [ l[start, offset ] , s ].flatten.each do |training_compound| # AM: access only a balanced subset
-          training_features = @fingerprints[training_compound]
-          add_neighbor training_features, training_compound
-        end
-
-      end
+      
 
       # Find neighbors and store them as object variable, access all compounds for that.
       def neighbors
         @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
         @neighbors = []
-        @fingerprints.each do |training_compound,training_features| # AM: access all compounds
-          add_neighbor training_features, training_compound
+        @fingerprints.keys.each do |training_compound| # AM: access all compounds
+          add_neighbor @fingerprints[training_compound].keys, training_compound
         end
       end
 
       # Adds a neighbor to @neighbors if it passes the similarity threshold.
       def add_neighbor(training_features, training_compound)
-        sim = eval("#{@similarity_algorithm}(@compound_features,training_features,@p_values)")
+        compound_features_hits = {}
+        training_compound_features_hits = {}
+        if @nr_hits
+          compound_features_hits = @compound.match_hits(@compound_features)
+          training_compound_features_hits = @fingerprints[training_compound]
+          #LOGGER.debug "dv ------------ training_compound_features_hits:#{training_compound_features_hits.class}  #{training_compound_features_hits}"
+        end
+        params = {}
+        params[:nr_hits] = @nr_hits
+        params[:compound_features_hits] = compound_features_hits
+        params[:training_compound_features_hits] = training_compound_features_hits
+
+        sim = eval("#{@similarity_algorithm}(training_features, @compound_features, @p_values, params)")
         if sim > @min_sim
           @activities[training_compound].each do |act|
             @neighbors << {
