@@ -225,17 +225,10 @@ module OpenTox
         end
 
         if OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "regression"
-          #t1 = Time.now
-          #LOGGER.debug "dv ----------- start"
           all_activities = [] 
           all_activities = @activities.values.flatten.collect! { |i| i.to_f }
-          #LOGGER.debug "dv ------------------ min_toscale: #{all_activities.to_scale.min}"  
-          #LOGGER.debug "dv ------------------ max_toscale: #{all_activities.to_scale.max}"  
-          #LOGGER.debug "dv ------------------ min: #{@activities.values.flatten.to_scale.min}"  
-          #LOGGER.debug "dv ------------------ max: #{@activities.values.max}"  
           @prediction_min_max[0] = (all_activities.to_scale.min/2)
           @prediction_min_max[1] = (all_activities.to_scale.max*2)
-          #LOGGER.debug "dv ----------- end. Duration: '#{Time.now - t1}'"
         end
 
         unless database_activity(subjectid) # adds database activity to @prediction_dataset

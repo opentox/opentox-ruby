@@ -283,7 +283,6 @@ module OpenTox
       @features[feature] = {}  unless @features[feature]
       @data_entries[compound] = {} unless @data_entries[compound]
       @data_entries[compound][feature] = [] unless @data_entries[compound][feature]
-      #LOGGER.debug "dv --------------- #{value.class}"
       @data_entries[compound][feature] << value if value!=nil
     end
 
