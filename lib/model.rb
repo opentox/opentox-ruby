@@ -102,7 +102,7 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :transform, :conf_stdev
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :transform, :conf_stdev, :prediction_min_max
 
       def initialize(uri=nil)
 
@@ -120,6 +120,7 @@ module OpenTox
         @p_values = {}
         @fingerprints = {}
         @value_map = {}
+        @prediction_min_max = [] 
 
         @feature_calculation_algorithm = "Substructure.match"
         @similarity_algorithm = "Similarity.tanimoto"
@@ -224,6 +225,13 @@ module OpenTox
           } )
         end
 
+        if OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "regression"
+          all_activities = [] 
+          all_activities = @activities.values.flatten.collect! { |i| i.to_f }
+          @prediction_min_max[0] = (all_activities.to_scale.min/2)
+          @prediction_min_max[1] = (all_activities.to_scale.max*2)
+        end
+
         unless database_activity(subjectid) # adds database activity to @prediction_dataset
 
           neighbors
@@ -237,6 +245,7 @@ module OpenTox
                                                           :value_map => @value_map,
                                                           :nr_hits => @nr_hits,
                                                           :conf_stdev => @conf_stdev,
+                                                          :prediction_min_max => @prediction_min_max,
                                                           :transform => @transform } ) ")
 
           value_feature_uri = File.join( @uri, "predicted", "value")
