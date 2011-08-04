@@ -192,7 +192,7 @@ module OpenTox
         @object[metadata[OT.featureDataset]] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Dataset }] }
         @object[metadata[OT.trainingDataset]] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Dataset }] }
         @object[metadata[OT.dependentVariables]] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Feature }] }
-        metadata[OT.predictedVariables].each{|feature| @object[feature] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Feature }]}} unless metadata[OT.predictedVariables].nil?
+        metadata[OT.predictedVariables].each{|feature| @object[feature] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Feature }]}} #unless metadata[OT.predictedVariables].nil?
         # TODO: add algorithms from parameters
         @object["http://ot-dev.in-silico.ch/algorithm/fminer/bbrc"] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Algorithm }] }
         @object["http://ot-dev.in-silico.ch/algorithm/fminer/last"] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Algorithm }] }
