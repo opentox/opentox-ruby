@@ -81,7 +81,7 @@ helpers do
       when "css"
         @accept = 'text/css'
       else
-        # halt 404, "File format #{extension} not supported."
+        # raise OpenTox::NotFoundError.new "File format #{extension} not supported."
       end
     end
   end
@@ -94,4 +94,3 @@ before do
     protected!(@subjectid)
   end
 end
-

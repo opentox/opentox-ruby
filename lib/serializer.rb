@@ -17,6 +17,7 @@ module OpenTox
           # this should come from opentox.owl
           OT.Compound => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.Feature => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
+          OT.Model => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.NominalFeature => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.NumericFeature => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.StringFeature => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
@@ -27,6 +28,8 @@ module OpenTox
           OT.Parameter => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.Task => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OTA.PatternMiningSupervised => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
+          OTA.ClassificationLazySingleTarget => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
+          OTA.RegressionLazySingleTarget => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
 
           #classes for validation
           OT.Validation => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
@@ -45,6 +48,10 @@ module OpenTox
           OT.values => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
           OT.algorithm => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
           OT.parameters => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
+          OT.featureDataset => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
+          OT.dependentVariables => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
+          OT.predictedVariables => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
+          OT.paramValue => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
 
           #object props for validation#           
           OT.model => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
@@ -103,6 +110,7 @@ module OpenTox
           OT.precision => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.areaUnderRoc => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.weightedAreaUnderRoc => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
+          OT.weightedAccuracy => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.fMeasure => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.percentIncorrect => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.validationType => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
@@ -126,7 +134,7 @@ module OpenTox
           OT.hasSource => { RDF["type"] => [{ "type" => "uri", "value" => OWL.DatatypeProperty }] } ,
           OT.value => { RDF["type"] => [{ "type" => "uri", "value" => OWL.DatatypeProperty }] } ,
           OT.paramScope => { RDF["type"] => [{ "type" => "uri", "value" => OWL.DatatypeProperty }] } ,
-          OT.paramValue => { RDF["type"] => [{ "type" => "uri", "value" => OWL.DatatypeProperty }] } ,
+          #OT.paramValue => { RDF["type"] => [{ "type" => "uri", "value" => OWL.DatatypeProperty }] } ,
         }
 
         @data_entries = {}
@@ -157,23 +165,16 @@ module OpenTox
       # Add a dataset
       # @param [String] uri Dataset URI
       def add_dataset(dataset)
-
         @dataset = dataset.uri
-
         @object[dataset.uri] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Dataset }] }
-
         add_metadata dataset.uri, dataset.metadata
-
         dataset.compounds.each { |compound| add_compound compound }
-        
         dataset.features.each { |feature,metadata| add_feature feature,metadata }
-        
         dataset.data_entries.each do |compound,entry|
           entry.each do |feature,values|
             values.each { |value| add_data_entry compound,feature,value }
           end
         end
-
       end
 
       # Add a algorithm
@@ -188,6 +189,14 @@ module OpenTox
       def add_model(uri,metadata)
         @object[uri] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Model }] }
         add_metadata uri, metadata
+        @object[metadata[OT.featureDataset]] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Dataset }] }
+        @object[metadata[OT.trainingDataset]] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Dataset }] }
+        @object[metadata[OT.dependentVariables]] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Feature }] }
+        metadata[OT.predictedVariables].each{|feature| @object[feature] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Feature }]}} #unless metadata[OT.predictedVariables].nil?
+        # TODO: add algorithms from parameters
+        @object["http://ot-dev.in-silico.ch/algorithm/fminer/bbrc"] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Algorithm }] }
+        @object["http://ot-dev.in-silico.ch/algorithm/fminer/last"] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Algorithm }] }
+        @object["http://ot-dev.in-silico.ch/algorithm/lazar"] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Algorithm }] }
       end
 
       # Add a task
@@ -272,7 +281,7 @@ module OpenTox
                 @object[genid][name] = [{"type" => type(entry), "value" => entry }]
               end
             end
-          elsif v.is_a? Array and u == RDF.type
+          elsif v.is_a? Array #and u == RDF.type
             @object[uri] = {} unless @object[uri]
             v.each do |value|
               @object[uri][u] = [] unless @object[uri][u]
@@ -354,7 +363,8 @@ module OpenTox
       # @return [text/plain] Object OWL-DL in RDF/XML format
       def to_rdfxml
         Tempfile.open("owl-serializer"){|f| f.write(self.to_ntriples); @path = f.path}
-        `rapper -i ntriples -f 'xmlns:ot="#{OT.uri}"' -f 'xmlns:dc="#{DC.uri}"' -f 'xmlns:rdf="#{RDF.uri}"' -f 'xmlns:owl="#{OWL.uri}"' -o rdfxml #{@path} 2>/dev/null`
+        # TODO: add base uri for ist services
+        `rapper -i ntriples -f 'xmlns:ot="#{OT.uri}"' -f 'xmlns:ota="#{OTA.uri}"' -f 'xmlns:dc="#{DC.uri}"' -f 'xmlns:rdf="#{RDF.uri}"' -f 'xmlns:owl="#{OWL.uri}"' -o rdfxml #{@path} 2>/dev/null`
       end
 
       # Convert to JSON as specified in http://n2.talis.com/wiki/RDF_JSON_Specification
@@ -373,6 +383,8 @@ module OpenTox
           XSD.boolean
         elsif value.is_a? Float
           XSD.float
+        elsif value.is_a? Integer
+          XSD.integer
         else
           XSD.string
         end
@@ -382,6 +394,8 @@ module OpenTox
         if value.is_a? TrueClass or value.is_a? FalseClass
           datatype = OT.NominalFeature
         elsif value.is_a? Float
+          datatype = OT.NumericFeature
+        elsif value.is_a? Integer
           datatype = OT.NumericFeature
         else
           datatype = OT.StringFeature

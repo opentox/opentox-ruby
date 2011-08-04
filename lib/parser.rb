@@ -40,8 +40,9 @@ module OpenTox
         else
           file = Tempfile.new("ot-rdfxml")
           if @dataset
-            # do not concat /metadata to uri string, this would not work for dataset/R401577?max=3 
             uri = URI::parse(@uri)
+            #remove params like dataset/<id>?max=3 from uri, not needed for metadata
+            uri.query = nil 
             uri.path = File.join(uri.path,"metadata")
             uri = uri.to_s
           else
@@ -56,7 +57,7 @@ module OpenTox
         `rapper -i rdfxml -o ntriples #{file.path} 2>/dev/null`.each_line do |line|
           triple = line.to_triple
           if triple[0] == @uri
-            if triple[1] == RDF.type # allow multiple types
+            if triple[1] == RDF.type || triple[1]==OT.predictedVariables # allow multiple types
               @metadata[triple[1]] = [] unless @metadata[triple[1]]
               @metadata[triple[1]] << triple[2].split('^^').first
             else
@@ -75,6 +76,9 @@ module OpenTox
             @metadata[OT.parameters] << parameter
           end
         end
+        #@metadata.each do |k,v|
+          #v = v.first if v and v.size == 1
+        #end
         @metadata
       end
       
@@ -82,7 +86,11 @@ module OpenTox
       # @param [String] rdf
       # @param [String] type of the info (e.g. OT.Task, OT.ErrorReport) needed to get the subject-uri
       # @return [Owl] with uri and metadata set 
-      def self.from_rdf( rdf, type )
+      def self.from_rdf( rdf, type, allow_multiple = false )
+
+        uris = Array.new
+        owls = Array.new
+
         # write to file and read convert with rapper into tripples
         file = Tempfile.new("ot-rdfxml")
         file.puts rdf
@@ -95,20 +103,27 @@ module OpenTox
         triples.each_line do |line|
           triple = line.to_triple
           if triple[1] == RDF['type'] and triple[2]==type
-             raise "uri already set, two uris found with type: "+type.to_s if uri
+             if !allow_multiple
+               raise "uri already set, two uris found with type: "+type.to_s if uri
+             end
              uri = triple[0]
+             uris << uri
           end
         end
         File.delete(file.path)
+
         # load metadata
-        metadata = {}
-        triples.each_line do |line|
-          triple = line.to_triple
-          metadata[triple[1]] = triple[2].split('^^').first if triple[0] == uri and triple[1] != RDF['type']
-        end
-        owl = Owl::Generic.new(uri)
-        owl.metadata = metadata
-        owl
+        uris.each { |uri|
+          metadata = {}
+          triples.each_line do |line|
+            triple = line.to_triple
+            metadata[triple[1]] = triple[2].split('^^').first if triple[0] == uri and triple[1] != RDF['type']
+          end
+          owl = Owl::Generic.new(uri)
+          owl.metadata = metadata
+          owls << owl
+        }
+        allow_multiple ? owls : owls[0]
       end
       
       # Generic parser for all OpenTox classes
@@ -228,7 +243,12 @@ module OpenTox
             file = Tempfile.new("ot-rdfxml")
             # do not concat /features to uri string, this would not work for dataset/R401577?max=3 
             uri = URI::parse(@uri)
-            uri.path = File.join(uri.path,"features")
+            # PENDING
+            # ambit models return http://host/dataset/id?feature_uris[]=sth but 
+            # amibt dataset services does not support http://host/dataset/id/features?feature_uris[]=sth
+            # and features are not inlcuded in http://host/dataset/id/features
+            # -> load features from complete dataset
+            uri.path = File.join(uri.path,"features") unless @uri=~/\?(feature_uris|page|pagesize)/
             uri = uri.to_s
             file.puts OpenTox::RestClientWrapper.get uri,{:subjectid => subjectid,:accept => "application/rdf+xml"},nil,false
             file.close
@@ -244,8 +264,13 @@ module OpenTox
           File.delete(to_delete) if to_delete
           statements.each do |triple|
             if features.include? triple[0]
-              @dataset.features[triple[0]] = {} unless @dataset.features[triple[0]] 
-              @dataset.features[triple[0]][triple[1]] = triple[2].split('^^').first
+              @dataset.features[triple[0]] = {} unless @dataset.features[triple[0]]
+              if triple[1] == RDF.type
+                 @dataset.features[triple[0]][triple[1]] = [] unless @dataset.features[triple[0]][triple[1]]
+                 @dataset.features[triple[0]][triple[1]] << triple[2].split('^^').first
+              else
+                @dataset.features[triple[0]][triple[1]] = triple[2].split('^^').first
+              end
             end
           end
           @dataset.features
@@ -271,22 +296,39 @@ module OpenTox
         @duplicates = {}
       end
 
+      def detect_new_values(row, value_maps)
+        row.shift
+        row.each_index do |i|
+          value = row[i]
+          value_maps[i] = Hash.new if value_maps[i].nil?
+          value_maps[i][value].nil? ? value_maps[i][value]=0 : value_maps[i][value] += 1
+        end
+        value_maps
+      end
+
       # Load Spreadsheet book (created with roo gem http://roo.rubyforge.org/, excel format specification: http://toxcreate.org/help)
       # @param [Excel] book Excel workbook object (created with roo gem)
       # @return [OpenTox::Dataset] Dataset object with Excel data
       def load_spreadsheet(book)
         book.default_sheet = 0
         add_features book.row(1)
+        value_maps = Array.new
+        regression_features=Array.new
 
-        # AM: fix mixed read in
-        regression_features=false
         2.upto(book.last_row) { |i| 
           row = book.row(i)
-          regression_features = detect_regression_features row
-          break if regression_features==true
+          value_maps = detect_new_values(row, value_maps)
+          value_maps.each_with_index { |vm,j|
+            if vm.size > 5 # 5 is the maximum nr of classes supported by Fminer.
+              regression_features[j]=true 
+            else
+              regression_features[j]=false
+            end
+          }
         }
-        
-        2.upto(book.last_row) { |i| add_values book.row(i),regression_features }
+        2.upto(book.last_row) { |i| 
+          add_values book.row(i), regression_features
+        }
         warnings
         @dataset
       end
@@ -298,20 +340,26 @@ module OpenTox
         row = 0
         input = csv.split("\n")
         add_features split_row(input.shift)
+        value_maps = Array.new
+        regression_features=Array.new
 
-
-        # AM: fix mixed read in
-        regression_features=false
         input.each { |row| 
           row = split_row(row)
-          regression_features = detect_regression_features row
-          break if regression_features==true
+          value_maps = detect_new_values(row, value_maps)
+          value_maps.each_with_index { |vm,j|
+            if vm.size > 5 # 5 is the maximum nr of classes supported by Fminer.
+              regression_features[j]=true 
+            else
+              regression_features[j]=false
+            end
+          }
         }
-        input.each { |row| add_values split_row(row),regression_features }
+        input.each { |row| 
+          add_values split_row(row), regression_features
+        }
         warnings
         @dataset
       end
-
 
       private
 
@@ -354,20 +402,10 @@ module OpenTox
         end
       end
 
-      def detect_regression_features row
-        row.shift
-        regression_features=false
-        row.each_index do |i|
-          value = row[i]
-          type = feature_type(value)
-          if type == OT.NumericFeature
-            regression_features=true
-          end
-        end
-        regression_features
-      end
-
-      def add_values(row, regression_features=false)
+      # Adds a row to a dataset
+      # @param Array A row split up as an array
+      # @param Array Indicator for regression for each field
+      def add_values(row, regression_features)
 
         smiles = row.shift
         compound = Compound.from_smiles(smiles)
@@ -381,27 +419,23 @@ module OpenTox
         row.each_index do |i|
           value = row[i]
           feature = @features[i]
-          type = feature_type(value)
 
+          type = nil
+          if (regression_features[i])
+            type = feature_type(value)
+            if type != OT.NumericFeature
+              raise "Error! Expected numeric values."
+            end
+          else
+            type = OT.NominalFeature
+          end
           @feature_types[feature] << type 
 
-          if (regression_features)
+          case type
+          when OT.NumericFeature
             val = value.to_f
-          else
-            case type
-            when OT.NominalFeature
-              case value.to_s
-              when TRUE_REGEXP
-                val = true
-              when FALSE_REGEXP
-                val = false
-              end
-            when OT.NumericFeature
-              val = value.to_f
-            when OT.StringFeature
-              val = value.to_s
-              @activity_errors << smiles+", "+row.join(", ")
-            end
+          when OT.NominalFeature
+            val = value.to_s
           end
           if val!=nil
             @dataset.add(compound.uri, feature, val)
@@ -413,26 +447,170 @@ module OpenTox
         end
       end
 
-      def numeric?(value)
-        true if Float(value) rescue false
-      end
-
-      def classification?(value)
-        !value.to_s.strip.match(TRUE_REGEXP).nil? or !value.to_s.strip.match(FALSE_REGEXP).nil?
-      end
-
       def feature_type(value)
-        if classification? value
-          return OT.NominalFeature
-        elsif numeric? value
+        if OpenTox::Algorithm::numeric? value
           return OT.NumericFeature
         else
-          return OT.StringFeature
+          return OT.NominalFeature
         end
       end
 
       def split_row(row)
-        row.chomp.gsub(/["']/,'').split(/\s*[,;]\s*/) # remove quotes
+        row.chomp.gsub(/["']/,'').split(/\s*[,;\t]\s*/) # remove quotes
+      end
+
+    end
+
+    class Table
+
+      attr_accessor :data, :features, :compounds
+
+      def initialize
+        @data = {}
+        @activity_errors = []
+      end
+
+      def feature_values(feature)
+        @data.collect{|c, row| row[feature]}.uniq.compact
+      end
+
+      def feature_types(feature)
+        @data.collect{|c, row| feature_type(row[feature])}.uniq.compact
+      end
+
+      def features
+        @data.collect{|c,row| row.keys}.flatten.uniq
+      end
+
+      def clean_features
+        ignored_features = []
+        features.each do |feature|
+          if feature_values(feature).size > 5
+            if feature_types(feature).size == 1 and feature_types(feature).first == OT.NumericFeature
+              # REGRESSION
+            elsif feature_types(feature).include? OT.NumericFeature
+              @data.each{|c,row| row[feature] = nil unless OpenTox::Algorithm::numeric?(row[feature]) } # delete nominal features
+              @activity_errors << "Nominal feature values of #{feature} ignored (using numeric features for regression models)."
+            else
+              @activity_errors << "Feature #{feature} ignored (more than 5 nominal feature values and no numeric values)."
+              ignored_features << feature
+              next
+            end
+          elsif feature_values(feature).size <= 1
+              @activity_errors << "Feature #{feature} ignored (less than 2 feature values)."
+              ignored_features << feature
+          else
+            # CLASSIFICATION
+          end
+        end
+        ignored_features.each do |feature|
+          @data.each{ |c,row| row.delete feature }
+        end
+        @activity_errors
+      end
+
+      def add_to_dataset(dataset)
+        features.each do |feature_name|
+          feature_uri = File.join(dataset.uri,"feature",URI.encode(feature_name))
+          dataset.add_feature(feature_uri,{DC.title => feature_name})
+        end
+
+        @data.each do |compound,row|
+          unless row.empty?
+            row.each do |feature,value|
+              if OpenTox::Algorithm::numeric?(value)
+                value = value.to_f
+              elsif value.nil? or value.empty?
+                value = nil
+              else
+                value = value.to_s
+              end
+              feature_uri = File.join(dataset.uri,"feature",URI.encode(feature))
+              dataset.add(compound, feature_uri, value)
+              #dataset.features[feature_uri][RDF.type] = feature_types(feature)
+              #dataset.features[feature_uri][OT.acceptValue] = feature_values(feature)
+              if feature_types(feature).include? OT.NumericFeature
+                dataset.features[feature_uri][RDF.type] = [OT.NumericFeature]
+              else
+                dataset.features[feature_uri][RDF.type] = [OT.NominalFeature]
+                dataset.features[feature_uri][OT.acceptValue] = feature_values(feature) 
+              end
+            end
+          end
+        end
+      end
+
+      private
+
+      def feature_type(value)
+        if OpenTox::Algorithm::numeric? value
+          return OT.NumericFeature
+        else
+          return OT.NominalFeature
+        end
+      end
+    end
+
+    # quick hack to enable sdf import via csv
+    # should be refactored 
+    class Sdf
+
+      attr_accessor :dataset
+
+      def initialize
+        @data = {}
+
+        @compound_errors = []
+        @activity_errors = []
+        @duplicates = {}
+      end
+
+      def load_sdf(sdf)
+
+        obconversion = OpenBabel::OBConversion.new
+        obmol = OpenBabel::OBMol.new
+        obconversion.set_in_and_out_formats "sdf", "inchi"
+
+        table = Table.new
+
+        properties = []
+        sdf.each_line { |l| properties << l.to_s if l.match(/</) }
+        properties.uniq!
+        properties.sort!
+        properties.collect!{ |p| p.gsub(/<|>/,'').strip.chomp }
+
+        rec = 0
+        sdf.split(/\$\$\$\$\r*\n/).each do |s|
+          rec += 1
+          obconversion.read_string obmol, s
+          begin
+            inchi = obconversion.write_string(obmol).gsub(/\s/,'').chomp 
+            @duplicates[inchi] = [] unless @duplicates[inchi]
+            @duplicates[inchi] << rec #inchi#+", "+row.join(", ")
+            compound = Compound.from_inchi inchi
+          rescue
+            @compound_errors << "Could not convert structure to InChI, all entries for this compound (record #{rec} have been ignored! \n#{s}"
+            next
+          end
+          row = {}
+          obmol.get_data.each { |d| row[d.get_attribute] = d.get_value if properties.include?(d.get_attribute) }
+          table.data[compound.uri] = row
+        end
+
+        # finda and remove ignored_features
+        @activity_errors = table.clean_features
+        table.add_to_dataset @dataset
+
+        warnings = ''
+        warnings += "<p>Incorrect Smiles structures (ignored):</p>" + @compound_errors.join("<br/>") unless @compound_errors.empty?
+        warnings += "<p>Irregular activities (ignored):</p>" + @activity_errors.join("<br/>") unless @activity_errors.empty?
+        duplicate_warnings = ''
+        @duplicates.each {|inchi,lines| duplicate_warnings << "<p>#{lines.join('<br/>')}</p>" if lines.size > 1 }
+        warnings += "<p>Duplicated structures (all structures/activities used for model building, please  make sure, that the results were obtained from <em>independent</em> experiments):</p>" + duplicate_warnings unless duplicate_warnings.empty?
+
+        @dataset.metadata[OT.Warnings] = warnings 
+        @dataset
+
       end
 
     end

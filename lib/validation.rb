@@ -36,6 +36,30 @@ module OpenTox
       Validation.new(uri)
     end
     
+    # creates a training test validation, waits until it finishes, may take some time
+    # @param [Hash] params (required:algorithm_uri,training_dataset_uri,prediction_feature,test_dataset_uri,optional:algorithm_params)
+    # @param [String,optional] subjectid
+    # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
+    # @return [OpenTox::Validation]
+    def self.create_training_test_validation( params, subjectid=nil, waiting_task=nil )
+      params[:subjectid] = subjectid if subjectid
+      uri = OpenTox::RestClientWrapper.post( File.join(CONFIG[:services]["opentox-validation"],"training_test_validation"),
+        params,{:content_type => "text/uri-list"},waiting_task )
+      Validation.new(uri)
+    end
+    
+    # creates a bootstrapping validation, waits until it finishes, may take some time
+    # @param [Hash] params (required:algorithm_uri,dataset_uri,prediction_feature, optional:algorithm_params,random_seed(1))
+    # @param [String,optional] subjectid
+    # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
+    # @return [OpenTox::Validation]
+    def self.create_bootstrapping_validation( params, subjectid=nil, waiting_task=nil )
+      params[:subjectid] = subjectid if subjectid
+      uri = OpenTox::RestClientWrapper.post( File.join(CONFIG[:services]["opentox-validation"],"bootstrapping"),
+        params,{:content_type => "text/uri-list"},waiting_task )
+      Validation.new(uri)
+    end
+    
     # looks for report for this validation, creates a report if no report is found
     # @param [String,optional] subjectid
     # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
@@ -61,34 +85,27 @@ module OpenTox
       @metadata = YAML.load(OpenTox::RestClientWrapper.get(uri,{:subjectid => subjectid, :accept => "application/x-yaml"}))
     end
     
-    # PENDING: creates summary as used for ToxCreate
-    def summary
-      if @metadata[OT.classificationStatistics]
-        res = {
-          :nr_predictions => @metadata[OT.numInstances] - @metadata[OT.numUnpredicted],
-          :correct_predictions => @metadata[OT.classificationStatistics][OT.percentCorrect],
-          :weighted_area_under_roc => @metadata[OT.classificationStatistics][OT.weightedAreaUnderRoc],
-        }
-        @metadata[OT.classificationStatistics][OT.classValueStatistics].each do |s|
-          if s[OT.classValue].to_s=="true"
-            res[:true_positives] = s[OT.numTruePositives]
-            res[:false_positives] = s[OT.numFalsePositives]
-            res[:true_negatives] = s[OT.numTrueNegatives]
-            res[:false_negatives] = s[OT.numFalseNegatives]
-            res[:sensitivity] = s[OT.truePositiveRate]
-            res[:specificity] = s[OT.trueNegativeRate]
-            break
+    # returns confusion matrix as array, predicted values are in rows
+    # example:
+    # [[nil,"active","moderate","inactive"],["active",1,3,99],["moderate",4,2,8],["inactive",3,8,6]]
+    # -> 99 inactive compounds have been predicted as active 
+    def confusion_matrix
+      raise "no classification statistics, probably a regression valdiation" unless @metadata[OT.classificationStatistics]
+      matrix =  @metadata[OT.classificationStatistics][OT.confusionMatrix][OT.confusionMatrixCell]
+      values = matrix.collect{|cell| cell[OT.confusionMatrixPredicted]}.uniq
+      table = [[nil]+values]
+      values.each do |c|
+        table << [c]
+        values.each do |r|
+          matrix.each do |cell|
+            if cell[OT.confusionMatrixPredicted]==c and cell[OT.confusionMatrixActual]==r
+              table[-1] << cell[OT.confusionMatrixValue].to_f
+              break
+            end
           end
         end
-        res
-      elsif @metadata[OT.regressionStatistics]
-        {
-          :nr_predictions => @metadata[OT.numInstances] - @metadata[OT.numUnpredicted],
-          :r_square => @metadata[OT.regressionStatistics][OT.rSquare],
-          :root_mean_squared_error => @metadata[OT.regressionStatistics][OT.rootMeanSquaredError],
-          :mean_absolute_error => @metadata[OT.regressionStatistics][OT.meanAbsoluteError],
-        }
       end
+      table
     end
   end
   
@@ -147,9 +164,9 @@ module OpenTox
       @metadata = YAML.load(OpenTox::RestClientWrapper.get(uri,{:subjectid => subjectid, :accept => "application/x-yaml"}))
     end
     
-    # PENDING: creates summary as used for ToxCreate
-    def summary( subjectid=nil )
-      Validation.from_cv_statistics( @uri, subjectid ).summary
+    # returns a Validation object containing the statistics of the crossavlidation
+    def statistics( subjectid=nil )
+      Validation.from_cv_statistics( @uri, subjectid )
     end
   end
   
@@ -198,7 +215,6 @@ module OpenTox
     # @param [String,optional] subjectid
     # @return [OpenTox::CrossvalidationReport]
     def self.find( uri, subjectid=nil )
-      # PENDING load report data?
       OpenTox::RestClientWrapper.get(uri,{:subjectid => subjectid})
       rep = CrossvalidationReport.new(uri)
       rep.load_metadata( subjectid )
@@ -226,6 +242,54 @@ module OpenTox
       CrossvalidationReport.new(uri)
     end
   end
+  
+  
+  class AlgorithmComparisonReport
+    include OpenTox
+    
+    # finds AlgorithmComparisonReport via uri, raises error if not found
+    # @param [String] uri
+    # @param [String,optional] subjectid
+    # @return [OpenTox::CrossvalidationReport]
+    def self.find( uri, subjectid=nil )
+      OpenTox::RestClientWrapper.get(uri,{:subjectid => subjectid})
+      rep = AlgorithmComparisonReport.new(uri)
+      rep.load_metadata( subjectid )
+      rep
+    end
+    
+    # finds AlgorithmComparisonReport for a particular crossvalidation
+    # @param [String] crossvalidation uri 
+    # @param [String,optional] subjectid
+    # @return [OpenTox::AlgorithmComparisonReport] nil if no report found
+    def self.find_for_crossvalidation( crossvalidation_uri, subjectid=nil )
+      uris = RestClientWrapper.get(File.join(CONFIG[:services]["opentox-validation"],
+        "/report/algorithm_comparison?crossvalidation="+crossvalidation_uri), {:subjectid => subjectid}).chomp.split("\n")
+      uris.size==0 ? nil : AlgorithmComparisonReport.new(uris[-1])
+    end
+    
+    # creates a crossvalidation report via crossvalidation
+    # @param [Hash] crossvalidation uri_hash, see example 
+    # @param [String,optional] subjectid
+    # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
+    # @return [OpenTox::AlgorithmComparisonReport]
+    # example for hash:
+    # { :lazar-bbrc => [ http://host/validation/crossvalidation/x1, http://host/validation/crossvalidation/x2 ],
+    #   :lazar-last => [ http://host/validation/crossvalidation/xy, http://host/validation/crossvalidation/xy ] }
+    def self.create( crossvalidation_uri_hash, subjectid=nil, waiting_task=nil )
+      identifier = []
+      validation_uris = []
+      crossvalidation_uri_hash.each do |id, uris|
+        uris.each do |uri|
+          identifier << id
+          validation_uris << uri
+        end
+      end
+      uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-validation"],"/report/algorithm_comparison"),
+        { :validation_uris => validation_uris.join(","), :identifier => identifier.join(","), :subjectid => subjectid }, {}, waiting_task )
+      AlgorithmComparisonReport.new(uri)
+    end
+  end  
   
   class QMRFReport
     include OpenTox

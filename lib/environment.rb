@@ -27,7 +27,7 @@ end
 Ohm.connect :thread_safe => true
 
 # load mail settings for error messages
-load File.join config_dir,"mail.rb" if File.exists?(File.join config_dir,"mail.rb")
+#load File.join config_dir,"mail.rb" if File.exists?(File.join config_dir,"mail.rb")
 
 logfile = "#{LOG_DIR}/#{ENV["RACK_ENV"]}.log"
 #LOGGER = OTLogger.new(logfile,'daily') # daily rotation
@@ -40,8 +40,8 @@ else
 end
 
 # Regular expressions for parsing classification data
-TRUE_REGEXP = /^(true|active|1|1.0|tox)$/i
-FALSE_REGEXP = /^(false|inactive|0|0.0|low tox)$/i
+TRUE_REGEXP = /^(true|active|1|1.0|tox|activating)$/i
+FALSE_REGEXP = /^(false|inactive|0|0.0|low tox|deactivating)$/i
 
 # Task durations
 DEFAULT_TASK_MAX_DURATION = 36000

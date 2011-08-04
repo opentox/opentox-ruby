@@ -131,13 +131,14 @@ module OpenTox
         raise "unknown content-type for task : '"+res.content_type.to_s+"'"+" base-uri: "+base_uri.to_s+" content: "+res[0..200].to_s
       end
       
-      LOGGER.debug "result is a task '"+task.uri.to_s+"', wait for completion"
+      #LOGGER.debug "result is a task '"+task.uri.to_s+"', wait for completion"
       task.wait_for_completion waiting_task
       unless task.completed? # maybe task was cancelled / error
         if task.errorReport
           received_error task.errorReport, task.http_code, nil, {:rest_uri => task.uri, :rest_code => task.http_code}
         else
-          raise "task status: '"+task.status.to_s+"' but errorReport nil"
+          raise "status of task '"+task.uri.to_s+"' is no longer running (hasStatus is '"+task.status+
+            "'), but it is neither completed nor has an errorReport"
         end 
       end
     

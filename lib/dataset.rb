@@ -102,6 +102,13 @@ module OpenTox
       copy parser.load_uri(subjectid)
     end
 
+    def load_sdf(sdf,subjectid=nil)
+      save(subjectid) unless @uri # get a uri for creating features
+      parser = Parser::Sdf.new
+      parser.dataset = self
+      parser.load_sdf(sdf)
+    end
+
     # Load CSV string (format specification: http://toxcreate.org/help)
     # - loads data_entries, compounds, features
     # - sets metadata (warnings) for parser errors
@@ -149,7 +156,11 @@ module OpenTox
     # Load and return only compound URIs from the dataset service
     # @return [Array]  Compound URIs in the dataset
     def load_compounds(subjectid=nil)
-      RestClientWrapper.get(File.join(uri,"compounds"),{:accept=> "text/uri-list", :subjectid => subjectid}).to_s.each_line do |compound_uri|
+      # fix for datasets like http://apps.ideaconsult.net:8080/ambit2/dataset/272?max=50
+      u = URI::parse(uri)
+      u.path = File.join(u.path,"compounds")
+      u = u.to_s
+      RestClientWrapper.get(u,{:accept=> "text/uri-list", :subjectid => subjectid}).to_s.each_line do |compound_uri|
         @compounds << compound_uri.chomp
       end
       @compounds.uniq!
@@ -167,19 +178,15 @@ module OpenTox
       @features
     end
 
-    def feature_classes(feature, subjectid=nil)
-      if Feature.find(feature, subjectid).feature_type == "classification"
-        classes = []
-        @data_entries.each do |c,e|
-          e[feature].each { |v| classes << v.to_s }
-        end
-        classes.uniq.sort
-      else
-        nil
-      end
+    # returns the accept_values of a feature, i.e. the classification domain / all possible feature values 
+    # @param [String] feature the URI of the feature
+    # @return [Array] return array with strings, nil if value is not set (e.g. when feature is numeric)
+    def accept_values(feature)
+      accept_values = features[feature][OT.acceptValue]
+      accept_values.sort if accept_values
+      accept_values
     end
 
-=begin
     # Detect feature type(s) in the dataset
     # @return [String] `classification", "regression", "mixed" or unknown`
     def feature_type(subjectid=nil)
@@ -193,6 +200,7 @@ module OpenTox
         "unknown"
       end
     end
+=begin
 =end
 
     # Get Spreadsheet representation
@@ -227,6 +235,30 @@ module OpenTox
       s = Serializer::Owl.new
       s.add_dataset(self)
       s.to_rdfxml
+    end
+
+    # Get SDF representation of compounds
+    # @return [String] SDF representation
+    def to_sdf
+      sum=""
+      @compounds.each{ |c|
+        sum << OpenTox::Compound.new(c).to_inchi
+        sum << OpenTox::Compound.new(c).to_sdf.sub(/\n\$\$\$\$/,'')
+        @data_entries[c].each{ |f,v|
+          sum << ">  <\"#{f}\">\n"
+          sum << v.join(", ")
+          sum << "\n\n"
+        }
+        sum << "$$$$\n"
+      }
+      sum
+    end
+
+    def to_urilist
+      @compounds.inject { |sum, c|
+        sum << OpenTox::Compound.new(c).uri
+        sum + "\n"
+      }
     end
 
     # Get name (DC.title) of a feature
@@ -307,6 +339,12 @@ module OpenTox
           end
         end
       end
+      # set feature metadata in new dataset accordingly (including accept values)      
+      features.each do |f|
+        self.features[f].each do |k,v|
+          dataset.features[f][k] = v
+        end
+      end
       dataset.add_metadata(metadata)
       dataset.save(subjectid)
       dataset
@@ -369,12 +407,14 @@ module OpenTox
     end
 
     def value(compound)
-      @data_entries[compound.uri].collect{|f,v| v.first if f.match(/prediction/)}.compact.first
+      v = nil
+      v = @data_entries[compound.uri].collect{|f,v| v.first if f.match(/value/)}.compact.first if @data_entries[compound.uri]
+      v = nil if v.is_a? Array and v.empty?
+      v
     end
 
     def confidence(compound)
-      feature_uri = @data_entries[compound.uri].collect{|f,v| f if f.match(/prediction/)}.compact.first
-      @features[feature_uri][OT.confidence]
+      @data_entries[compound.uri].collect{|f,v| v.first if f.match(/confidence/)}.compact.first if @data_entries[compound.uri]
     end
 
     def descriptors(compound)
@@ -382,12 +422,11 @@ module OpenTox
     end
 
     def measured_activities(compound)
-      source = @metadata[OT.hasSource]
-      @data_entries[compound.uri].collect{|f,v| v if f.match(/#{source}/)}.compact.flatten
+      @data_entries[compound.uri].collect{|f,v| v if f.match(/#{@metadata[OT.hasSource]}/)}.compact.flatten if @data_entries[compound.uri]
     end
 
     def neighbors(compound)
-      @data_entries[compound.uri].collect{|f,v| @features[f] if f.match(/neighbor/)}.compact
+      @data_entries[compound.uri].collect{|f,v| @features[f] if f.match(/neighbor/)}.compact if @data_entries[compound.uri]
     end
 
 #    def errors(compound)

@@ -1,4 +1,4 @@
-['rubygems', 'sinatra', 'sinatra/url_for', 'ohm', 'rest_client', 'yaml', 'cgi', 'spork', 'error', 'overwrite', 'environment'].each do |lib|
+['rubygems', 'sinatra', 'sinatra/url_for', 'ohm', 'rest_client', 'yaml', 'cgi', 'spork', 'error', 'overwrite', 'environment', 'gsl'].each do |lib|
 	require lib
 end
 
