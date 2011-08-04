@@ -334,6 +334,7 @@ module OpenTox
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
+          confidence = nil if prediction.nil?
         end
         {:prediction => prediction, :confidence => confidence}
 
@@ -446,6 +447,7 @@ module OpenTox
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
+          confidence = nil if prediction.nil?
         end
         {:prediction => prediction, :confidence => confidence}
         
