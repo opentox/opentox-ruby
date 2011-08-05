@@ -250,7 +250,7 @@ module OpenTox
       
       load_metadata # for extremely fast tasks
       check_state
-      while self.running?
+      while self.running? or self.queued?
         sleep dur
         load_metadata 
         # if another (sub)task is waiting for self, set progress accordingly 
