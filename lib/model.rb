@@ -364,7 +364,11 @@ module OpenTox
       # @return [Boolean] true if compound has databasse activities, false if not
       def database_activity(subjectid)
         if @activities[@compound.uri]
-          @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], @value_map[act] }
+          if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "classification"
+            @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], @value_map[act] }
+          else
+            @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], act }
+          end
           @prediction_dataset.add_metadata(OT.hasSource => @metadata[OT.trainingDataset])
           @prediction_dataset.save(subjectid)
           true
