@@ -38,6 +38,7 @@ module OpenTox
       task = Task.new(task_uri.chomp)
 
       # measure current memory consumption
+=begin
       memory = `free -m|sed -n '2p'`.split
       free_memory = memory[3].to_i + memory[6].to_i # include cache
       if free_memory < 20 # require at least 200 M free memory
@@ -56,6 +57,7 @@ module OpenTox
       #  return task
       #  #raise "Server too busy to start a new task"
       #end
+=end
 
       task_pid = Spork.spork(:logger => LOGGER) do
         LOGGER.debug "Task #{task.uri} started #{Time.now}"
@@ -167,6 +169,10 @@ module OpenTox
       @metadata[OT.hasStatus] == 'Running'
     end
 
+    def queued?
+      @metadata[OT.hasStatus] == 'Queued'
+    end
+
     def completed?
       @metadata[OT.hasStatus] == 'Completed'
     end
@@ -244,7 +250,7 @@ module OpenTox
       
       load_metadata # for extremely fast tasks
       check_state
-      while self.running?
+      while self.running? or self.queued?
         sleep dur
         load_metadata 
         # if another (sub)task is waiting for self, set progress accordingly 
@@ -284,9 +290,10 @@ module OpenTox
         raise "illegal task state, task is completed, resultURI is no URI: '"+@metadata[OT.resultURI].to_s+
             "'" unless @metadata[OT.resultURI] and @metadata[OT.resultURI].to_s.uri? if completed?
         if @http_code == 202
-          raise "#{@uri}: illegal task state, code is 202, but hasStatus is not Running: '"+@metadata[OT.hasStatus]+"'" unless running?
+          raise "#{@uri}: illegal task state, code is 202, but hasStatus is not Running or Queued: '"+@metadata[OT.hasStatus]+"'" unless running? or queued?
         elsif @http_code == 201
-          raise "#{@uri}: illegal task state, code is 201, but hasStatus is not Completed: '"+@metadata[OT.hasStatus]+"'" unless completed?
+          # ignore hasStatus
+          # raise "#{@uri}: illegal task state, code is 201, but hasStatus is not Completed: '"+@metadata[OT.hasStatus]+"'" unless completed?
           raise "#{@uri}: illegal task state, code is 201, resultURI is no task-URI: '"+@metadata[OT.resultURI].to_s+
               "'" unless @metadata[OT.resultURI] and @metadata[OT.resultURI].to_s.uri?
         end

@@ -5,11 +5,11 @@
 
 Gem::Specification.new do |s|
   s.name = %q{opentox-ruby}
-  s.version = "1.0.2"
+  s.version = "2.0.1"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Christoph Helma, Martin Guetlein, Andreas Maunz, Micha Rautenberg, David Vorgrimmler"]
-  s.date = %q{2011-03-16}
+  s.date = %q{2011-06-15}
   s.description = %q{Ruby wrapper for the OpenTox REST API (http://www.opentox.org)}
   s.email = %q{helma@in-silico.ch}
   s.executables = ["opentox-install-debian.sh", "opentox-install-ubuntu.sh"]
@@ -34,7 +34,7 @@ Gem::Specification.new do |s|
     "lib/feature.rb",
     "lib/helper.rb",
     "lib/model.rb",
-    "lib/ontology_service.rb",
+    "lib/ontology.rb",
     "lib/opentox-ruby.rb",
     "lib/opentox.owl",
     "lib/opentox.rb",
@@ -45,7 +45,6 @@ Gem::Specification.new do |s|
     "lib/serializer.rb",
     "lib/spork.rb",
     "lib/task.rb",
-    "lib/templates/config.yaml",
     "lib/templates/default_guest_policy.xml",
     "lib/templates/default_policy.xml",
     "lib/to-html.rb",
@@ -53,7 +52,7 @@ Gem::Specification.new do |s|
   ]
   s.homepage = %q{http://github.com/helma/opentox-ruby}
   s.require_paths = ["lib"]
-  s.rubygems_version = %q{1.4.2}
+  s.rubygems_version = %q{1.5.2}
   s.summary = %q{Ruby wrapper for the OpenTox REST API}
 
   if s.respond_to? :specification_version then
@@ -77,9 +76,18 @@ Gem::Specification.new do |s|
       s.add_runtime_dependency(%q<tmail>, [">= 0"])
       s.add_runtime_dependency(%q<rinruby>, [">= 0"])
       s.add_runtime_dependency(%q<ohm>, [">= 0"])
+      s.add_runtime_dependency(%q<ohm-contrib>, [">= 0"])
       s.add_runtime_dependency(%q<SystemTimer>, [">= 0"])
       s.add_runtime_dependency(%q<rjb>, [">= 0"])
+      s.add_runtime_dependency(%q<dm-core>, [">= 0"])
+      s.add_runtime_dependency(%q<dm-serializer>, [">= 0"])
+      s.add_runtime_dependency(%q<dm-timestamps>, [">= 0"])
+      s.add_runtime_dependency(%q<dm-types>, [">= 0"])
+      s.add_runtime_dependency(%q<dm-migrations>, [">= 0"])
+      s.add_runtime_dependency(%q<dm-validations>, [">= 0"])
+      s.add_runtime_dependency(%q<dm-sqlite-adapter>, [">= 0"])
       s.add_runtime_dependency(%q<haml>, [">= 3"])
+      s.add_runtime_dependency(%q<ruby-plot>, ["~> 0.4.0"])
       s.add_development_dependency(%q<jeweler>, [">= 0"])
     else
       s.add_dependency(%q<sinatra>, [">= 0"])
@@ -99,9 +107,18 @@ Gem::Specification.new do |s|
       s.add_dependency(%q<tmail>, [">= 0"])
       s.add_dependency(%q<rinruby>, [">= 0"])
       s.add_dependency(%q<ohm>, [">= 0"])
+      s.add_dependency(%q<ohm-contrib>, [">= 0"])
       s.add_dependency(%q<SystemTimer>, [">= 0"])
       s.add_dependency(%q<rjb>, [">= 0"])
+      s.add_dependency(%q<dm-core>, [">= 0"])
+      s.add_dependency(%q<dm-serializer>, [">= 0"])
+      s.add_dependency(%q<dm-timestamps>, [">= 0"])
+      s.add_dependency(%q<dm-types>, [">= 0"])
+      s.add_dependency(%q<dm-migrations>, [">= 0"])
+      s.add_dependency(%q<dm-validations>, [">= 0"])
+      s.add_dependency(%q<dm-sqlite-adapter>, [">= 0"])
       s.add_dependency(%q<haml>, [">= 3"])
+      s.add_dependency(%q<ruby-plot>, ["~> 0.4.0"])
       s.add_dependency(%q<jeweler>, [">= 0"])
     end
   else
@@ -122,9 +139,18 @@ Gem::Specification.new do |s|
     s.add_dependency(%q<tmail>, [">= 0"])
     s.add_dependency(%q<rinruby>, [">= 0"])
     s.add_dependency(%q<ohm>, [">= 0"])
+    s.add_dependency(%q<ohm-contrib>, [">= 0"])
     s.add_dependency(%q<SystemTimer>, [">= 0"])
     s.add_dependency(%q<rjb>, [">= 0"])
+    s.add_dependency(%q<dm-core>, [">= 0"])
+    s.add_dependency(%q<dm-serializer>, [">= 0"])
+    s.add_dependency(%q<dm-timestamps>, [">= 0"])
+    s.add_dependency(%q<dm-types>, [">= 0"])
+    s.add_dependency(%q<dm-migrations>, [">= 0"])
+    s.add_dependency(%q<dm-validations>, [">= 0"])
+    s.add_dependency(%q<dm-sqlite-adapter>, [">= 0"])
     s.add_dependency(%q<haml>, [">= 3"])
+    s.add_dependency(%q<ruby-plot>, ["~> 0.4.0"])
     s.add_dependency(%q<jeweler>, [">= 0"])
   end
 end

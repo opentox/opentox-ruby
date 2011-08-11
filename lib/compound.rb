@@ -21,6 +21,17 @@ module OpenTox
       else
         @inchi = RestClientWrapper.get(@uri, :accept => 'chemical/x-inchi').to_s.chomp if @uri
       end
+      
+      if @uri and @inchi.to_s.size==0
+        LOGGER.warn "REMOVE ABMIT HACK: no inchi for compound "+@uri.to_s+", load via smiles"
+        @inchi = Compound.smiles2inchi(Compound.smiles(@uri))
+      end
+    end
+    
+    # request smiles from compound service via accept header
+    # @return smiles as string
+    def self.smiles(uri)
+      RestClientWrapper.get(uri, :accept => 'chemical/x-daylight-smiles').to_s.chomp
     end
 
     # Create a compound from smiles string
@@ -153,15 +164,44 @@ module OpenTox
       #smarts_array.collect { |s| s if match?(s)}.compact
 		end
 
+    # Match_hits an array of smarts strings, returns hash with matching smarts as key and number of non-unique hits as value 
+    # @example
+    #   compound = OpenTox::Compound.from_name("Benzene")
+    #   compound.match(['cc','cN']) # returns ['cc']
+    # @param [Array] smarts_array Array with Smarts strings
+    # @return [Hash] Hash with matching smarts as key and number of non-unique hits as value
+		def match_hits(smarts_array)
+      # avoid recreation of OpenBabel objects
+			obconversion = OpenBabel::OBConversion.new
+			obmol = OpenBabel::OBMol.new
+			obconversion.set_in_format('inchi')
+			obconversion.read_string(obmol,@inchi) 
+			smarts_pattern = OpenBabel::OBSmartsPattern.new
+			smarts_hits = {}
+      #LOGGER.debug "dv ----------- obmol  #{Compound.new(@inchi).to_smiles}"
+      smarts_array.collect do |smarts|
+        #LOGGER.debug "dv ----------- all smarts  #{smarts}"
+        smarts_pattern.init(smarts)
+        if smarts_pattern.match(obmol)
+          hits = smarts_pattern.get_map_list
+          smarts_hits[smarts] = hits.size 
+        end
+      end
+      #LOGGER.debug "dv ----------- smarts => hits #{smarts_hits}"
+      return smarts_hits
+      #smarts_array.collect { |s| s if match?(s)}.compact
+		end
+
+
     # Get URI of compound image with highlighted fragments
     #
     # @param [Array] activating Array with activating Smarts strings
     # @param [Array] deactivating Array with deactivating Smarts strings
     # @return [String] URI for compound image with highlighted fragments
     def matching_smarts_image_uri(activating, deactivating)
-      activating_smarts = URI.encode "\"#{activating.join("\"/\"")}\""
-      deactivating_smarts = URI.encode "\"#{deactivating.join("\"/\"")}\""
-      File.join @uri, "smarts/activating", URI.encode(activating_smarts),"deactivating", URI.encode(deactivating_smarts)
+      activating_smarts = "\"#{activating.collect{|smarts| CGI.escape(smarts)}.join("\"/\"")}\""
+      deactivating_smarts = "\"#{deactivating.collect{|smarts| CGI.escape(smarts)}.join("\"/\"")}\""
+      File.join @uri, "smarts/activating", activating_smarts, "deactivating", deactivating_smarts
     end
 
 

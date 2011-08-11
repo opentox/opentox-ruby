@@ -44,8 +44,9 @@ helpers do
 
   def uri_available?(urlStr)
     url = URI.parse(urlStr)
+    subjectidstr = @subjectid ? "?subjectid=#{CGI.escape @subjectid}" : ""
     Net::HTTP.start(url.host, url.port) do |http|
-      return http.head("#{url.request_uri}?subjectid=#{CGI.escape @subjectid}").code == "200"
+      return http.head("#{url.request_uri}#{subjectidstr}").code == "200"
     end
   end
 
@@ -80,7 +81,7 @@ helpers do
       when "css"
         @accept = 'text/css'
       else
-        # halt 404, "File format #{extension} not supported."
+        # raise OpenTox::NotFoundError.new "File format #{extension} not supported."
       end
     end
   end
@@ -93,4 +94,3 @@ before do
     protected!(@subjectid)
   end
 end
-

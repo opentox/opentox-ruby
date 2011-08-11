@@ -50,7 +50,8 @@ class Sinatra::Base
       halt task.http_code,task.to_yaml # PENDING differs from task-webservice
     when /html/
       response['Content-Type'] = "text/html"
-      halt task.http_code,OpenTox.text_to_html(task.to_yaml, @subjectid)
+      # html -> task created with html form -> redirect to task uri
+      redirect task.uri 
     else # default /uri-list/
       response['Content-Type'] = "text/uri-list"
       if task.completed?
