@@ -923,7 +923,7 @@ module OpenTox
     # @param [Array] Array to test, must indicate non-occurrence with 0.
     # @return [Boolean] Whether the feature has variance zero.
     def self.zero_variance?(array)
-      return (array.to_scale.variance_sample == 0.0)
+      return (array.to_scale.variance_population == 0.0)
     end
     
     # Sum of an array for Arrays.
