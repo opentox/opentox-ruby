@@ -40,8 +40,8 @@ else
 end
 
 # Regular expressions for parsing classification data
-TRUE_REGEXP = /^(true|active|1|1.0|tox)$/i
-FALSE_REGEXP = /^(false|inactive|0|0.0|low tox)$/i
+TRUE_REGEXP = /^(true|active|1|1.0|tox|activating)$/i
+FALSE_REGEXP = /^(false|inactive|0|0.0|low tox|deactivating)$/i
 
 # Task durations
 DEFAULT_TASK_MAX_DURATION = 36000

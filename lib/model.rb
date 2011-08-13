@@ -73,7 +73,7 @@ module OpenTox
               if use_confidence
                 conf_index = -1
                 predictedVariables.size.times do |i|
-                  f = OpenTox::Feature.find(predictedVariables[i])
+                  f = OpenTox::Feature.find(predictedVariables[i], subjectid)
                   conf_index = i if f.metadata[DC.title]=~/(?i)confidence/
                 end
                 raise "could not estimate predicted variable from model: '"+uri.to_s+
@@ -102,7 +102,7 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :transform, :conf_stdev
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :transform, :conf_stdev, :prediction_min_max
 
       def initialize(uri=nil)
 
@@ -120,6 +120,7 @@ module OpenTox
         @p_values = {}
         @fingerprints = {}
         @value_map = {}
+        @prediction_min_max = [] 
 
         @feature_calculation_algorithm = "Substructure.match"
         @similarity_algorithm = "Similarity.tanimoto"
@@ -181,6 +182,7 @@ module OpenTox
       # @param [optional,OpenTox::Task] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
       # @return [OpenTox::Dataset] Dataset with predictions
       def predict_dataset(dataset_uri, subjectid=nil, waiting_task=nil)
+      
         @prediction_dataset = Dataset.create(CONFIG[:services]["opentox-dataset"], subjectid)
         @prediction_dataset.add_metadata({
           OT.hasSource => @uri,
@@ -223,6 +225,13 @@ module OpenTox
           } )
         end
 
+        if OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "regression"
+          all_activities = [] 
+          all_activities = @activities.values.flatten.collect! { |i| i.to_f }
+          @prediction_min_max[0] = (all_activities.to_scale.min/2)
+          @prediction_min_max[1] = (all_activities.to_scale.max*2)
+        end
+
         unless database_activity(subjectid) # adds database activity to @prediction_dataset
 
           neighbors
@@ -236,6 +245,7 @@ module OpenTox
                                                           :value_map => @value_map,
                                                           :nr_hits => @nr_hits,
                                                           :conf_stdev => @conf_stdev,
+                                                          :prediction_min_max => @prediction_min_max,
                                                           :transform => @transform } ) ")
 
           value_feature_uri = File.join( @uri, "predicted", "value")
@@ -244,7 +254,7 @@ module OpenTox
           @prediction_dataset.metadata[OT.dependentVariables] = @metadata[OT.dependentVariables] unless @prediction_dataset.metadata[OT.dependentVariables] 
           @prediction_dataset.metadata[OT.predictedVariables] = [value_feature_uri, confidence_feature_uri] unless @prediction_dataset.metadata[OT.predictedVariables] 
 
-          if OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "classification"
+          if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "classification"
             @prediction_dataset.add @compound.uri, value_feature_uri, @value_map[prediction[:prediction]]
           else
             @prediction_dataset.add @compound.uri, value_feature_uri, prediction[:prediction]
@@ -354,7 +364,11 @@ module OpenTox
       # @return [Boolean] true if compound has databasse activities, false if not
       def database_activity(subjectid)
         if @activities[@compound.uri]
-          @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], @value_map[act] }
+          if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "classification"
+            @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], @value_map[act] }
+          else
+            @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], act }
+          end
           @prediction_dataset.add_metadata(OT.hasSource => @metadata[OT.trainingDataset])
           @prediction_dataset.save(subjectid)
           true

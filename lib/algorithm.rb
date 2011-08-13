@@ -52,11 +52,11 @@ module OpenTox
       include Algorithm
       attr_accessor :prediction_feature, :training_dataset, :minfreq, :compounds, :db_class_sizes, :all_activities, :smi
       
-      def check_params(params,per_mil)
+      def check_params(params,per_mil,subjectid=nil)
         raise OpenTox::NotFoundError.new "Please submit a dataset_uri." unless params[:dataset_uri] and  !params[:dataset_uri].nil?
         raise OpenTox::NotFoundError.new "Please submit a prediction_feature." unless params[:prediction_feature] and  !params[:prediction_feature].nil?
-        @prediction_feature = OpenTox::Feature.find params[:prediction_feature], @subjectid
-        @training_dataset = OpenTox::Dataset.find "#{params[:dataset_uri]}", @subjectid
+        @prediction_feature = OpenTox::Feature.find params[:prediction_feature], subjectid
+        @training_dataset = OpenTox::Dataset.find "#{params[:dataset_uri]}", subjectid
         raise OpenTox::NotFoundError.new "No feature #{params[:prediction_feature]} in dataset #{params[:dataset_uri]}" unless @training_dataset.features and @training_dataset.features.include?(params[:prediction_feature])
 
         unless params[:min_frequency].nil? 
@@ -330,9 +330,11 @@ module OpenTox
           prediction = mlr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts} )
           transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})")
           prediction = transformer.values[0]
+          prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
+          confidence = nil if prediction.nil?
         end
         {:prediction => prediction, :confidence => confidence}
 
@@ -441,9 +443,11 @@ module OpenTox
           prediction = props.nil? ? local_svm(acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr")
           transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})")
           prediction = transformer.values[0]
+          prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
+          confidence = nil if prediction.nil?
         end
         {:prediction => prediction, :confidence => confidence}
         
