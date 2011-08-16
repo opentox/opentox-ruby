@@ -268,28 +268,30 @@ module OpenTox
       # @param [Hash] metadata
       def add_metadata(uri,metadata)
         id = 0
-        metadata.each do |u,v|
-          #if v.is_a? Array and (u == OT.parameters or u == RDF.type)
-          if v.is_a? Array and u == OT.parameters#or u == RDF.type)
-            @object[uri][u] = [] unless @object[uri][u]
-            v.each do |value|
-              id+=1
-              genid = "_:genid#{id}"
-              @object[uri][u] << {"type" => "bnode", "value" => genid}
-              @object[genid] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Parameter}] }
-              value.each do |name,entry|
-                @object[genid][name] = [{"type" => type(entry), "value" => entry }]
-              end
-            end
-          elsif v.is_a? Array #and u == RDF.type
-            @object[uri] = {} unless @object[uri]
-            v.each do |value|
+        if !metadata.nil?
+          metadata.each do |u,v|
+            #if v.is_a? Array and (u == OT.parameters or u == RDF.type)
+            if v.is_a? Array and u == OT.parameters#or u == RDF.type)
               @object[uri][u] = [] unless @object[uri][u]
-              @object[uri][u] << {"type" => type(value), "value" => value }
+              v.each do |value|
+                id+=1
+                genid = "_:genid#{id}"
+                @object[uri][u] << {"type" => "bnode", "value" => genid}
+                @object[genid] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Parameter}] }
+                value.each do |name,entry|
+                  @object[genid][name] = [{"type" => type(entry), "value" => entry }]
+                end
+              end
+            elsif v.is_a? Array #and u == RDF.type
+              @object[uri] = {} unless @object[uri]
+              v.each do |value|
+                @object[uri][u] = [] unless @object[uri][u]
+                @object[uri][u] << {"type" => type(value), "value" => value }
+              end
+            elsif v.is_a? String
+              @object[uri] = {} unless @object[uri]
+              @object[uri][u] = [{"type" => type(v), "value" => v }]
             end
-          elsif v.is_a? String
-            @object[uri] = {} unless @object[uri]
-            @object[uri][u] = [{"type" => type(v), "value" => v }]
           end
         end
       end
