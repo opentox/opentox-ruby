@@ -216,7 +216,7 @@ module OpenTox
         LOGGER.debug "OpenTox::Authorization.delete_policy policy: #{policy} with token: #{subjectid}"
         return true if resource.delete(:subjectid => subjectid, :id => policy)        
       rescue
-        return nil
+        return false
       end
     end
 

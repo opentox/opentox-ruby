@@ -31,12 +31,14 @@ module OpenTox
   end
 
   def add_metadata(metadata)
-    metadata.each do |k,v|
-      if v.is_a? Array
-        @metadata[k] = [] unless @metadata[k]
-        @metadata[k] << v
-      else
-        @metadata[k] = v 
+    if !metadata.nil?
+      metadata.each do |k,v|
+        if v.is_a? Array
+          @metadata[k] = [] unless @metadata[k]
+          @metadata[k] << v
+        else
+          @metadata[k] = v 
+        end
       end
     end
   end

@@ -84,12 +84,12 @@ module OpenTox
       copy YAML.load(yaml)
     end
 
-    def load_rdfxml(rdfxml)
+    def load_rdfxml(rdfxml, subjectid=nil)
       raise "rdfxml data is empty" if rdfxml.to_s.size==0
       file = Tempfile.new("ot-rdfxml")
       file.puts rdfxml
       file.close
-      load_rdfxml_file file
+      load_rdfxml_file file, subjectid
       file.delete
     end
 

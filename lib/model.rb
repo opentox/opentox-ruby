@@ -199,7 +199,7 @@ module OpenTox
             count += 1
             waiting_task.progress( count/d.compounds.size.to_f*100.0 ) if waiting_task
           rescue => ex
-            LOGGER.warn "prediction for compound "+compound_uri.to_s+" failed: "+ex.message
+            LOGGER.warn "prediction for compound "+compound_uri.to_s+" failed: "+ex.message+" subjectid: #{subjectid}"
           end
         end
         #@prediction_dataset.save(subjectid)
@@ -225,7 +225,7 @@ module OpenTox
           } )
         end
 
-        if OpenTox::Feature.find(metadata[OT.dependentVariables]).feature_type == "regression"
+        if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "regression"
           all_activities = [] 
           all_activities = @activities.values.flatten.collect! { |i| i.to_f }
           @prediction_min_max[0] = (all_activities.to_scale.min/2)
@@ -364,7 +364,11 @@ module OpenTox
       # @return [Boolean] true if compound has databasse activities, false if not
       def database_activity(subjectid)
         if @activities[@compound.uri]
-          @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], @value_map[act] }
+          if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "classification"
+            @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], @value_map[act] }
+          else
+            @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], act }
+          end
           @prediction_dataset.add_metadata(OT.hasSource => @metadata[OT.trainingDataset])
           @prediction_dataset.save(subjectid)
           true
