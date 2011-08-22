@@ -385,7 +385,7 @@ module OpenTox
         dependent_uri = @metadata[OT.dependentVariables].first
         feature = OpenTox::Feature.new File.join( @uri, "predicted", "value")
         feature.add_metadata( {
-          RDF.type => [OT.ModelPrediction],
+          RDF.type => OT.ModelPrediction,
           OT.hasSource => @uri,
           DC.creator => @uri,
           DC.title => URI.decode(File.basename( dependent_uri )),
@@ -398,7 +398,7 @@ module OpenTox
         dependent_uri = @metadata[OT.dependentVariables].first
         feature = OpenTox::Feature.new File.join( @uri, "predicted", "confidence")
         feature.add_metadata( {
-          RDF.type => [OT.ModelPrediction],
+          RDF.type => OT.ModelPrediction,
           OT.hasSource => @uri,
           DC.creator => @uri,
           DC.title => "#{URI.decode(File.basename( dependent_uri ))} confidence"
