@@ -111,7 +111,7 @@ module OpenTox
 end
 
 get '/sign_out/?' do
-  response.set_cookie("subjectid",{:value=>nil})
+  logout
   content_type "text/html"
   content = "Sucessfully signed out from "+$url_provider.url_for("",:full)
   OpenTox.text_to_html(content)
@@ -123,9 +123,8 @@ get '/sign_in/?' do
 end
 
 post '/sign_in/?' do
-  subjectid = OpenTox::Authorization.authenticate(params[:user], params[:password])
+  subjectid = login(params[:user], params[:password])
   if (subjectid)
-    response.set_cookie("subjectid",{:value=>subjectid})
     content_type "text/html"
     content = "Sucessfully signed in as '"+params[:user]+"' to "+$url_provider.url_for("",:full)
     OpenTox.text_to_html(content,subjectid)    

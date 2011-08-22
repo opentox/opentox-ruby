@@ -74,6 +74,11 @@ CONFIG[:authorization][:authenticate_request] = [""] unless CONFIG[:authorizatio
 CONFIG[:authorization][:authorize_request] =  [""] unless CONFIG[:authorization][:authorize_request]
 CONFIG[:authorization][:free_request] =  [""] unless CONFIG[:authorization][:free_request]
 
+cookie_secret =  CONFIG[:authorization] ? CONFIG[:authorization][:cookie_secret] : nil 
+cookie_secret = cookie_secret ? cookie_secret : "ui6vaiNi-change_me"
+use Rack::Session::Cookie, :expire_after => 28800, 
+                           :secret => cookie_secret
+
 RDF = OwlNamespace.new 'http://www.w3.org/1999/02/22-rdf-syntax-ns#'
 OWL = OwlNamespace.new 'http://www.w3.org/2002/07/owl#'
 DC =  OwlNamespace.new 'http://purl.org/dc/elements/1.1/'
