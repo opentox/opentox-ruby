@@ -42,4 +42,15 @@ module OpenTox
       end
     end    
   end
+
+  # Get OWL-DL representation in RDF/XML format
+  # @return [application/rdf+xml] RDF/XML representation
+  def to_rdfxml
+    s = Serializer::Owl.new
+    s.add_feature(@uri,@metadata)
+    @metadata.values.grep(/model\/\d+$/).each{ |m| s.add_uri(m,OT.Model)}
+    @metadata.values.grep(/feature/).each{ |f| s.add_uri(f,OT.Feature)}
+    #s.add_parameters(@uri,@parameters) if @parameters
+    s.to_rdfxml
+  end
 end

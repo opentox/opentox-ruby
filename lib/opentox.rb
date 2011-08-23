@@ -48,7 +48,6 @@ module OpenTox
   def to_rdfxml
     s = Serializer::Owl.new
     s.add_metadata(@uri,@metadata)
-    #s.add_parameters(@uri,@parameters) if @parameters
     s.to_rdfxml
   end
 

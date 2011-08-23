@@ -21,6 +21,7 @@ module OpenTox
           OT.NominalFeature => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.NumericFeature => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.StringFeature => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
+          OT.ModelPrediction => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.Dataset => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.DataEntry => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.FeatureValue => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
@@ -69,6 +70,7 @@ module OpenTox
           OT.validation => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
           OT.crossvalidationInfo => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
           OT.dataset => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
+          OT.hasSource => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
 
           DC.title => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           DC.identifier => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
@@ -131,7 +133,7 @@ module OpenTox
           OT.actor => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.errorCode => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
 
-          OT.hasSource => { RDF["type"] => [{ "type" => "uri", "value" => OWL.DatatypeProperty }] } ,
+          #OT.hasSource => { RDF["type"] => [{ "type" => "uri", "value" => OWL.DatatypeProperty }] } ,
           OT.value => { RDF["type"] => [{ "type" => "uri", "value" => OWL.DatatypeProperty }] } ,
           OT.paramScope => { RDF["type"] => [{ "type" => "uri", "value" => OWL.DatatypeProperty }] } ,
           #OT.paramValue => { RDF["type"] => [{ "type" => "uri", "value" => OWL.DatatypeProperty }] } ,
@@ -215,6 +217,10 @@ module OpenTox
         @object[uri] = { RDF["type"] => [{ "type" => "uri", "value" => resource_class }] }
         @@content_id = 1
         add_content uri, content
+      end
+
+      def add_uri(uri,type)
+        @object[uri] = { RDF["type"] => [{ "type" => "uri", "value" => type }] }
       end
       
       private

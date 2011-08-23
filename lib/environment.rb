@@ -40,8 +40,8 @@ else
 end
 
 # Regular expressions for parsing classification data
-TRUE_REGEXP = /^(true|active|1|1.0|tox|activating)$/i
-FALSE_REGEXP = /^(false|inactive|0|0.0|low tox|deactivating)$/i
+TRUE_REGEXP = /^(true|active|1|1.0|tox|activating|carcinogen)$/i
+FALSE_REGEXP = /^(false|inactive|0|0.0|low tox|deactivating|non-carcinogen)$/i
 
 # Task durations
 DEFAULT_TASK_MAX_DURATION = 36000
@@ -73,6 +73,11 @@ AA_SERVER = CONFIG[:authorization] ? (CONFIG[:authorization][:server] ? CONFIG[:
 CONFIG[:authorization][:authenticate_request] = [""] unless CONFIG[:authorization][:authenticate_request]
 CONFIG[:authorization][:authorize_request] =  [""] unless CONFIG[:authorization][:authorize_request]
 CONFIG[:authorization][:free_request] =  [""] unless CONFIG[:authorization][:free_request]
+
+cookie_secret =  CONFIG[:authorization] ? CONFIG[:authorization][:cookie_secret] : nil 
+cookie_secret = cookie_secret ? cookie_secret : "ui6vaiNi-change_me"
+use Rack::Session::Cookie, :expire_after => 28800, 
+                           :secret => cookie_secret
 
 RDF = OwlNamespace.new 'http://www.w3.org/1999/02/22-rdf-syntax-ns#'
 OWL = OwlNamespace.new 'http://www.w3.org/2002/07/owl#'
