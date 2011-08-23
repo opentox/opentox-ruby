@@ -90,10 +90,12 @@ helpers do
       subjectid = CGI.unescape(subjectid) if subjectid.include?("%23")
       @subjectid = subjectid
     rescue
-      subjectid = nil
+      @subjectid = nil
     end
   end
   def get_extension
+    @accept = request.env['HTTP_ACCEPT']
+    @accept = 'application/rdf+xml' if @accept == '*/*' or @accept == '' or @accept.nil?
     extension = File.extname(request.path_info)
     unless extension.empty?
       case extension.gsub(".","")
@@ -107,6 +109,8 @@ helpers do
         @accept = 'application/rdf+xml'
       when "xls"
         @accept = 'application/ms-excel'
+      when "sdf"
+        @accept = 'chemical/x-mdl-sdfile'
       when "css"
         @accept = 'text/css'
       else
@@ -117,8 +121,8 @@ helpers do
 end
 
 before do 
-  @subjectid = get_subjectid()
-  @accept = get_extension()
+  get_subjectid()
+  get_extension()
   unless !AA_SERVER or login_requests or CONFIG[:authorization][:free_request].include?(env['REQUEST_METHOD'])
     protected!(@subjectid)
   end
