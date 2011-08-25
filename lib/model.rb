@@ -11,7 +11,7 @@ module OpenTox
     def run( params, accept_header=nil, waiting_task=nil )
       unless accept_header
         if CONFIG[:yaml_hosts].include?(URI.parse(@uri).host)
-          accept_header = 'application/x-yaml' 
+          accept_header = 'application/json' 
         else
           accept_header = 'application/rdf+xml'
         end
@@ -144,7 +144,7 @@ module OpenTox
       # @param [String] uri Model URI
       # @return [OpenTox::Model::Lazar] lazar model
       def self.find(uri, subjectid=nil)
-        YAML.load RestClientWrapper.get(uri,{:accept => 'application/x-yaml', :subjectid => subjectid})
+        OpenTox::Model::Lazar.from_json RestClientWrapper.get(uri,{:accept => 'application/json', :subjectid => subjectid})
       end
 
       # Create a new lazar model
@@ -157,10 +157,42 @@ module OpenTox
         OpenTox::Model::Lazar.find(model_uri, subjectid)      
       end
 
+      def self.from_json(json)
+        hash = Yajl::Parser.parse(json)
+        #LOGGER.debug hash.to_yaml
+        lazar = OpenTox::Model::Lazar.new
+        #hash.each { |k,v| eval("lazar.#{k} = #{v}") }
+        lazar.uri = hash["uri"] if hash["uri"]
+        lazar.metadata = hash["metadata"] if hash["metadata"]
+        lazar.compound = hash["compound"] if hash["compound"]
+        lazar.prediction_dataset = hash["prediction_dataset"] if hash["prediction_dataset"]
+        lazar.features = hash["features"] if hash["features"]
+        lazar.effects = hash["effects"] if hash["effects"]
+        lazar.activities = hash["activities"] if hash["activities"]
+        lazar.p_values = hash["p_values"] if hash["p_values"]
+        lazar.fingerprints = hash["fingerprints"] if hash["fingerprints"]
+        lazar.feature_calculation_algorithm = hash["feature_calculation_algorithm"] if hash["feature_calculation_algorithm"]
+        lazar.similarity_algorithm = hash["similarity_algorithm"] if hash["similarity_algorithm"]
+        lazar.prediction_algorithm = hash["prediction_algorithm"] if hash["prediction_algorithm"]
+        lazar.min_sim = hash["min_sim"] if hash["min_sim"]
+        lazar.subjectid = hash["subjectid"] if hash["subjectid"]
+        lazar.prop_kernel = hash["prop_kernel"] if hash["prop_kernel"]
+        lazar.value_map = hash["value_map"] if hash["value_map"]
+        lazar.nr_hits = hash["nr_hits"] if hash["nr_hits"]
+        lazar.transform = hash["transform"] if hash["transform"]
+        lazar.conf_stdev = hash["conf_stdev"] if hash["conf_stdev"]
+        lazar.prediction_min_max = hash["prediction_min_max"] if hash["prediction_min_max"]
+        lazar
+      end
+
+      def to_json
+        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :min_sim => @min_sim, :subjectid => @subjectid, :prop_kernel => @prop_kernel, :value_map => @value_map, :nr_hits => @nr_hits, :transform => @transform, :conf_stdev => @conf_stdev, :prediction_min_max => @prediction_min_max})
+      end
+
       def run( params, accept_header=nil, waiting_task=nil )
       unless accept_header
         if CONFIG[:yaml_hosts].include?(URI.parse(@uri).host)
-          accept_header = 'application/x-yaml' 
+          accept_header = 'application/json' 
         else
           accept_header = 'application/rdf+xml'
         end
@@ -215,6 +247,7 @@ module OpenTox
         @compound = Compound.new compound_uri
         features = {}
 
+        #LOGGER.debug self.to_yaml
         unless @prediction_dataset
           @prediction_dataset = Dataset.create(CONFIG[:services]["opentox-dataset"], subjectid)
           @prediction_dataset.add_metadata( {
@@ -255,7 +288,7 @@ module OpenTox
           @prediction_dataset.metadata[OT.predictedVariables] = [value_feature_uri, confidence_feature_uri] unless @prediction_dataset.metadata[OT.predictedVariables] 
 
           if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "classification"
-            @prediction_dataset.add @compound.uri, value_feature_uri, @value_map[prediction[:prediction]]
+            @prediction_dataset.add @compound.uri, value_feature_uri, @value_map[prediction[:prediction].to_s]
           else
             @prediction_dataset.add @compound.uri, value_feature_uri, prediction[:prediction]
           end
@@ -365,7 +398,7 @@ module OpenTox
       def database_activity(subjectid)
         if @activities[@compound.uri]
           if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "classification"
-            @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], @value_map[act] }
+            @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], @value_map[act.to_s] }
           else
             @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], act }
           end
@@ -408,7 +441,7 @@ module OpenTox
 
       # Save model at model service
       def save(subjectid)
-        self.uri = RestClientWrapper.post(@uri,self.to_yaml,{:content_type =>  "application/x-yaml", :subjectid => subjectid})
+        self.uri = RestClientWrapper.post(@uri,self.to_json,{:content_type =>  "application/json", :subjectid => subjectid})
       end
 
       # Delete model at model service
