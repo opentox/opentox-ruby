@@ -155,7 +155,7 @@ module OpenTox
 
     # Load all data (metadata, data_entries, compounds and features) from URI
     def load_all(subjectid=nil)
-      if (CONFIG[:yaml_hosts].include?(URI.parse(@uri).host))
+      if (CONFIG[:json_hosts].include?(URI.parse(@uri).host))
         copy_hash Yajl::Parser.parse(RestClientWrapper.get(@uri, {:accept => "application/json", :subjectid => subjectid}))
       else
         parser = Parser::Owl::Dataset.new(@uri, subjectid)
@@ -179,7 +179,7 @@ module OpenTox
     # Load and return only features from the dataset service
     # @return [Hash]  Features of the dataset
     def load_features(subjectid=nil)
-      if (CONFIG[:yaml_hosts].include?(URI.parse(@uri).host))
+      if (CONFIG[:json_hosts].include?(URI.parse(@uri).host))
         @features = Yajl::Parser.parse(RestClientWrapper.get(File.join(@uri,"features"), {:accept => "application/json", :subjectid => subjectid}))
       else
         parser = Parser::Owl::Dataset.new(@uri, subjectid)
@@ -372,7 +372,7 @@ module OpenTox
       # TODO: rewrite feature URI's ??
       @compounds.uniq!
       if @uri
-        if (CONFIG[:yaml_hosts].include?(URI.parse(@uri).host))
+        if (CONFIG[:json_hosts].include?(URI.parse(@uri).host))
           #LOGGER.debug self.to_json
           RestClientWrapper.post(@uri,self.to_json,{:content_type =>  "application/json", :subjectid => subjectid})
         else

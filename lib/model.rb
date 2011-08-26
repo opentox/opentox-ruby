@@ -10,7 +10,7 @@ module OpenTox
     # @return [text/uri-list] Task or resource URI
     def run( params, accept_header=nil, waiting_task=nil )
       unless accept_header
-        if CONFIG[:yaml_hosts].include?(URI.parse(@uri).host)
+        if CONFIG[:json_hosts].include?(URI.parse(@uri).host)
           accept_header = 'application/json' 
         else
           accept_header = 'application/rdf+xml'
@@ -191,7 +191,7 @@ module OpenTox
 
       def run( params, accept_header=nil, waiting_task=nil )
       unless accept_header
-        if CONFIG[:yaml_hosts].include?(URI.parse(@uri).host)
+        if CONFIG[:json_hosts].include?(URI.parse(@uri).host)
           accept_header = 'application/json' 
         else
           accept_header = 'application/rdf+xml'
