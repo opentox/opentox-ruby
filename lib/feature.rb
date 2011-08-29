@@ -10,7 +10,7 @@ module OpenTox
     def self.find(uri, subjectid=nil)
       return nil unless uri   
       feature = Feature.new uri
-      if (CONFIG[:yaml_hosts].include?(URI.parse(uri).host))
+      if (CONFIG[:json_hosts].include?(URI.parse(uri).host))
         feature.add_metadata YAML.load(RestClientWrapper.get(uri,{:accept => "application/x-yaml", :subjectid => subjectid}))
       else
         feature.add_metadata  Parser::Owl::Dataset.new(uri).load_metadata
@@ -23,9 +23,9 @@ module OpenTox
     # @return [String] feature type, unknown if OT.isA property is unknown/ not set
     def feature_type
       raise OpenTox::BadRequestError.new("rdf type of feature '"+uri.to_s+"' not set") unless metadata[RDF.type]
-      if metadata[RDF.type].flatten.include?(OT.NominalFeature)
+      if metadata[RDF.type].to_a.flatten.include?(OT.NominalFeature)
         "classification"
-      elsif metadata[RDF.type].flatten.include?(OT.NumericFeature)
+      elsif metadata[RDF.type].to_a.flatten.include?(OT.NumericFeature)
         "regression"
       elsif metadata[OWL.sameAs]
         metadata[OWL.sameAs].each do |f|

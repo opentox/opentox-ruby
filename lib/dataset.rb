@@ -46,6 +46,12 @@ module OpenTox
       dataset.save(subjectid)
       dataset
     end
+
+    def self.from_json(json, subjectid=nil) 
+      dataset = Dataset.new(nil,subjectid)
+      dataset.copy_hash Yajl::Parser.parse(json)
+      dataset
+    end
     
     # Find a dataset and load all data. This can be time consuming, use Dataset.new together with one of the load_* methods for a fine grained control over data loading.
     # @param [String] uri Dataset URI
@@ -82,6 +88,10 @@ module OpenTox
     # @return [OpenTox::Dataset] Dataset object with YAML data
     def load_yaml(yaml)
       copy YAML.load(yaml)
+    end
+
+    def load_json(json)
+      copy_hash Yajl::Parser.parse(json)
     end
 
     def load_rdfxml(rdfxml, subjectid=nil)
@@ -145,8 +155,8 @@ module OpenTox
 
     # Load all data (metadata, data_entries, compounds and features) from URI
     def load_all(subjectid=nil)
-      if (CONFIG[:yaml_hosts].include?(URI.parse(@uri).host))
-        copy YAML.load(RestClientWrapper.get(@uri, {:accept => "application/x-yaml", :subjectid => subjectid}))
+      if (CONFIG[:json_hosts].include?(URI.parse(@uri).host))
+        copy_hash Yajl::Parser.parse(RestClientWrapper.get(@uri, {:accept => "application/json", :subjectid => subjectid}))
       else
         parser = Parser::Owl::Dataset.new(@uri, subjectid)
         copy parser.load_uri(subjectid)
@@ -169,8 +179,8 @@ module OpenTox
     # Load and return only features from the dataset service
     # @return [Hash]  Features of the dataset
     def load_features(subjectid=nil)
-      if (CONFIG[:yaml_hosts].include?(URI.parse(@uri).host))
-        @features = YAML.load(RestClientWrapper.get(File.join(@uri,"features"), {:accept => "application/x-yaml", :subjectid => subjectid}))
+      if (CONFIG[:json_hosts].include?(URI.parse(@uri).host))
+        @features = Yajl::Parser.parse(RestClientWrapper.get(File.join(@uri,"features"), {:accept => "application/json", :subjectid => subjectid}))
       else
         parser = Parser::Owl::Dataset.new(@uri, subjectid)
         @features = parser.load_features(subjectid)
@@ -202,6 +212,10 @@ module OpenTox
     end
 =begin
 =end
+
+    def to_json
+      Yajl::Encoder.encode({:uri => @uri, :metadata => @metadata, :data_entries => @data_entries, :compounds => @compounds, :features => @features})
+    end
 
     # Get Spreadsheet representation
     # @return [Spreadsheet::Workbook] Workbook which can be written with the spreadsheet gem (data_entries only, metadata will will be discarded))
@@ -358,12 +372,12 @@ module OpenTox
       # TODO: rewrite feature URI's ??
       @compounds.uniq!
       if @uri
-        if (CONFIG[:yaml_hosts].include?(URI.parse(@uri).host))
-          RestClientWrapper.post(@uri,self.to_yaml,{:content_type =>  "application/x-yaml", :subjectid => subjectid})
+        if (CONFIG[:json_hosts].include?(URI.parse(@uri).host))
+          #LOGGER.debug self.to_json
+          RestClientWrapper.post(@uri,self.to_json,{:content_type =>  "application/json", :subjectid => subjectid})
         else
           File.open("ot-post-file.rdf","w+") { |f| f.write(self.to_rdfxml); @path = f.path }
           task_uri = RestClient.post(@uri, {:file => File.new(@path)},{:accept => "text/uri-list" , :subjectid => subjectid}).to_s.chomp
-          #task_uri = `curl -X POST -H "Accept:text/uri-list" -F "file=@#{@path};type=application/rdf+xml" http://apps.ideaconsult.net:8080/ambit2/dataset`
           Task.find(task_uri).wait_for_completion
           self.uri = RestClientWrapper.get(task_uri,{:accept => 'text/uri-list', :subjectid => subjectid})
         end
@@ -377,6 +391,19 @@ module OpenTox
     # Delete dataset at the dataset service
     def delete(subjectid=nil)
       RestClientWrapper.delete(@uri, :subjectid => subjectid)
+    end
+
+    # Copy a hash (eg. from JSON) into a dataset (rewrites URI)
+    def copy_hash(hash)
+      @metadata = hash["metadata"]
+      @data_entries = hash["data_entries"]
+      @compounds = hash["compounds"]
+      @features = hash["features"]
+      if @uri
+        self.uri = @uri 
+      else
+        @uri = hash["metadata"][XSD.anyURI]
+      end
     end
 
     private
