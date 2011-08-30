@@ -228,7 +228,7 @@ module OpenTox
         resource = RestClient::Resource.new("#{AA_SERVER}/opensso/identity/search")
         grps = resource.post(:admin => subjectid, :attributes_names => "objecttype", :attributes_values_objecttype => "group")
         grps = grps.split("\n").collect{|x|  x.sub("string=","")}
-        grps.delete_if{|g|g=="MemberManagement"||g=="Webmasters"}
+        grps.delete_if{|g| ["MemberManagement","Webmasters","TBMemberManagement"].include?(g)}
         grps
       rescue
         []
