@@ -123,8 +123,7 @@ end
 before do 
   get_subjectid()
   get_extension()
-  #unless !AA_SERVER or login_requests or CONFIG[:authorization][:free_request].include?(env['REQUEST_METHOD'])
-  unless !AA_SERVER or login_requests or CONFIG[:authorization][:authorize_request].include?(env['REQUEST_METHOD'])
+  unless !AA_SERVER or login_requests or CONFIG[:authorization][:free_request].include?(env['REQUEST_METHOD'])
     protected!(@subjectid)
   end
 end
