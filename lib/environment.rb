@@ -74,6 +74,8 @@ CONFIG[:authorization][:authenticate_request] = [""] unless CONFIG[:authorizatio
 CONFIG[:authorization][:authorize_request] =  [""] unless CONFIG[:authorization][:authorize_request]
 CONFIG[:authorization][:free_request] =  [""] unless CONFIG[:authorization][:free_request]
 
+ONTOLOGY_SERVER = CONFIG[:services]["opentox-ontology"] ? CONFIG[:services]["opentox-ontology"] : "http://apps.ideaconsult.net:8080/ontology"
+
 cookie_secret =  CONFIG[:authorization] ? CONFIG[:authorization][:cookie_secret] : nil 
 cookie_secret = cookie_secret ? cookie_secret : "ui6vaiNi-change_me"
 use Rack::Session::Cookie, :expire_after => 28800, 
