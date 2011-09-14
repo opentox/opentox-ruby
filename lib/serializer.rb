@@ -1,5 +1,6 @@
 require 'spreadsheet'
 require 'yajl'
+require 'yajl/json_gem'
 
 module OpenTox
 
