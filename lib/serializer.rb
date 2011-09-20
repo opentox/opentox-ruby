@@ -227,16 +227,16 @@ module OpenTox
       private
       @@content_id = 1
       
-      # Recursiv function to add content
-      # @example
-      # { DC.description => "bla",
-      #   OT.similar_resources => [ "http://uri1", "http://uri2" ],
-      #   OT.matrixCells => 
-      #     [ { RDF.type => OT.MatrixCell, OT.cellIndex=1 OT.cellValue => "xy" },
-      #       { RDF.type => OT.MatrixCell, OT.cellIndex=2 OT.cellValue => "z" } ],
-      #   OT.info => { RDF.type => OT.ImportantInfo, 
-      #                DC.description => "blub" }
-      # } 
+      #Recursiv function to add content
+      #@example
+      #  { DC.description => "bla",
+      #    OT.similar_resources => [ "http://uri1", "http://uri2" ],
+      #    OT.matrixCells =>
+      #      [ { RDF.type => OT.MatrixCell, OT.cellIndex=1 OT.cellValue => "xy" },
+      #        { RDF.type => OT.MatrixCell, OT.cellIndex=2 OT.cellValue => "z" } ],
+      #    OT.info => { RDF.type => OT.ImportantInfo,
+      #                 DC.description => "blub" }
+      #  }
       # @param [String] uri
       # @param [Hash] content as hash, uri must already have been added to @object
       def add_content(uri, hash)
