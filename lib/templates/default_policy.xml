@@ -40,6 +40,14 @@
          <Attribute name="GET" />
          <Value>allow</Value>
       </AttributeValuePair>
+      <AttributeValuePair>
+         <Attribute name="POST" />
+         <Value>allow</Value>
+      </AttributeValuePair>
+      <AttributeValuePair>
+         <Attribute name="PUT" />
+         <Value>allow</Value>
+      </AttributeValuePair>
    </Rule>
    <Subjects name="subjects_group" description="">
         <Subject name="subject_group" type="LDAPGroups" includeType="inclusive">
