@@ -404,9 +404,8 @@ module OpenTox
             end
           end
         end
-      end    
+      end
       return false
-    end    
-    
+    end
   end
 end
