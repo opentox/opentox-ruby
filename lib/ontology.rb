@@ -18,27 +18,6 @@ module OpenTox
           }")
       end
 
-      def self.make_option_list(endpoint="Endpoints", level=1)
-      out = ""
-        results = echa_endpoints(endpoint) rescue results = []
-        results.each do |result|
-          r = result.split(',')
-          endpointname = r.first.split("#").last
-          title = r[1..r.size-1]
-          out += "<option value='#{r.first}' id='#{endpointname}' class='level_#{level}'>#{title}</option>\n"
-          out += make_option_list(endpointname, level + 1)
-        end
-        return out
-      end
-
-      def self.endpoint_option_list(include_blank=true)
-        out = "<select id='endpoint' name='endpoint'>\n"
-        out += "<option value='' id='please_select'>Please select</option>\n" if include_blank 
-        out += make_option_list
-        out += "</select>\n"
-        return out
-      end
-
       # Gets Endpoints of specific level from ontology service
       # Top level with endpoint="Endpoints"
       # e.G. Ecotoxic effects endpoints with  endpoint="EcotoxicEffects"
