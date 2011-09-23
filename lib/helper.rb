@@ -1,4 +1,34 @@
 helpers do
+  
+  def login(username, password)
+    logout
+    session[:subjectid] = OpenTox::Authorization.authenticate(username, password)
+    #LOGGER.debug "ToxCreate login user #{username} with subjectid: " + session[:subjectid].to_s
+    if session[:subjectid] != nil
+      session[:username] = username
+      return session[:subjectid]
+    else
+      session[:username] = ""
+      return nil
+    end
+  end
+
+  def logout
+    if session[:subjectid] != nil
+      session[:subjectid] = nil
+      session[:username] = ""
+      return true
+    end
+    return false
+  end
+
+  def logged_in()
+    return true if !AA_SERVER
+    if session[:subjectid] != nil
+      return OpenTox::Authorization.is_token_valid(session[:subjectid])
+    end
+    return false
+  end
 
   # Authentification
   def protected!(subjectid)
@@ -30,9 +60,9 @@ helpers do
   def clean_uri(uri)
     uri = uri.sub(" ", "%20")          #dirty hacks => to fix
     uri = uri[0,uri.index("InChI=")] if uri.index("InChI=") 
-    
     out = URI.parse(uri)
     out.path = out.path[0, out.path.length - (out.path.reverse.rindex(/\/{1}\d+\/{1}/))] if out.path.index(/\/{1}\d+\/{1}/)  #cuts after /id/ for a&a
+    out.path = out.path.split('.').first #cut extension
     port = (out.scheme=="http" && out.port==80)||(out.scheme=="https" && out.port==443) ? "" : ":#{out.port.to_s}" 
     "#{out.scheme}://#{out.host}#{port}#{out.path.chomp("/")}" #"
   end
@@ -56,15 +86,16 @@ helpers do
       subjectid = session[:subjectid] if session[:subjectid]
       subjectid = params[:subjectid]  if params[:subjectid] and !subjectid
       subjectid = request.env['HTTP_SUBJECTID'] if request.env['HTTP_SUBJECTID'] and !subjectid
-      subjectid = request.cookies["subjectid"] unless subjectid
       # see http://rack.rubyforge.org/doc/SPEC.html
       subjectid = CGI.unescape(subjectid) if subjectid.include?("%23")
       @subjectid = subjectid
     rescue
-      subjectid = nil
+      @subjectid = nil
     end
   end
   def get_extension
+    @accept = request.env['HTTP_ACCEPT']
+    @accept = 'application/rdf+xml' if @accept == '*/*' or @accept == '' or @accept.nil?
     extension = File.extname(request.path_info)
     unless extension.empty?
       case extension.gsub(".","")
@@ -78,6 +109,8 @@ helpers do
         @accept = 'application/rdf+xml'
       when "xls"
         @accept = 'application/ms-excel'
+      when "sdf"
+        @accept = 'chemical/x-mdl-sdfile'
       when "css"
         @accept = 'text/css'
       else
@@ -88,8 +121,8 @@ helpers do
 end
 
 before do 
-  @subjectid = get_subjectid()
-  @accept = get_extension()
+  get_subjectid()
+  get_extension()
   unless !AA_SERVER or login_requests or CONFIG[:authorization][:free_request].include?(env['REQUEST_METHOD'])
     protected!(@subjectid)
   end

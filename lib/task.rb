@@ -182,7 +182,7 @@ module OpenTox
     end
 
     def load_metadata
-      if (CONFIG[:yaml_hosts].include?(URI.parse(@uri).host))
+      if (CONFIG[:json_hosts].include?(URI.parse(@uri).host))
         result = RestClientWrapper.get(@uri, {:accept => 'application/x-yaml'}, nil, false)
         @metadata = YAML.load result.to_s
         @http_code = result.code
@@ -209,7 +209,7 @@ module OpenTox
 
     def reload( accept_header=nil )
       unless accept_header 
-        if (CONFIG[:yaml_hosts].include?(URI.parse(uri).host))
+        if (CONFIG[:json_hosts].include?(URI.parse(uri).host))
           accept_header = "application/x-yaml"
         else
           accept_header = 'application/rdf+xml'

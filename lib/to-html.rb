@@ -33,10 +33,10 @@ module OpenTox
       user = OpenTox::Authorization.get_user(subjectid) if subjectid
       html +=  "<pre><p align=\"right\">"
       unless user
-        html += "You are currently not signed in to "+$url_provider.url_for("",:full)+
+        html += "You are currently not signed in to "+$url_provider.request.host.to_s+
           ", <a href="+$url_provider.url_for("/sign_in",:full)+">sign in</a>"
       else
-        html += "You are signed in as '#{user}' to "+$url_provider.url_for("",:full)+
+        html += "You are signed in as '#{user}' to "+$url_provider.request.host.to_s+
           ", <a href="+$url_provider.url_for("/sign_out",:full)+">sign out</a>"
       end
       html += "  </p></pre>"
@@ -61,7 +61,7 @@ module OpenTox
     html += "<form method='POST' action='"+$url_provider.url_for("/sign_in",:full)+"'>"
     html += "<pre><p style=\"padding:15px; border:10px solid \#5D308A\">"
     html += msg+"\n\n" if msg
-    html += "Please sign in to "+$url_provider.url_for("",:full)+"\n\n"
+    html += "Please sign in to "+$url_provider.request.host.to_s+"\n\n"
     html += "<table border=0>"
     html += "<tr><td>user:</td><td><input type='text' name='user' size='15' /></td></tr>"+
           "<tr><td>password:</td><td><input type='password' name='password' size='15' /></td></tr>"+
@@ -111,9 +111,10 @@ module OpenTox
 end
 
 get '/sign_out/?' do
-  response.set_cookie("subjectid",{:value=>nil})
+  logout
   content_type "text/html"
-  content = "Sucessfully signed out from "+$url_provider.url_for("",:full)
+  content = "Sucessfully signed out from "+$url_provider.request.host.to_s+" ( Back to "+
+      $url_provider.url_for("",:full)+" )"
   OpenTox.text_to_html(content)
 end
 
@@ -123,11 +124,11 @@ get '/sign_in/?' do
 end
 
 post '/sign_in/?' do
-  subjectid = OpenTox::Authorization.authenticate(params[:user], params[:password])
+  subjectid = login(params[:user], params[:password])
   if (subjectid)
-    response.set_cookie("subjectid",{:value=>subjectid})
     content_type "text/html"
-    content = "Sucessfully signed in as '"+params[:user]+"' to "+$url_provider.url_for("",:full)
+    content = "Sucessfully signed in as '"+params[:user]+"' to "+$url_provider.request.host.to_s+" ( Back to "+
+      $url_provider.url_for("",:full)+" )"
     OpenTox.text_to_html(content,subjectid)    
   else
     content_type "text/html"

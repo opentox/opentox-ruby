@@ -1,5 +1,6 @@
 require 'spreadsheet'
 require 'yajl'
+require 'yajl/json_gem'
 
 module OpenTox
 
@@ -21,6 +22,7 @@ module OpenTox
           OT.NominalFeature => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.NumericFeature => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.StringFeature => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
+          OT.ModelPrediction => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.Dataset => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.DataEntry => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
           OT.FeatureValue => { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } ,
@@ -69,6 +71,7 @@ module OpenTox
           OT.validation => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
           OT.crossvalidationInfo => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
           OT.dataset => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
+          OT.hasSource => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
 
           DC.title => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           DC.identifier => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
@@ -131,7 +134,7 @@ module OpenTox
           OT.actor => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.errorCode => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
 
-          OT.hasSource => { RDF["type"] => [{ "type" => "uri", "value" => OWL.DatatypeProperty }] } ,
+          #OT.hasSource => { RDF["type"] => [{ "type" => "uri", "value" => OWL.DatatypeProperty }] } ,
           OT.value => { RDF["type"] => [{ "type" => "uri", "value" => OWL.DatatypeProperty }] } ,
           OT.paramScope => { RDF["type"] => [{ "type" => "uri", "value" => OWL.DatatypeProperty }] } ,
           #OT.paramValue => { RDF["type"] => [{ "type" => "uri", "value" => OWL.DatatypeProperty }] } ,
@@ -216,20 +219,24 @@ module OpenTox
         @@content_id = 1
         add_content uri, content
       end
+
+      def add_uri(uri,type)
+        @object[uri] = { RDF["type"] => [{ "type" => "uri", "value" => type }] }
+      end
       
       private
       @@content_id = 1
       
-      # Recursiv function to add content
-      # @example
-      # { DC.description => "bla",
-      #   OT.similar_resources => [ "http://uri1", "http://uri2" ],
-      #   OT.matrixCells => 
-      #     [ { RDF.type => OT.MatrixCell, OT.cellIndex=1 OT.cellValue => "xy" },
-      #       { RDF.type => OT.MatrixCell, OT.cellIndex=2 OT.cellValue => "z" } ],
-      #   OT.info => { RDF.type => OT.ImportantInfo, 
-      #                DC.description => "blub" }
-      # } 
+      #Recursiv function to add content
+      #@example
+      #  { DC.description => "bla",
+      #    OT.similar_resources => [ "http://uri1", "http://uri2" ],
+      #    OT.matrixCells =>
+      #      [ { RDF.type => OT.MatrixCell, OT.cellIndex=1 OT.cellValue => "xy" },
+      #        { RDF.type => OT.MatrixCell, OT.cellIndex=2 OT.cellValue => "z" } ],
+      #    OT.info => { RDF.type => OT.ImportantInfo,
+      #                 DC.description => "blub" }
+      #  }
       # @param [String] uri
       # @param [Hash] content as hash, uri must already have been added to @object
       def add_content(uri, hash)
@@ -268,28 +275,30 @@ module OpenTox
       # @param [Hash] metadata
       def add_metadata(uri,metadata)
         id = 0
-        metadata.each do |u,v|
-          #if v.is_a? Array and (u == OT.parameters or u == RDF.type)
-          if v.is_a? Array and u == OT.parameters#or u == RDF.type)
-            @object[uri][u] = [] unless @object[uri][u]
-            v.each do |value|
-              id+=1
-              genid = "_:genid#{id}"
-              @object[uri][u] << {"type" => "bnode", "value" => genid}
-              @object[genid] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Parameter}] }
-              value.each do |name,entry|
-                @object[genid][name] = [{"type" => type(entry), "value" => entry }]
-              end
-            end
-          elsif v.is_a? Array #and u == RDF.type
-            @object[uri] = {} unless @object[uri]
-            v.each do |value|
+        if !metadata.nil?
+          metadata.each do |u,v|
+            #if v.is_a? Array and (u == OT.parameters or u == RDF.type)
+            if v.is_a? Array and u == OT.parameters#or u == RDF.type)
               @object[uri][u] = [] unless @object[uri][u]
-              @object[uri][u] << {"type" => type(value), "value" => value }
+              v.each do |value|
+                id+=1
+                genid = "_:genid#{id}"
+                @object[uri][u] << {"type" => "bnode", "value" => genid}
+                @object[genid] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Parameter}] }
+                value.each do |name,entry|
+                  @object[genid][name] = [{"type" => type(entry), "value" => entry }]
+                end
+              end
+            elsif v.is_a? Array #and u == RDF.type
+              @object[uri] = {} unless @object[uri]
+              v.each do |value|
+                @object[uri][u] = [] unless @object[uri][u]
+                @object[uri][u] << {"type" => type(value), "value" => value }
+              end
+            elsif v.is_a? String
+              @object[uri] = {} unless @object[uri]
+              @object[uri][u] = [{"type" => type(v), "value" => v }]
             end
-          elsif v.is_a? String
-            @object[uri] = {} unless @object[uri]
-            @object[uri][u] = [{"type" => type(v), "value" => v }]
           end
         end
       end

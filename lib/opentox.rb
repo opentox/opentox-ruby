@@ -31,12 +31,14 @@ module OpenTox
   end
 
   def add_metadata(metadata)
-    metadata.each do |k,v|
-      if v.is_a? Array
-        @metadata[k] = [] unless @metadata[k]
-        @metadata[k] << v
-      else
-        @metadata[k] = v 
+    if !metadata.nil?
+      metadata.each do |k,v|
+        if v.is_a? Array
+          @metadata[k] = [] unless @metadata[k]
+          @metadata[k] << v
+        else
+          @metadata[k] = v 
+        end
       end
     end
   end
@@ -46,7 +48,6 @@ module OpenTox
   def to_rdfxml
     s = Serializer::Owl.new
     s.add_metadata(@uri,@metadata)
-    #s.add_parameters(@uri,@parameters) if @parameters
     s.to_rdfxml
   end
 
