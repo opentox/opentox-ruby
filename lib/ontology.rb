@@ -18,6 +18,24 @@ module OpenTox
           }")
       end
 
+      # Gets Endpoint name of a specific endpoint URI
+      # @param [String] endpointuri e.G. "http://www.opentox.org/echaEndpoints.owl#EcotoxicEffects"
+      # @return [String] endpointname: e.G.: "Ecotoxic effects"
+      def self.get_endpoint_name(endpointuri)
+        qstring = CGI.escape("PREFIX dc:<http://purl.org/dc/elements/1.1/>
+        select distinct ?title
+          where {
+            ?endpoint dc:title ?title.
+            FILTER (?endpoint = <#{endpointuri}>)
+          }")
+        begin
+          RestClientWrapper.get("#{ONTOLOGY_SERVER}?query=#{qstring}",:accept => "text/csv").collect{|l| l.gsub("\r\n", "") if l.to_s != "title\r\n"}.uniq.compact.sort.first.to_s
+        rescue
+          LOGGER.warn "OpenTox::Ontology::Echa.get_endpoint_name(#{endpointuri}) ontology service is not reachable."
+          []
+        end
+      end
+
       # Gets Endpoints of specific level from ontology service
       # Top level with endpoint="Endpoints"
       # e.G. Ecotoxic effects endpoints with  endpoint="EcotoxicEffects"
@@ -111,6 +129,5 @@ module OpenTox
           }")
       end
     end
-
   end
 end
