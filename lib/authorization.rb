@@ -319,7 +319,7 @@ module OpenTox
         # if policy exists check for POST rights 
         if authorize(uri, "POST", subjectid)
           true
-       else
+        else
           LOGGER.error "OpenTox::Authorization.check_policy, already exists, but no POST-authorization with subjectid: #{subjectid}" 
           false
         end
