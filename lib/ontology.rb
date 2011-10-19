@@ -4,13 +4,9 @@ module OpenTox
 
       def self.querystring(classname="Endpoints")
         return CGI.escape("PREFIX ot:<http://www.opentox.org/api/1.1#>
-        PREFIX ota:<http://www.opentox.org/algorithms.owl#>
-        PREFIX owl:<http://www.w3.org/2002/07/owl#>
         PREFIX dc:<http://purl.org/dc/elements/1.1/>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX rdf:<http://www.w3.org/1999/02/22-rdf-syntax-ns#>
         PREFIX otee:<http://www.opentox.org/echaEndpoints.owl#>
-        PREFIX toxcast:<http://www.opentox.org/toxcast.owl#>
         select *
           where {
             ?endpoint  rdfs:subClassOf  otee:#{classname}.
@@ -112,11 +108,8 @@ module OpenTox
       # Query string to find a registered model
       # @param [String] uri, model URI
       def self.querystring(uri)
-        return CGI.escape("PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX rdf:<http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-        PREFIX owl:<http://www.w3.org/2002/07/owl#>
+        return CGI.escape("PREFIX rdf:<http://www.w3.org/1999/02/22-rdf-syntax-ns#>
         PREFIX dc:<http://purl.org/dc/elements/1.1/>
-        PREFIX dcterms:<http://purl.org/dc/terms/>
         PREFIX ot:<http://www.opentox.org/api/1.1#>
         select distinct ?model ?title ?creator ?trainingDataset ?algorithm
           where {
