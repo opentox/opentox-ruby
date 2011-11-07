@@ -355,11 +355,18 @@ module OpenTox
         begin
           n_prop = params[:n_prop].collect { |v| v }
           q_prop = params[:q_prop].collect { |v| v }
-          n_prop << q_prop # attach q_prop
+          n_prop << q_prop # attach query instance
           nr_cases, nr_features = get_sizes n_prop
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
 
-          # Principal Components Analysis
+          ### Transform data (http://goo.gl/U8Klu)
+          # Standardize the training dataset (scale and center)
+          (0..data_matrix.size2-1).each { |i|
+            autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(data_matrix.col(i))
+            data_matrix.col(i)[0..data_matrix.size1-1] = autoscaler.scaled_values
+          }
+
+          # Extract the principal components of the training dataset
           LOGGER.debug "PCA..."
           pca = OpenTox::Algorithm::Transform::PCA.new(data_matrix)
           data_matrix = pca.data_transformed_matrix
@@ -367,10 +374,6 @@ module OpenTox
           # Attach intercept column to data
           intercept = GSL::Matrix.alloc(Array.new(nr_cases,1.0),nr_cases,1)
           data_matrix = data_matrix.horzcat(intercept)
-          (0..data_matrix.size2-2).each { |i|
-            autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(data_matrix.col(i))
-            data_matrix.col(i)[0..data_matrix.size1-1] = autoscaler.scaled_values
-          }
 
           # Detach query instance
           n_prop = data_matrix.to_a
@@ -378,7 +381,7 @@ module OpenTox
           nr_cases, nr_features = get_sizes n_prop
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
 
-          # model + support vectors
+          # Model
           LOGGER.debug "Creating MLR model ..."
           c, cov, chisq, status = GSL::MultiFit::wlinear(data_matrix, params[:sims].to_scale.to_gsl, params[:acts].to_scale.to_gsl)
           GSL::MultiFit::linear_est(q_prop.to_scale.to_gsl, c, cov)[0]
