@@ -713,37 +713,6 @@ module OpenTox
     module Transform
       include Algorithm
 
-      # The transformer that inverts values.
-      # 1/x is used, after values have been moved >= 1.
-      class Inverter
-        attr_accessor :offset, :values
-
-        # @params[Array] Values to transform.
-        # @params[Float] Offset for restore.
-        def initialize *args
-          case args.size
-          when 1
-            begin
-              values=args[0]
-              raise "Cannot transform, values empty." if @values.size==0
-              @values = values.collect { |v| -1.0 * v }  
-              @offset = 1.0 - @values.minmax[0] 
-              @offset = -1.0 * @offset if @offset>0.0 
-              @values.collect! { |v| v - @offset }   # slide >1
-              @values.collect! { |v| 1 / v }         # invert to [0,1]
-            rescue Exception => e
-              LOGGER.debug "#{e.class}: #{e.message}"
-              LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-            end
-          when 2
-            @offset = args[1].to_f
-            @values = args[0].collect { |v| 1 / v }
-            @values.collect! { |v| v + @offset }
-            @values.collect! { |v| -1.0 * v }
-          end
-        end
-      end
-
       # The transformer that takes logs.
       # Log10 is used, after values have been moved > 0.
       class Log10
