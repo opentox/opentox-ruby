@@ -361,7 +361,7 @@ module OpenTox
           # Standardize the training dataset (scale and center)
           (0..data_matrix.size2-1).each { |i|
             autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(data_matrix.col(i))
-            data_matrix.col(i)[0..data_matrix.size1-1] = autoscaler.scaled_values
+            data_matrix.col(i)[0..data_matrix.size1-1] = autoscaler.sv
           }
 
           # Extract the principal components of the training dataset
@@ -836,16 +836,6 @@ module OpenTox
               @stdev << @autoscaler.stdev
               @mean << @autoscaler.mean
             }
-            puts @data_matrix_scaled
-            puts @stdev
-            puts @mean
-
-            puts "---"
-            puts @data_matrix_scaled
-            puts @stdev
-            puts @mean
-            puts "---"
-
             data_matrix_hash = Hash.new
             (0..@data_matrix_scaled.size2-1).each { |i|
               column_view = @data_matrix_scaled.col(i)
@@ -868,6 +858,7 @@ module OpenTox
             @eigenvector_matrix = GSL::Matrix.alloc(eigenvectors_selected.flatten, eigenvectors_selected.size, dataset_hash.fields.size).transpose
             dataset_matrix = dataset_hash.to_gsl.transpose
             @data_transformed_matrix = (@eigenvector_matrix.transpose * dataset_matrix).transpose
+
           rescue Exception => e
               LOGGER.debug "#{e.class}: #{e.message}"
               LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
