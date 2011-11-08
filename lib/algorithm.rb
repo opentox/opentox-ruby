@@ -315,7 +315,7 @@ module OpenTox
 
       # Local multi-linear regression (MLR) prediction from neighbors. 
       # Uses propositionalized setting.
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map,:transform` are required
+      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required
       # @return [Numeric] A prediction value.
       def self.local_mlr_prop(params)
 
@@ -328,8 +328,6 @@ module OpenTox
           sims = params[:neighbors].collect { |n| Algorithm.gauss(n[:similarity]) }
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
           prediction = mlr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts} )
-          transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})")
-          prediction = transformer.values[0]
           prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
@@ -374,6 +372,10 @@ module OpenTox
           # Attach intercept column to data
           intercept = GSL::Matrix.alloc(Array.new(nr_cases,1.0),nr_cases,1)
           data_matrix = data_matrix.horzcat(intercept)
+          (0..data_matrix.size2-2).each { |i|
+            autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(data_matrix.col(i))
+            data_matrix.col(i)[0..data_matrix.size1-1] = autoscaler.sv
+          }
 
           # Detach query instance
           n_prop = data_matrix.to_a
@@ -392,7 +394,7 @@ module OpenTox
       end
 
       # Classification with majority vote from neighbors weighted by similarity
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map,:transform` are required
+      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required
       # @return [Numeric] A prediction value.
       def self.weighted_majority_vote(params)
 
@@ -433,7 +435,7 @@ module OpenTox
       end
 
       # Local support vector regression from neighbors 
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map,:transform` are required
+      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required
       # @return [Numeric] A prediction value.
       def self.local_svm_regression(params)
 
@@ -444,8 +446,6 @@ module OpenTox
           acts = params[:neighbors].collect{ |n| n[:activity].to_f }
           sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) }
           prediction = props.nil? ? local_svm(acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr")
-          transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})")
-          prediction = transformer.values[0]
           prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
@@ -457,7 +457,7 @@ module OpenTox
       end
 
       # Local support vector classification from neighbors 
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map,:transform` are required
+      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required
       # @return [Numeric] A prediction value.
       def self.local_svm_classification(params)
 
@@ -483,7 +483,7 @@ module OpenTox
       # @param [Array] acts, activities for neighbors.
       # @param [Array] sims, similarities for neighbors.
       # @param [String] type, one of "nu-svr" (regression) or "C-bsvc" (classification).
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map,:transform` are required
+      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required
       # @return [Numeric] A prediction value.
       def self.local_svm(acts, sims, type, params)
         LOGGER.debug "Local SVM (Weighted Tanimoto Kernel)."
@@ -713,108 +713,92 @@ module OpenTox
       end
     end
 
+
+
+
+
+
     module Transform
       include Algorithm
 
-      # The transformer that inverts values.
-      # 1/x is used, after values have been moved >= 1.
-      class Inverter
-        attr_accessor :offset, :values
-
-        # @params[Array] Values to transform.
-        # @params[Float] Offset for restore.
-        def initialize *args
-          case args.size
-          when 1
-            begin
-              values=args[0]
-              raise "Cannot transform, values empty." if @values.size==0
-              @values = values.collect { |v| -1.0 * v }  
-              @offset = 1.0 - @values.minmax[0] 
-              @offset = -1.0 * @offset if @offset>0.0 
-              @values.collect! { |v| v - @offset }   # slide >1
-              @values.collect! { |v| 1 / v }         # invert to [0,1]
-            rescue Exception => e
-              LOGGER.debug "#{e.class}: #{e.message}"
-              LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-            end
-          when 2
-            @offset = args[1].to_f
-            @values = args[0].collect { |v| 1 / v }
-            @values.collect! { |v| v + @offset }
-            @values.collect! { |v| -1.0 * v }
-          end
-        end
-      end
-
-      # The transformer that takes logs.
-      # Log10 is used, after values have been moved > 0.
-      class Log10
-        attr_accessor :offset, :values
-
-        # @params[Array] Values to transform / restore.
-        # @params[Float] Offset for restore.
-        def initialize *args
-          @distance_to_zero = 0.000000001 # 1 / 1 billion
-          case args.size
-          when 1
-            begin
-              values=args[0]
-              raise "Cannot transform, values empty." if values.size==0
-              @offset = values.minmax[0] 
-              @offset = -1.0 * @offset if @offset>0.0 
-              @values = values.collect { |v| v - @offset }   # slide > anchor
-              @values.collect! { |v| v + @distance_to_zero }  #
-              @values.collect! { |v| Math::log10 v } # log10 (can fail)
-            rescue Exception => e
-              LOGGER.debug "#{e.class}: #{e.message}"
-              LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-            end
-          when 2
-            @offset = args[1].to_f
-            @values = args[0].collect { |v| 10**v }
-            @values.collect! { |v| v - @distance_to_zero }
-            @values.collect! { |v| v + @offset }
-          end
-        end
-      end
-
-      # The transformer that does nothing (No OPeration).
-      class NOP
-        attr_accessor :offset, :values
-
-        # @params[Array] Values to transform / restore.
-        # @params[Float] Offset for restore.
-        def initialize *args
-          @offset = 0.0
-          @distance_to_zero = 0.0
-          case args.size
-          when 1
-            @values = args[0]
-          when 2
-            @values = args[0]
-          end
-        end
-      end
-
-
-      # Auto-Scaler for Arrays
-      # Center on mean and divide by standard deviation
-      class AutoScale 
-        attr_accessor :scaled_values, :mean, :stdev
+    
+    
+    
+    
+    
+      # LogAutoScaler for ruby Arrays.
+      # Take log and scale.
+      # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
+      class LogAutoScale
+        attr_accessor :sv, :rv, :offset, :autoscaler
 
         # @params[Array] Values to transform.
         def initialize values
-          @scaled_values = values
-          @mean = @scaled_values.to_scale.mean
-          @stdev = @scaled_values.to_scale.standard_deviation_sample
-          @scaled_values = @scaled_values.collect {|vi| vi - @mean }
-          @scaled_values.collect! {|vi| vi / @stdev } unless @stdev == 0.0
+          @distance_to_zero = 1.0
+          begin
+            raise "Cannot transform, values empty." if values.size==0
+            @sv = values.to_scale
+            @offset = @sv.min - @distance_to_zero
+            @sv = @sv.to_a.collect { |v| Math::log10(v - @offset) }
+            @autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(@sv)
+            @sv = @autoscaler.sv
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          end
+        end
+
+        # @params[Array] Values to restore.
+        def restore values
+          @rv = @autoscaler.restore values
+          @rv.collect! { |v| (10**v) + @offset }
         end
       end
 
+
+
+
+
+
+
+      # Auto-Scaler for ruby Arrays.
+      # Center on mean and divide by standard deviation.
+      # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
+      class AutoScale 
+        attr_accessor :sv, :rv, :mean, :stdev
+
+        # @params[Array] Values to transform.
+        def initialize values
+          begin
+            raise "Cannot transform, values empty." if values.size==0
+            @sv = values.to_scale
+            @mean = @sv.mean
+            @stdev = @sv.standard_deviation_population
+            @sv = @sv - @mean
+            @sv = @sv * ( 1 / @stdev) unless @stdev == 0.0
+            @sv = @sv.to_a
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          end
+        end
+
+        # @params[Array] Values to restore.
+        def restore values
+          @rv = values.to_scale
+          @rv = @rv * @stdev unless @stdev == 0.0
+          @rv = @rv + @mean
+          @rv = @rv.to_a
+        end
+      end
+
+
+
+
+
+
       # Principal Components Analysis
-      # Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
+      # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
       class PCA
         attr_accessor :data_matrix, :data_transformed_matrix, :eigenvector_matrix, :eigenvalue_sums, :autoscaler
 
@@ -848,10 +832,13 @@ module OpenTox
             @data_matrix_scaled = GSL::Matrix.alloc(@data_matrix_selected.size1, @data_matrix_selected.size2)
             (0..@data_matrix_selected.size2-1).each { |i|
               @autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(@data_matrix_selected.col(i))
-              @data_matrix_scaled.col(i)[0..@data_matrix.size1-1] = @autoscaler.scaled_values
+              @data_matrix_scaled.col(i)[0..@data_matrix.size1-1] = @autoscaler.sv
               @stdev << @autoscaler.stdev
               @mean << @autoscaler.mean
             }
+            puts @data_matrix_scaled
+            puts @stdev
+            puts @mean
 
             puts "---"
             puts @data_matrix_scaled

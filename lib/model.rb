@@ -102,7 +102,7 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :transform, :conf_stdev, :prediction_min_max
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :conf_stdev, :prediction_min_max
 
       def initialize(uri=nil)
 
@@ -129,7 +129,6 @@ module OpenTox
         @nr_hits = false
         @min_sim = 0.3
         @prop_kernel = false
-        @transform = { "class" => "NOP"  }
         @conf_stdev = false
 
       end
@@ -179,14 +178,13 @@ module OpenTox
         lazar.prop_kernel = hash["prop_kernel"] if hash["prop_kernel"]
         lazar.value_map = hash["value_map"] if hash["value_map"]
         lazar.nr_hits = hash["nr_hits"] if hash["nr_hits"]
-        lazar.transform = hash["transform"] if hash["transform"]
         lazar.conf_stdev = hash["conf_stdev"] if hash["conf_stdev"]
         lazar.prediction_min_max = hash["prediction_min_max"] if hash["prediction_min_max"]
         lazar
       end
 
       def to_json
-        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :min_sim => @min_sim, :subjectid => @subjectid, :prop_kernel => @prop_kernel, :value_map => @value_map, :nr_hits => @nr_hits, :transform => @transform, :conf_stdev => @conf_stdev, :prediction_min_max => @prediction_min_max})
+        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :min_sim => @min_sim, :subjectid => @subjectid, :prop_kernel => @prop_kernel, :value_map => @value_map, :nr_hits => @nr_hits, :conf_stdev => @conf_stdev, :prediction_min_max => @prediction_min_max})
       end
 
       def run( params, accept_header=nil, waiting_task=nil )
@@ -278,8 +276,8 @@ module OpenTox
                                                           :value_map => @value_map,
                                                           :nr_hits => @nr_hits,
                                                           :conf_stdev => @conf_stdev,
-                                                          :prediction_min_max => @prediction_min_max,
-                                                          :transform => @transform } ) ")
+                                                          :prediction_min_max => @prediction_min_max
+                                                         } ) ")
 
           value_feature_uri = File.join( @uri, "predicted", "value")
           confidence_feature_uri = File.join( @uri, "predicted", "confidence")
