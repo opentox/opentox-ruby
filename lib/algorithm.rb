@@ -853,6 +853,12 @@ module OpenTox
               @mean << @autoscaler.mean
             }
 
+            puts "---"
+            puts @data_matrix_scaled
+            puts @stdev
+            puts @mean
+            puts "---"
+
             data_matrix_hash = Hash.new
             (0..@data_matrix_scaled.size2-1).each { |i|
               column_view = @data_matrix_scaled.col(i)
