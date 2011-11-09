@@ -48,6 +48,7 @@ Gem::Specification.new do |s|
     "lib/templates/default_guest_policy.xml",
     "lib/templates/default_policy.xml",
     "lib/to-html.rb",
+    "lib/transform.rb",
     "lib/validation.rb"
   ]
   s.homepage = %q{http://github.com/helma/opentox-ruby}
@@ -88,6 +89,7 @@ Gem::Specification.new do |s|
       s.add_runtime_dependency(%q<dm-sqlite-adapter>, [">= 0"])
       s.add_runtime_dependency(%q<haml>, [">= 3"])
       s.add_runtime_dependency(%q<ruby-plot>, ["~> 0.4.0"])
+      s.add_runtime_dependency(%q<statsample>, [">= 0"])
       s.add_development_dependency(%q<jeweler>, [">= 0"])
     else
       s.add_dependency(%q<sinatra>, [">= 0"])
@@ -119,6 +121,7 @@ Gem::Specification.new do |s|
       s.add_dependency(%q<dm-sqlite-adapter>, [">= 0"])
       s.add_dependency(%q<haml>, [">= 3"])
       s.add_dependency(%q<ruby-plot>, ["~> 0.4.0"])
+      s.add_dependency(%q<statsample>, [">= 0"])
       s.add_dependency(%q<jeweler>, [">= 0"])
     end
   else
@@ -151,6 +154,7 @@ Gem::Specification.new do |s|
     s.add_dependency(%q<dm-sqlite-adapter>, [">= 0"])
     s.add_dependency(%q<haml>, [">= 3"])
     s.add_dependency(%q<ruby-plot>, ["~> 0.4.0"])
+    s.add_dependency(%q<statsample>, [">= 0"])
     s.add_dependency(%q<jeweler>, [">= 0"])
   end
 end
