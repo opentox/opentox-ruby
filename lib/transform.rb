@@ -112,7 +112,7 @@ module OpenTox
             # Scaling of Axes
             @data_matrix_scaled = GSL::Matrix.alloc(@data_matrix_selected.size1, @data_matrix_selected.size2)
             (0..@data_matrix_selected.size2-1).each { |i|
-              @autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(@data_matrix_selected.col(i))
+              @autoscaler = OpenTox::Transform::AutoScale.new(@data_matrix_selected.col(i))
               @data_matrix_scaled.col(i)[0..@data_matrix.size1-1] = @autoscaler.sv
               @stdev << @autoscaler.stdev
               @mean << @autoscaler.mean
@@ -144,6 +144,15 @@ module OpenTox
               LOGGER.debug "#{e.class}: #{e.message}"
               LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
+        end
+
+        def transform values
+          data_matrix_scaled = GSL::Matrix.alloc(values.size1, values.size2)
+          (0..values.size2-1).each { |i|
+            autoscaler = OpenTox::Transform::AutoScale.new(values.col(i))
+            data_matrix_scaled.col(i)[0..data_matrix_scaled.size1-1] = autoscaler.sv
+          }
+          (@eigenvector_matrix.transpose * data_matrix_scaled.transpose).transpose
         end
 
         # Restores data in the original feature space (possibly with compression loss).

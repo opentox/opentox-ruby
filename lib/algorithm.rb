@@ -341,7 +341,7 @@ module OpenTox
       end
 
       # Multi-linear regression weighted by similarity.
-      # Objective Feature Selection, Principal Components Analysis, Scaling of Axes.
+      # Objective Feature Selection, Scaling of Axes, Principal Components Analysis.
       # @param [Hash] params Keys `:n_prop, :q_prop, :sims, :acts` are required
       # @return [Numeric] A prediction value.
       def self.mlr(params)
@@ -349,20 +349,21 @@ module OpenTox
         # GSL matrix operations: 
         # to_a : row-wise conversion to nested array
         #
-        # Statsample operations (build on GSL):
+        # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
+        # Statsample operations build on GSL and offer an R-like access to data
         # to_scale: convert into Statsample format
 
         begin
           n_prop = params[:n_prop].collect { |v| v }
           q_prop = params[:q_prop].collect { |v| v }
-          n_prop << q_prop # attach query instance
+
           nr_cases, nr_features = get_sizes n_prop
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
 
           ### Transform data (http://goo.gl/U8Klu)
           # Standardize the training dataset (scale and center)
           (0..data_matrix.size2-1).each { |i|
-            autoscaler = OpenTox::Transform::AutoScale.new(data_matrix.col(i))
+            autoscaler = OpenTox::Transform::LogAutoScale.new(data_matrix.col(i))
             data_matrix.col(i)[0..data_matrix.size1-1] = autoscaler.sv
           }
 
@@ -371,24 +372,12 @@ module OpenTox
           pca = OpenTox::Transform::PCA.new(data_matrix)
           data_matrix = pca.data_transformed_matrix
 
-          # Attach intercept column to data
-          intercept = GSL::Matrix.alloc(Array.new(nr_cases,1.0),nr_cases,1)
-          data_matrix = data_matrix.horzcat(intercept)
-          (0..data_matrix.size2-2).each { |i|
-            autoscaler = OpenTox::Transform::AutoScale.new(data_matrix.col(i))
-            data_matrix.col(i)[0..data_matrix.size1-1] = autoscaler.sv
-          }
-
-          # Detach query instance
-          n_prop = data_matrix.to_a
-          q_prop = n_prop.pop 
-          nr_cases, nr_features = get_sizes n_prop
-          data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
-
+          # Perform transformation for query
+          # a. LogAutoScale
+          # b. PCA
+          
           # Model
-          LOGGER.debug "Creating MLR model ..."
-          c, cov, chisq, status = GSL::MultiFit::wlinear(data_matrix, params[:sims].to_scale.to_gsl, params[:acts].to_scale.to_gsl)
-          GSL::MultiFit::linear_est(q_prop.to_scale.to_gsl, c, cov)[0]
+          
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
         end
