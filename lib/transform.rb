@@ -12,10 +12,9 @@ module OpenTox
           @distance_to_zero = 1.0
           begin
             raise "Cannot transform, values empty." if values.size==0
-            vs = values.to_scale
+            vs = values.collect.to_scale
             @offset = vs.min - @distance_to_zero
-            vs = mvlog(vs)
-            @autoscaler = OpenTox::Transform::AutoScale.new(vs)
+            @autoscaler = OpenTox::Transform::AutoScale.new(mvlog(vs.to_a))
             @vs = @autoscaler.vs
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
@@ -50,10 +49,10 @@ module OpenTox
           end
         end
 
-        # @params[Array] statsample vector of values to transform.
+        # @params[Array] ruby array of values to transform.
         # @returns[Array] ruby array of transformed values.
         def mvlog values 
-          values.to_a.collect { |v| Math::log10(v - @offset) }
+          values.collect { |v| Math::log10(v - @offset) }
         end
 
 
@@ -86,7 +85,7 @@ module OpenTox
         def transform values
           begin
             raise "Cannot transform, values empty." if values.size==0
-            (autoscale values.collect.to_scale).to_a
+            autoscale values.collect
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
@@ -107,11 +106,11 @@ module OpenTox
           end
         end
 
-        # @params[Array] statsample vector of values to transform.
+        # @params[Array] ruby array of values to transform.
         # @returns[Array] ruby array of transformed values.
         def autoscale values
-          vs = values - @mean
-          @stdev == 0.0 ? vs : ( vs * ( 1 / @stdev) )
+          vs = values.collect.to_scale - @mean
+          @stdev == 0.0 ? vs.to_a : ( vs * ( 1 / @stdev) ).to_a
         end
 
       end
