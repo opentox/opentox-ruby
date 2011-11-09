@@ -5,18 +5,18 @@ module OpenTox
       # Take log and scale.
       # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
       class LogAutoScale
-        attr_accessor :sv, :rv, :offset, :autoscaler
+        attr_accessor :vs, :offset, :autoscaler
 
         # @params[Array] Values to transform using LogAutoScaling.
         def initialize values
           @distance_to_zero = 1.0
           begin
             raise "Cannot transform, values empty." if values.size==0
-            @sv = values.to_scale
-            @offset = @sv.min - @distance_to_zero
-            @sv = @sv.to_a.collect { |v| Math::log10(v - @offset) }
-            @autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(@sv)
-            @sv = @autoscaler.sv
+            vs = values.to_scale
+            @offset = vs.min - @distance_to_zero
+            vs = mvlog(vs)
+            @autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(vs)
+            @vs = @autoscaler.vs
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
@@ -26,16 +26,37 @@ module OpenTox
         # @params[Array] ruby array of values to transform.
         # @returns[Array] ruby array of transformed values.
         def transform values
-          values.collect! { |v| Math::log10(v - @offset) }
-          @autoscaler.transform values
+          begin
+            raise "Cannot transform, values empty." if values.size==0
+            vs = values.to_scale
+            vs = mvlog(vs)
+            @autoscaler.transform vs
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          end
         end
 
         # @params[Array] ruby array of values to restore.
         # @returns[Array] ruby array of transformed values.
         def restore values
-          @rv = @autoscaler.restore values
-          @rv.collect! { |v| (10**v) + @offset }
+          begin
+            raise "Cannot transform, values empty." if values.size==0
+            rv = @autoscaler.restore values
+            rv.collect! { |v| (10**v) + @offset }
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          end
         end
+
+        # @params[Array] statsample vector of values to transform.
+        # @returns[Array] ruby array of transformed values.
+        def mvlog values 
+          values.to_a.collect { |v| Math::log10(v - @offset) }
+        end
+
+
 
       end
 
@@ -44,16 +65,16 @@ module OpenTox
       # Center on mean and divide by standard deviation.
       # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
       class AutoScale 
-        attr_accessor :sv, :rv, :mean, :stdev
+        attr_accessor :vs, :mean, :stdev
 
         # @params[Array] ruby array of values to transform using AutoScaling.
         def initialize values
           begin
             raise "Cannot transform, values empty." if values.size==0
-            @sv = values.to_scale
-            @mean = @sv.mean
-            @stdev = @sv.standard_deviation_population
-            @sv = transform @sv.to_a
+            vs = values.to_scale
+            @mean = vs.mean
+            @stdev = vs.standard_deviation_population
+            @vs = transform vs.to_a
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
@@ -63,18 +84,36 @@ module OpenTox
         # @params[Array] ruby array of values to transform.
         # @returns[Array] ruby array of transformed values.
         def transform values
-          values = values.to_scale - @mean
-          values = values * ( 1 / @stdev) unless @stdev == 0.0
-          values.to_a
+          begin
+            raise "Cannot transform, values empty." if values.size==0
+            (autoscale values.to_scale).to_a
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          end
         end
 
         # @params[Array] Values to restore.
         # @returns[Array] ruby array of transformed values.
         def restore values
-          @rv = values.to_scale
-          @rv = @rv * @stdev unless @stdev == 0.0
-          @rv = (@rv + @mean).to_a
+          begin
+            raise "Cannot transform, values empty." if values.size==0
+            rv = values.to_scale
+            rv = rv * @stdev unless @stdev == 0.0
+            (rv + @mean).to_a
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          end
         end
+
+        # @params[Array] statsample vector of values to transform.
+        # @returns[Array] ruby array of transformed values.
+        def autoscale values
+          vs = values - @mean
+          @stdev == 0.0 ? vs : ( vs * ( 1 / @stdev) )
+        end
+
       end
 
 
@@ -113,7 +152,7 @@ module OpenTox
             @data_matrix_scaled = GSL::Matrix.alloc(@data_matrix_selected.size1, @data_matrix_selected.size2)
             (0..@data_matrix_selected.size2-1).each { |i|
               @autoscaler = OpenTox::Transform::AutoScale.new(@data_matrix_selected.col(i))
-              @data_matrix_scaled.col(i)[0..@data_matrix.size1-1] = @autoscaler.sv
+              @data_matrix_scaled.col(i)[0..@data_matrix.size1-1] = @autoscaler.vs
               @stdev << @autoscaler.stdev
               @mean << @autoscaler.mean
             }
@@ -150,7 +189,7 @@ module OpenTox
           data_matrix_scaled = GSL::Matrix.alloc(values.size1, values.size2)
           (0..values.size2-1).each { |i|
             autoscaler = OpenTox::Transform::AutoScale.new(values.col(i))
-            data_matrix_scaled.col(i)[0..data_matrix_scaled.size1-1] = autoscaler.sv
+            data_matrix_scaled.col(i)[0..data_matrix_scaled.size1-1] = autoscaler.vs
           }
           (@eigenvector_matrix.transpose * data_matrix_scaled.transpose).transpose
         end
