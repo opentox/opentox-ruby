@@ -1,20 +1,20 @@
 module OpenTox
     module Transform
     
-      # LogAutoScaler for ruby Arrays.
+      # LogAutoScaler for GSL vectors.
       # Take log and scale.
       # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
       class LogAutoScale
         attr_accessor :vs, :offset, :autoscaler
 
-        # @params[Array] Values to transform using LogAutoScaling.
+        # @params[GSL::Vector] Values to transform using LogAutoScaling.
         def initialize values
           @distance_to_zero = 1.0
           begin
             raise "Cannot transform, values empty." if values.size==0
-            vs = values.collect.to_scale
+            vs = values.clone
             @offset = vs.min - @distance_to_zero
-            @autoscaler = OpenTox::Transform::AutoScale.new(mvlog(vs.to_a))
+            @autoscaler = OpenTox::Transform::AutoScale.new mvlog(vs)
             @vs = @autoscaler.vs
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
@@ -22,37 +22,38 @@ module OpenTox
           end
         end
 
-        # @params[Array] ruby array of values to transform.
-        # @returns[Array] ruby array of transformed values.
+        # @params[GSL::Vector] values to transform.
+        # @returns[GSL::Vector] transformed values.
         def transform values
           begin
             raise "Cannot transform, values empty." if values.size==0
-            vs = values.to_scale
+            vs = values.clone
             vs = mvlog(vs)
-            @autoscaler.transform vs
+            @autoscaler.transform(vs)
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
         end
 
-        # @params[Array] ruby array of values to restore.
-        # @returns[Array] ruby array of transformed values.
+        # @params[GSL::Vector] values to restore.
+        # @returns[GSL::Vector] transformed values.
         def restore values
           begin
             raise "Cannot transform, values empty." if values.size==0
-            rv = @autoscaler.restore values
-            rv.collect! { |v| (10**v) + @offset }
+            vs = values.clone
+            rv = @autoscaler.restore(vs)
+            rv.to_a.collect { |v| (10**v) + @offset }.to_gv
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
         end
 
-        # @params[Array] ruby array of values to transform.
-        # @returns[Array] ruby array of transformed values.
+        # @params[GSL::Vector] values to transform.
+        # @returns[GSL::Vector] transformed values.
         def mvlog values 
-          values.collect { |v| Math::log10(v - @offset) }
+          values.to_a.collect { |v| Math::log10(v - @offset) }.to_gv
         end
 
 
@@ -60,46 +61,45 @@ module OpenTox
       end
 
 
-      # Auto-Scaler for ruby Arrays.
+      # Auto-Scaler for GSL vectors.
       # Center on mean and divide by standard deviation.
       # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
       class AutoScale 
         attr_accessor :vs, :mean, :stdev
 
-        # @params[Array] ruby array of values to transform using AutoScaling.
+        # @params[GSL::Vector] values to transform using AutoScaling.
         def initialize values
           begin
             raise "Cannot transform, values empty." if values.size==0
-            vs = values.collect.to_scale
-            @mean = vs.mean
-            @stdev = vs.standard_deviation_population
-            @vs = transform vs.to_a
+            vs = values.clone
+            @mean = vs.to_scale.mean
+            @stdev = vs.to_scale.standard_deviation_population
+            @vs = transform vs
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
         end
 
-        # @params[Array] ruby array of values to transform.
-        # @returns[Array] ruby array of transformed values.
+        # @params[GSL::Vector] values to transform.
+        # @returns[GSL::Vector] transformed values.
         def transform values
           begin
             raise "Cannot transform, values empty." if values.size==0
-            autoscale values.collect
+            autoscale values.clone
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
         end
 
-        # @params[Array] Values to restore.
-        # @returns[Array] ruby array of transformed values.
+        # @params[GSL::Vector] Values to restore.
+        # @returns[GSL::Vector] transformed values.
         def restore values
           begin
             raise "Cannot transform, values empty." if values.size==0
-            rv = values.collect.to_scale
-            rv = rv * @stdev unless @stdev == 0.0
-            (rv + @mean).to_a
+            rv_ss = values.clone.to_scale * @stdev unless @stdev == 0.0
+            (rv_ss + @mean).to_gsl
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
@@ -109,8 +109,8 @@ module OpenTox
         # @params[Array] ruby array of values to transform.
         # @returns[Array] ruby array of transformed values.
         def autoscale values
-          vs = values.collect.to_scale - @mean
-          @stdev == 0.0 ? vs.to_a : ( vs * ( 1 / @stdev) ).to_a
+          vs_ss = values.clone.to_scale - @mean
+          @stdev == 0.0 ? vs_ss.to_gsl : ( vs_ss * ( 1 / @stdev) ).to_gsl
         end
 
       end
@@ -147,14 +147,16 @@ module OpenTox
             }
             raise "Error! PCA needs at least two dimensions." if (@data_matrix_selected.nil? || @data_matrix_selected.size2 < 2)
 
-            # Scaling of Axes
+            # PCA uses internal unit scaling
             @data_matrix_scaled = GSL::Matrix.alloc(@data_matrix_selected.size1, @data_matrix_selected.size2)
             (0..@data_matrix_selected.size2-1).each { |i|
-              @autoscaler = OpenTox::Transform::AutoScale.new(@data_matrix_selected.col(i).to_a)
+              @autoscaler = OpenTox::Transform::AutoScale.new(@data_matrix_selected.col(i))
               @data_matrix_scaled.col(i)[0..@data_matrix.size1-1] = @autoscaler.vs
               @stdev << @autoscaler.stdev
               @mean << @autoscaler.mean
             }
+
+            # PCA
             data_matrix_hash = Hash.new
             (0..@data_matrix_scaled.size2-1).each { |i|
               column_view = @data_matrix_scaled.col(i)
@@ -163,20 +165,21 @@ module OpenTox
             dataset_hash = data_matrix_hash.to_dataset # see http://goo.gl/7XcW9
             cor_matrix=Statsample::Bivariate.correlation_matrix(dataset_hash)
             pca=Statsample::Factor::PCA.new(cor_matrix)
+
+            # Select best eigenvectors
             pca.eigenvalues.each { |ev| raise "PCA failed!" unless !ev.nan? }
             @eigenvalue_sums = Array.new
-            (0..dataset_hash.fields.size-1).each { |i|
+            (0..@data_matrix_selected.size2-1).each { |i|
               @eigenvalue_sums << pca.eigenvalues[0..i].inject{ |sum, ev| sum + ev }
             }
             eigenvectors_selected = Array.new
             pca.eigenvectors.each_with_index { |ev, i|
-              if (@eigenvalue_sums[i] <= ((1.0-@compression)*dataset_hash.fields.size)) || (eigenvectors_selected.size == 0)
+              if (@eigenvalue_sums[i] <= ((1.0-@compression)*@data_matrix_selected.size2)) || (eigenvectors_selected.size == 0)
                 eigenvectors_selected << ev.to_a
               end
             }
-            @eigenvector_matrix = GSL::Matrix.alloc(eigenvectors_selected.flatten, eigenvectors_selected.size, dataset_hash.fields.size).transpose
-            dataset_matrix = dataset_hash.to_gsl.transpose
-            @data_transformed_matrix = (@eigenvector_matrix.transpose * dataset_matrix).transpose
+            @eigenvector_matrix = GSL::Matrix.alloc(eigenvectors_selected.flatten, eigenvectors_selected.size, @data_matrix_selected.size2).transpose
+            @data_transformed_matrix = (@eigenvector_matrix.transpose * @data_matrix_scaled.transpose).transpose
 
           rescue Exception => e
               LOGGER.debug "#{e.class}: #{e.message}"
