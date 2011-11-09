@@ -49,6 +49,7 @@ Gem::Specification.new do |s|
     "lib/templates/default_policy.xml",
     "lib/to-html.rb",
     "lib/transform.rb",
+    "lib/utils.rb"
     "lib/validation.rb"
   ]
   s.homepage = %q{http://github.com/helma/opentox-ruby}
