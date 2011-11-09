@@ -15,7 +15,7 @@ module OpenTox
             vs = values.to_scale
             @offset = vs.min - @distance_to_zero
             vs = mvlog(vs)
-            @autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(vs)
+            @autoscaler = OpenTox::Transform::AutoScale.new(vs)
             @vs = @autoscaler.vs
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
@@ -71,7 +71,7 @@ module OpenTox
         def initialize values
           begin
             raise "Cannot transform, values empty." if values.size==0
-            vs = values.to_scale
+            vs = values.collect.to_scale
             @mean = vs.mean
             @stdev = vs.standard_deviation_population
             @vs = transform vs.to_a
@@ -86,7 +86,7 @@ module OpenTox
         def transform values
           begin
             raise "Cannot transform, values empty." if values.size==0
-            (autoscale values.to_scale).to_a
+            (autoscale values.collect.to_scale).to_a
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
@@ -98,7 +98,7 @@ module OpenTox
         def restore values
           begin
             raise "Cannot transform, values empty." if values.size==0
-            rv = values.to_scale
+            rv = values.collect.to_scale
             rv = rv * @stdev unless @stdev == 0.0
             (rv + @mean).to_a
           rescue Exception => e
@@ -117,7 +117,7 @@ module OpenTox
       end
 
 
-      # Principal Components Analysis
+      # Principal Components Analysis.
       # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
       class PCA
         attr_accessor :data_matrix, :data_transformed_matrix, :eigenvector_matrix, :eigenvalue_sums, :autoscaler
@@ -128,7 +128,7 @@ module OpenTox
         # @return [GSL::Matrix] Data transformed matrix.
         def initialize data_matrix, compression=0.05
           begin
-            @data_matrix = data_matrix
+            @data_matrix = data_matrix.clone
             @compression = compression.to_f
             @stdev = Array.new
             @mean = Array.new
@@ -151,7 +151,7 @@ module OpenTox
             # Scaling of Axes
             @data_matrix_scaled = GSL::Matrix.alloc(@data_matrix_selected.size1, @data_matrix_selected.size2)
             (0..@data_matrix_selected.size2-1).each { |i|
-              @autoscaler = OpenTox::Transform::AutoScale.new(@data_matrix_selected.col(i))
+              @autoscaler = OpenTox::Transform::AutoScale.new(@data_matrix_selected.col(i).to_a)
               @data_matrix_scaled.col(i)[0..@data_matrix.size1-1] = @autoscaler.vs
               @stdev << @autoscaler.stdev
               @mean << @autoscaler.mean
@@ -188,7 +188,7 @@ module OpenTox
         def transform values
           data_matrix_scaled = GSL::Matrix.alloc(values.size1, values.size2)
           (0..values.size2-1).each { |i|
-            autoscaler = OpenTox::Transform::AutoScale.new(values.col(i))
+            autoscaler = OpenTox::Transform::AutoScale.new(values.col(i).to_a)
             data_matrix_scaled.col(i)[0..data_matrix_scaled.size1-1] = autoscaler.vs
           }
           (@eigenvector_matrix.transpose * data_matrix_scaled.transpose).transpose
