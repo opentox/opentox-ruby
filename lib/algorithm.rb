@@ -317,7 +317,7 @@ module OpenTox
 
       # Local multi-linear regression (MLR) prediction from neighbors. 
       # Uses propositionalized setting.
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required
+      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required.
       # @return [Numeric] A prediction value.
       def self.local_mlr_prop(params)
 
@@ -328,8 +328,9 @@ module OpenTox
           props = params[:prop_kernel] ? get_props(params) : nil
           acts = params[:neighbors].collect { |n| act = n[:activity].to_f }
           sims = params[:neighbors].collect { |n| Algorithm.gauss(n[:similarity]) }
+          maxcols = ( params[:maxcols].nil? ? (sims.size/3.0).ceil : params[:maxcols] )
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
-          prediction = mlr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts} )
+          prediction = mlr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
           prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
@@ -342,7 +343,7 @@ module OpenTox
 
       # Multi-linear regression weighted by similarity.
       # Objective Feature Selection, Scaling of Axes, Principal Components Analysis.
-      # @param [Hash] params Keys `:n_prop, :q_prop, :sims, :acts` are required
+      # @param [Hash] params Keys `:n_prop, :q_prop, :sims, :acts, :maxcols` are required.
       # @return [Numeric] A prediction value.
       def self.mlr(params)
 
@@ -353,6 +354,7 @@ module OpenTox
           n_prop = params[:n_prop].collect
           q_prop = params[:q_prop].collect
           acts = params[:acts].collect
+          maxcols = params[:maxcols]
 
           nr_cases, nr_features = get_sizes n_prop
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
@@ -368,7 +370,7 @@ module OpenTox
           }
           # Rotate data (pca), adjust query accordingly
           LOGGER.debug "PCA..."
-          pca = OpenTox::Transform::PCA.new(data_matrix)
+          pca = OpenTox::Transform::PCA.new(data_matrix,0.05,maxcols)
           data_matrix = pca.data_transformed_matrix
           query_matrix = pca.transform(query_matrix)
           # Transform y
