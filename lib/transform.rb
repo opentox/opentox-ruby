@@ -124,12 +124,13 @@ module OpenTox
         # @param [GSL::Matrix] Data matrix.
         # @param [Float] Compression ratio from [0,1], default 0.05.
         # @return [GSL::Matrix] Data transformed matrix.
-        def initialize data_matrix, compression=0.05
+        def initialize data_matrix, compression=0.05, maxcols=(1.0/0.0)
           begin
             @data_matrix = data_matrix.clone
             @compression = compression.to_f
             @mean = Array.new
             @cols = Array.new
+            @maxcols = maxcols
 
             # Objective Feature Selection
             raise "Error! PCA needs at least two dimensions." if data_matrix.size2 < 2
@@ -174,7 +175,7 @@ module OpenTox
             eigenvectors_selected = Array.new
             pca.eigenvectors.each_with_index { |ev, i|
               if (@eigenvalue_sums[i] <= ((1.0-@compression)*@cols.size)) || (eigenvectors_selected.size == 0)
-                eigenvectors_selected << ev.to_a
+                eigenvectors_selected << ev.to_a unless @maxcols <= eigenvectors_selected.size
               end
             }
             @eigenvector_matrix = GSL::Matrix.alloc(eigenvectors_selected.flatten, eigenvectors_selected.size, @cols.size).transpose

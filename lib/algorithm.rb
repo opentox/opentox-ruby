@@ -346,38 +346,47 @@ module OpenTox
       # @return [Numeric] A prediction value.
       def self.mlr(params)
 
-        # GSL matrix operations: 
-        # to_a : row-wise conversion to nested array
-        #
         # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
         # Statsample operations build on GSL and offer an R-like access to data
-        # to_scale: convert into Statsample format
-
+        LOGGER.debug "MLR..."
         begin
-          n_prop = params[:n_prop].collect { |v| v }
-          q_prop = params[:q_prop].collect { |v| v }
+          n_prop = params[:n_prop].collect
+          q_prop = params[:q_prop].collect
+          acts = params[:acts].collect
 
           nr_cases, nr_features = get_sizes n_prop
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
+          query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
 
-          ### Transform data (http://goo.gl/U8Klu)
-          # Standardize the training dataset (scale and center)
-          (0..data_matrix.size2-1).each { |i|
+          ### Transform data (discussion: http://goo.gl/U8Klu)
+          # Standardize data (scale and center), adjust query accordingly
+          LOGGER.debug "Standardize..."
+          (0..nr_features-1).each { |i|
             autoscaler = OpenTox::Transform::LogAutoScale.new(data_matrix.col(i))
-            data_matrix.col(i)[0..data_matrix.size1-1] = autoscaler.sv
+            data_matrix.col(i)[0..nr_cases-1] = autoscaler.sv
+            query_matrix.col(i)[0] = autoscaler.transform(query_matrix.col(i))
           }
-
-          # Extract the principal components of the training dataset
+          # Rotate data (pca), adjust query accordingly
           LOGGER.debug "PCA..."
           pca = OpenTox::Transform::PCA.new(data_matrix)
           data_matrix = pca.data_transformed_matrix
+          query_matrix = pca.transform(query_matrix)
+          # Transform y
+          acts_autoscaler = OpenTox::Transform::LogAutoScale(acts)
+          ### End of transform
+          
+          ### Model
+          LOGGER.debug "MLR..."
+          r.x = Matrix.rows(data_matrix.to_a) # must use Ruby's Matrix
+          r.q = Matrix.rows(query_matrix.to_a)
+          r.y = acts_autoscaler.vs.to_a
+          r.eval "fit <- lm( y ~ x )"
+          r.eval "q <- data.frame(q)"
+          r.eval "names(q) = names(data.frame(x))"
+          r.eval "pred <- predict(fit, q, interval=\"confidence\")"
+          ### End of Model
 
-          # Perform transformation for query
-          # a. LogAutoScale
-          # b. PCA
-          
-          # Model
-          
+          r.pred.to_a.flatten[0] # [1] is lwr, [2] upr confidence limit.
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
         end
