@@ -341,7 +341,7 @@ module OpenTox
 
       end
 
-      # Multi-linear regression weighted by similarity.
+      # Multi-linear regression (unweighted).
       # Objective Feature Selection, Scaling of Axes, Principal Components Analysis.
       # @param [Hash] params Keys `:n_prop, :q_prop, :sims, :acts, :maxcols` are required.
       # @return [Numeric] A prediction value.
@@ -408,6 +408,71 @@ module OpenTox
         end
 
       end
+
+
+      # Principal Components Regression (unweighted).
+      # Objective Feature Selection, Scaling of Axes.
+      # @param [Hash] params Keys `:n_prop, :q_prop, :sims, :acts, :maxcols` are required.
+      # @return [Numeric] A prediction value.
+      def self.pcr(params)
+
+        # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
+        # Statsample operations build on GSL and offer an R-like access to data
+        LOGGER.debug "MLR..."
+        begin
+          n_prop = params[:n_prop].collect
+          q_prop = params[:q_prop].collect
+          acts = params[:acts].collect
+          maxcols = params[:maxcols]
+
+          nr_cases, nr_features = get_sizes n_prop
+          data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
+          query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
+
+          ### Transform data (discussion: http://goo.gl/U8Klu)
+          # Standardize data (scale and center), adjust query accordingly
+          LOGGER.debug "Standardize..."
+          (0..nr_features-1).each { |i|
+            autoscaler = OpenTox::Transform::LogAutoScale.new(data_matrix.col(i))
+            data_matrix.col(i)[0..nr_cases-1] = autoscaler.vs
+            query_matrix.col(i)[0] = autoscaler.transform(query_matrix.col(i))[0]
+          }
+          # Transform y
+          acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
+          acts = acts_autoscaler.vs.to_a
+          ### End of transform
+          
+          ### Model
+          LOGGER.debug "MLR..."
+          @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
+          @r.x = data_matrix.to_a.flatten
+          @r.q = query_matrix.to_a.flatten
+          @r.y = acts.to_a.flatten
+
+          @r.eval "library(\"pls\")"
+          @r.eval "x <- matrix(x, #{nr_cases}, #{nr_features}, byrow=T)"
+          @r.eval "df <- data.frame(y,x)"
+          @r.eval "dfnames <- names(df)"
+          @r.eval "xnames <- dfnames[2:length(dfnames)]"
+          @r.eval "fstr <- paste(\"y\", paste(xnames, collapse=\" + \"), sep=\" ~ \")"
+          @r.eval "fit <- mvr( as.formula(fstr), data=df, ncomp=#{maxcols}, method=\"svdpc\")"
+          @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
+          @r.eval "names(q) = xnames"
+          @r.eval "pred <- matrix(predict(fit, q))"
+          ### End of Model
+          
+          acts_autoscaler.restore( [ @r.pred.to_a.flatten.last ].to_gv )[0] # return restored value of type numeric
+
+        rescue Exception => e
+          LOGGER.debug "#{e.class}: #{e.message}"
+          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+        end
+
+      end
+
+
+
+
 
       # Classification with majority vote from neighbors weighted by similarity
       # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required
