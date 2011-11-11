@@ -365,32 +365,46 @@ module OpenTox
           LOGGER.debug "Standardize..."
           (0..nr_features-1).each { |i|
             autoscaler = OpenTox::Transform::LogAutoScale.new(data_matrix.col(i))
-            data_matrix.col(i)[0..nr_cases-1] = autoscaler.sv
-            query_matrix.col(i)[0] = autoscaler.transform(query_matrix.col(i))
+            data_matrix.col(i)[0..nr_cases-1] = autoscaler.vs
+            query_matrix.col(i)[0] = autoscaler.transform(query_matrix.col(i))[0]
           }
+
           # Rotate data (pca), adjust query accordingly
           LOGGER.debug "PCA..."
           pca = OpenTox::Transform::PCA.new(data_matrix,0.05,maxcols)
           data_matrix = pca.data_transformed_matrix
+          nr_cases, nr_features = get_sizes data_matrix.to_a
           query_matrix = pca.transform(query_matrix)
+
           # Transform y
-          acts_autoscaler = OpenTox::Transform::LogAutoScale(acts)
+          acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
+          acts = acts_autoscaler.vs.to_a
           ### End of transform
           
           ### Model
           LOGGER.debug "MLR..."
-          r.x = Matrix.rows(data_matrix.to_a) # must use Ruby's Matrix
-          r.q = Matrix.rows(query_matrix.to_a)
-          r.y = acts_autoscaler.vs.to_a
-          r.eval "fit <- lm( y ~ x )"
-          r.eval "q <- data.frame(q)"
-          r.eval "names(q) = names(data.frame(x))"
-          r.eval "pred <- predict(fit, q, interval=\"confidence\")"
-          ### End of Model
+          @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
+          @r.x = data_matrix.to_a.flatten
+          @r.q = query_matrix.to_a.flatten
+          @r.y = acts.to_a.flatten
 
-          r.pred.to_a.flatten[0] # [1] is lwr, [2] upr confidence limit.
+          @r.eval "x <- matrix(x, #{nr_cases}, #{nr_features}, byrow=T)"
+          @r.eval "df <- data.frame(y,x)"
+          @r.eval "dfnames <- names(df)"
+          @r.eval "xnames <- dfnames[2:length(dfnames)]"
+          @r.eval "fstr <- paste(\"y\", paste(xnames, collapse=\" + \"), sep=\" ~ \")"
+          @r.eval "fit <- lm( as.formula(fstr), data=df)"
+          @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
+          @r.eval "names(q) = xnames"
+          @r.eval "pred <- predict(fit, q, interval=\"confidence\")"
+          ### End of Model
+          
+          point_prediction = @r.pred.to_a.flatten[0] # [1] is lwr, [2] upr confidence limit.
+          acts_autoscaler.restore( [ point_prediction ].to_gv )[0] # return restored value of type numeric
+
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
+          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
 
       end

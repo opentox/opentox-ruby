@@ -72,6 +72,7 @@ module OpenTox
             vs = values.clone
             @mean = vs.to_scale.mean
             @stdev = vs.to_scale.standard_deviation_population
+            @stdev = 0.0 if @stdev.nan? 
             @vs = transform vs
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
@@ -104,8 +105,8 @@ module OpenTox
           end
         end
 
-        # @param [Array] ruby array of values to transform.
-        # @return [Array] ruby array of transformed values.
+        # @param [GSL::Vector] values to transform.
+        # @return [GSL::Vector] transformed values.
         def autoscale values
           vs_ss = values.clone.to_scale - @mean
           @stdev == 0.0 ? vs_ss.to_gsl : ( vs_ss * ( 1 / @stdev) ).to_gsl
@@ -129,6 +130,7 @@ module OpenTox
             @data_matrix = data_matrix.clone
             @compression = compression.to_f
             @mean = Array.new
+            @autoscaler = Array.new
             @cols = Array.new
             @maxcols = maxcols
 
@@ -151,9 +153,10 @@ module OpenTox
             # PCA uses internal centering on 0
             @data_matrix_scaled = GSL::Matrix.alloc(@data_matrix_selected.size1, @cols.size)
             (0..@cols.size-1).each { |i|
-              @autoscaler = OpenTox::Transform::AutoScale.new(@data_matrix_selected.col(i))
-              @data_matrix_scaled.col(i)[0..@data_matrix.size1-1] = @autoscaler.vs * @autoscaler.stdev # re-adjust by stdev
-              @mean << @autoscaler.mean
+              as = OpenTox::Transform::AutoScale.new(@data_matrix_selected.col(i))
+              @data_matrix_scaled.col(i)[0..@data_matrix.size1-1] = as.vs * as.stdev # re-adjust by stdev
+              @mean << as.mean
+              @autoscaler << as
             }
 
             # PCA
@@ -197,8 +200,7 @@ module OpenTox
             raise "Error! Too few columns for transformation." if vs.size2 < @cols.max
             data_matrix_scaled = GSL::Matrix.alloc(vs.size1, @cols.size)
             @cols.each_with_index { |i,j|
-              autoscaler = OpenTox::Transform::AutoScale.new(vs.col(i).to_a)
-              data_matrix_scaled.col(j)[0..data_matrix_scaled.size1-1] = autoscaler.vs * autoscaler.stdev
+              data_matrix_scaled.col(j)[0..data_matrix_scaled.size1-1] = @autoscaler[j].transform(vs.col(i).to_a) * @autoscaler[j].stdev
             }
             (@eigenvector_matrix.transpose * data_matrix_scaled.transpose).transpose
           rescue Exception => e
