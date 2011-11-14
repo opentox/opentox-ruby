@@ -390,12 +390,12 @@ module OpenTox
 
           @r.eval "x <- matrix(x, #{nr_cases}, #{nr_features}, byrow=T)"
           @r.eval "df <- data.frame(y,x)"
-          @r.eval "dfnames <- names(df)"
-          @r.eval "xnames <- dfnames[2:length(dfnames)]"
-          @r.eval "fstr <- paste(\"y\", paste(xnames, collapse=\" + \"), sep=\" ~ \")"
+
+          @r.eval "fstr <- \"y ~ .\""
           @r.eval "fit <- lm( as.formula(fstr), data=df)"
+
           @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
-          @r.eval "names(q) = xnames"
+          @r.eval "names(q) = names(df)[2:length(names(df))]"
           @r.eval "pred <- predict(fit, q, interval=\"confidence\")"
           ### End of Model
           
@@ -443,7 +443,7 @@ module OpenTox
           ### End of transform
           
           ### Model
-          LOGGER.debug "MLR..."
+          LOGGER.debug "PCR / PLSR..."
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
           @r.x = data_matrix.to_a.flatten
           @r.q = query_matrix.to_a.flatten
@@ -452,16 +452,22 @@ module OpenTox
           @r.eval "library(\"pls\")"
           @r.eval "x <- matrix(x, #{nr_cases}, #{nr_features}, byrow=T)"
           @r.eval "df <- data.frame(y,x)"
-          @r.eval "dfnames <- names(df)"
-          @r.eval "xnames <- dfnames[2:length(dfnames)]"
-          @r.eval "fstr <- paste(\"y\", paste(xnames, collapse=\" + \"), sep=\" ~ \")"
-          @r.eval "fit <- mvr( as.formula(fstr), data=df, ncomp=#{maxcols}, method=\"svdpc\")"
+
+          @r.eval "fstr <- \"y ~ .\""
+          @r.eval "fit <- mvr( formula = as.formula(fstr), data=df, ncomp=#{maxcols}, method = \"kernelpls\", validation = \"LOO\" )"
+
+          @r.eval "r2Loo <- matrix( R2( fit, \"CV\" )$val )"
+          LOGGER.debug "R-Squared (internal LOO CV), using 0 to #{maxcols} PCs: #{@r.r2Loo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
+          @r.eval "ncompLoo <- which.max(r2Loo) - 1"
+          LOGGER.debug "Best position: #{@r.ncompLoo.to_i}"
+
           @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
-          @r.eval "names(q) = xnames"
-          @r.eval "pred <- matrix(predict(fit, q))"
+          @r.eval "names(q) = names(df)[2:length(names(df))]"
+          @r.eval "pred <- drop( predict( fit, newdata = q, ncomp=ncompLoo ) )"
           ### End of Model
           
-          acts_autoscaler.restore( [ @r.pred.to_a.flatten.last ].to_gv )[0] # return restored value of type numeric
+          point_prediction = @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
+          acts_autoscaler.restore( [ point_prediction ].to_gv )[0] # return restored value of type numeric
 
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
