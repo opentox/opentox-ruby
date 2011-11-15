@@ -288,7 +288,7 @@ module OpenTox
 
     # Insert a statement (compound_uri,feature_uri,value)
     # @example Insert a statement (compound_uri,feature_uri,value)
-    #   dataset.add "http://webservices.in-silico.ch/compound/InChI=1S/C6Cl6/c7-1-2(8)4(10)6(12)5(11)3(1)9", "http://webservices.in-silico.ch/dataset/1/feature/hamster_carcinogenicity", true
+    #   dataset.add "http://webservices.in-silico.ch/compound/InChI=1S/C6Cl6/c7-1-2(8)4(10)6(12)5(11)3(1)9", "http://webservices.in-silico.ch/dataset/1/feature/hamster_carcinogenicity", 1
     # @param [String] compound Compound URI
     # @param [String] feature Compound URI
     # @param [Boolean,Float] value Feature value
@@ -313,6 +313,16 @@ module OpenTox
     # @param [Hash] metadata Hash with feature metadata
     def add_feature(feature,metadata={})
       @features[feature] = metadata
+    end
+
+    # Complete feature values by adding zeroes
+    def complete_data_entries
+      all_features = @features.keys
+      @data_entries.each { |c, e|
+        (Set.new(all_features.collect)).subtract (Set.new e.keys).to_a.each { |f|
+          self.add (c,f,0)
+        }
+      }
     end
 
     # Add/modify metadata for a feature
