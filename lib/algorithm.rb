@@ -754,18 +754,28 @@ module OpenTox
       def self.get_props (params)
         matrix = Array.new
         begin 
+          
+          # neighbors
           params[:neighbors].each do |n|
             n = n[:compound]
             row = []
+            row_good = true
             params[:features].each do |f|
+              #if (!params[:fingerprints][n].nil?) && (params[:fingerprints][n].include?(f))
+              #  row << params[:p_values][f] * params[:fingerprints][n][f]
+              #else
+              #  LOGGER.debug "Warning: Neighbor with missing values skipped." if row_good
+              #  row_good = false
+              #end
               if ! params[:fingerprints][n].nil? 
                 row << (params[:fingerprints][n].include?(f) ? (params[:p_values][f] * params[:fingerprints][n][f]) : 0.0)
               else
                 row << 0.0
               end
             end
-            matrix << row
+            matrix << row if row_good
           end
+
           row = []
           params[:features].each do |f|
             if params[:nr_hits]
