@@ -319,8 +319,8 @@ module OpenTox
     def complete_data_entries
       all_features = @features.keys
       @data_entries.each { |c, e|
-        (Set.new(all_features.collect)).subtract (Set.new e.keys).to_a.each { |f|
-          self.add (c,f,0)
+        (Set.new(all_features.collect)).subtract(Set.new e.keys).to_a.each { |f|
+          self.add(c,f,0)
         }
       }
     end
