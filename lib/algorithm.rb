@@ -531,9 +531,17 @@ module OpenTox
         if params[:neighbors].size>0
           props = params[:prop_kernel] ? get_props(params) : nil
           acts = params[:neighbors].collect{ |n| n[:activity].to_f }
+
+          # Transform y
+          acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
+          acts = acts_autoscaler.vs.to_a
+ 
           sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) }
           prediction = props.nil? ? local_svm(acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr")
           prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
+
+          acts_autoscaler.restore( [ point_prediction ].to_gv )[0] # return restored value of type numeric
+
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
