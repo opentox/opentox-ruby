@@ -540,7 +540,7 @@ module OpenTox
           prediction = props.nil? ? local_svm(acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr")
           prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
 
-          acts_autoscaler.restore( [ point_prediction ].to_gv )[0] # return restored value of type numeric
+          acts_autoscaler.restore( [ prediction ].to_gv )[0] # return restored value of type numeric
 
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
