@@ -84,6 +84,95 @@ module OpenTox
       }
       p_sum 
     end
+
+    module Neighbors
+
+      # Calculate the propositionalization matrix (aka instantiation matrix) via fingerprints.
+      # Same for the vector describing the query compound.
+      # @param[Hash] Required keys: :neighbors, compound, features, nr_hits, fingerprints, p_values
+      def self.get_props_fingerprints (params)
+        matrix = Array.new
+        begin 
+          
+          # neighbors
+          params[:neighbors].each do |n|
+            n = n[:compound]
+            row = []
+            row_good = true
+            params[:features].each do |f|
+              #if (!params[:fingerprints][n].nil?) && (params[:fingerprints][n].include?(f))
+              #  row << params[:p_values][f] * params[:fingerprints][n][f]
+              #else
+              #  LOGGER.debug "Warning: Neighbor with missing values skipped." if row_good
+              #  row_good = false
+              #end
+              if ! params[:fingerprints][n].nil? 
+                row << (params[:fingerprints][n].include?(f) ? (params[:p_values][f] * params[:fingerprints][n][f]) : 0.0)
+              else
+                row << 0.0
+              end
+            end
+            matrix << row if row_good
+          end
+      
+          row = []
+          params[:features].each do |f|
+            if params[:nr_hits]
+              compound_feature_hits = params[:compound].match_hits([f])
+              row << (compound_feature_hits.size == 0 ? 0.0 : (params[:p_values][f] * compound_feature_hits[f]))
+            else
+              row << (params[:compound].match([f]).size == 0 ? 0.0 : params[:p_values][f])
+            end
+          end
+        rescue Exception => e
+          LOGGER.debug "get_props_fingerprints failed with '" + $! + "'"
+        end
+        [ matrix, row ]
+      end
+      
+      
+      # Get X and Y size of a nested Array (Matrix)
+      # @param [Array] Two-dimensional ruby array (matrix) with X and Y size > 0
+      # @return [Arrray] X and Y size of the matrix
+      def self.get_sizes(matrix)
+        begin
+          nr_cases = matrix.size
+          nr_features = matrix[0].size
+        rescue Exception => e
+          LOGGER.debug "#{e.class}: #{e.message}"
+          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+        end
+        #puts "NRC: #{nr_cases}, NRF: #{nr_features}"
+        [ nr_cases, nr_features ]
+      end
+      
+      
+      # Get confidence for regression, with standard deviation of neighbor activity if conf_stdev is set.
+      # @param[Hash] Required keys: :sims, :acts, :neighbors, :conf_stdev
+      # @return[Float] Confidence
+      def self.get_confidence(params)
+        if params[:conf_stdev]
+          sim_median = params[:sims].to_scale.median
+          if sim_median.nil?
+            confidence = nil
+          else
+            standard_deviation = params[:acts].to_scale.standard_deviation_sample
+            confidence = (sim_median*Math.exp(-1*standard_deviation)).abs
+            if confidence.nan?
+              confidence = nil
+            end
+          end
+        else
+          conf = params[:sims].inject{|sum,x| sum + x }
+          confidence = conf/params[:neighbors].size
+        end
+        LOGGER.debug "Confidence is: '" + confidence.to_s + "'."
+        return confidence
+      end
+
+    end
+
   end
+
 end
 
