@@ -16,7 +16,7 @@ begin
     gem.add_dependency "sinatra-respond_to", "=0.7.0"
     gem.add_dependency "sinatra-static-assets", "=0.5.0"
     gem.add_dependency "rest-client", "=1.6.1"
-    gem.add_dependency "rack", "=1.3.1"
+    gem.add_dependency "rack", "=1.3.5"
     gem.add_dependency "rack-contrib", "=1.1.0"
     gem.add_dependency "rack-flash", "=0.1.1"
     gem.add_dependency "nokogiri", "=1.4.4"
