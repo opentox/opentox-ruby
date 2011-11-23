@@ -325,7 +325,7 @@ module OpenTox
         prediction=nil
 
         if params[:neighbors].size>0
-          props = params[:prop_kernel] ? get_props_fingerprints(params) : nil
+          props = params[:prop_kernel] ? get_props_pc(params) : nil
           acts = params[:neighbors].collect { |n| act = n[:activity].to_f }
           sims = params[:neighbors].collect { |n| Algorithm.gauss(n[:similarity]) }
           maxcols = ( params[:maxcols].nil? ? (sims.size/3.0).ceil : params[:maxcols] )
