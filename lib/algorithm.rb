@@ -319,15 +319,18 @@ module OpenTox
       # Uses propositionalized setting.
       # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required.
       # @return [Numeric] A prediction value.
+
       def self.local_mlr_prop(params)
 
         confidence=0.0
         prediction=nil
 
         if params[:neighbors].size>0
-          props = params[:prop_kernel] ? get_props_pc(params) : nil
-          acts = params[:neighbors].collect { |n| act = n[:activity].to_f }
+          props, ids = params[:prop_kernel] ? get_props_pc(params) : nil
+          acts = params[:neighbors].collect { |n| n[:activity].to_f }
+          acts = acts.collect { |e| e if ids.include? acts.index(e) }.compact # remove acts of removed neighbors
           sims = params[:neighbors].collect { |n| Algorithm.gauss(n[:similarity]) }
+          sims = sims.collect { |e| e if ids.include? sims.index(e) }.compact # remove acts of removed neighbors
           maxcols = ( params[:maxcols].nil? ? (sims.size/3.0).ceil : params[:maxcols] )
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
           prediction = pcr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )

@@ -266,7 +266,8 @@ module OpenTox
         unless database_activity(subjectid) # adds database activity to @prediction_dataset
 
           neighbors
-          prediction = eval("#{@prediction_algorithm} ( { :neighbors => @neighbors, 
+
+          prediction = eval("#{@prediction_algorithm}( { :neighbors => @neighbors, 
                                                           :compound => @compound,
                                                           :features => @features, 
                                                           :p_values => @p_values, 

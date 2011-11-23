@@ -125,7 +125,8 @@ module OpenTox
             end
           end
         rescue Exception => e
-          LOGGER.debug "get_props_fingerprints failed with '" + $! + "'"
+          LOGGER.debug "#{e.class}: #{e.message}"
+          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
         [ matrix, row ]
       end
@@ -135,10 +136,13 @@ module OpenTox
       # Same for the vector describing the query compound.
       # The third argument takes a string from {"geometrical", "topological", "electronic", "constitutional", "hybrid" } as in ambit_descriptors.yaml
       # @param[Hash] Required keys: :neighbors, :compound, :pc_group
+      # @return[Array, Array] Props, ids of surviving training compounds
+
       def self.get_props_pc(params)
         ambit_ds_service_uri = "http://apps.ideaconsult.net:8080/ambit2/dataset/"
         descs = YAML::load_file( File.join(ENV['HOME'], ".opentox", "config", "ambit_descriptors.yaml") )
         descs_uris = []
+        params[:pc_group] = "constitutional" if params[:pc_group].nil?
         descs.each { |uri, cat_name| 
           if cat_name[:category] == params[:pc_group]
             descs_uris << uri
@@ -154,7 +158,7 @@ module OpenTox
           params[:neighbors].each do |n|
             smiles << OpenTox::Compound.new(n[:compound]).to_smiles
           end
-          smiles << OpenTox::Compound.new(params[:compound]).to_smiles
+          smiles << params[:compound].to_smiles
 
           smi_file = Tempfile.open(['pc_ambit', '.smi'])
           pc_descriptors = nil
@@ -189,45 +193,48 @@ module OpenTox
             smi_file.unlink
           end
 
+          # build matrix in same order as input neighbors
           matrix = []
-          pc_descriptors.compounds.each { |c|
-            if c != params[:compound]
-              row = []
-              pc_descriptors.features.keys.each { |f|
-                entry = pc_descriptors.data_entries[c][f]
-                row << (entry.nil? ? nil : entry[0]) 
-              } 
-              matrix << row
-            end
+          params[:neighbors].each { |c|
+            row = []
+            pc_descriptors.features.keys.each { |f|
+              entry = nil
+              entry = pc_descriptors.data_entries[c[:compound]][f] if pc_descriptors.data_entries[c[:compound]]
+              row << (entry.nil? ? nil : entry[0]) 
+            } 
+            matrix << row
           }
-          begin
-            matrix.sort! # will fail if matrix has nils
-          rescue # ignore failure
-          end
+
+          # build row (query compound)
           row = []
           pc_descriptors.features.keys.each { |f|
-            entry = pc_descriptors.data_entries[params[:compound]][f]
+            entry = pc_descriptors.data_entries[params[:compound].uri][f]
             row << (entry.nil? ? nil : entry[0]) 
           }
+
+          # truncate nil-columns and -rows
+          LOGGER.debug "Original PC descriptors, M: #{matrix.size}x#{matrix[0].size}; R: #{row.size}"
+          size_before = row.size
+          while row.size>0
+            idx = row.index(nil)
+            break if idx.nil?
+            row.slice!(idx)
+            matrix.each { |r| r.slice!(idx) }
+          end
+          size_after = row.size
+          LOGGER.debug "Reduced by nils in query, M: #{matrix.size}x#{matrix[0].size}; R: #{row.size}"
+          ids = remove_nils_from_matrix(matrix, row)
+          LOGGER.debug "Reduced by nils in matrix, M: #{matrix.size}x#{matrix[0].size}; R: #{row.size}"
+
+          # done
+          [[ matrix, row ], ids ]
+
         rescue Exception => e
-          LOGGER.debug "get_props_cdk failed with '" + $! + "'"
+          LOGGER.debug "#{e.class}: #{e.message}"
+          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
 
-        LOGGER.debug "Original PC descriptors, M: #{matrix.size}x#{matrix[0].size}; R: #{row.size}"
-        size_before = row.size
-        while row.size>0
-          idx = row.index(nil)
-          break if idx.nil?
-          row.slice!(idx)
-          matrix.each { |r| r.slice!(idx) }
-        end
-        size_after = row.size
-        LOGGER.debug "Reduced by nils in query, M: #{matrix.size}x#{matrix[0].size}; R: #{row.size}"
 
-        remove_nils_from_matrix(matrix, row)
-        LOGGER.debug "Reduced by nils in matrix, M: #{matrix.size}x#{matrix[0].size}; R: #{row.size}"
-
-        [ matrix, row ]
       end
 
 
@@ -237,9 +244,11 @@ module OpenTox
       # Tie break: columns take precedence.
       # Deficient input such as [[nil],[nil]] will not be completely reduced, as the algorithm terminates if any matrix dimension (x or y) is zero.
       # @param [Array] A nested two-dimensional array containing numerics.
-      # @return [Array] An array (possibly nested two-dimensional) with all nil entries removed
+      # @return [Array] An array of surviving row ids.
+
       def self.remove_nils_from_matrix(ds, query)
 
+        ids = (0..ds.length-1).to_a
         return ds if (ds.length == 0 || ds[0].length == 0)
 
         col_nr_nils = (Matrix.rows(ds)).column_vectors.collect{ |cv| (cv.to_a.count(nil) / cv.size.to_f) }
@@ -255,6 +264,7 @@ module OpenTox
             query.slice!(idx_cols)
           else
             ds.slice!(idx_rows)
+            ids.slice!(idx_rows)
           end
 
           break if (ds.length == 0) || (ds[0].length == 0)
@@ -265,7 +275,7 @@ module OpenTox
           idx_cols= col_nr_nils.index(m_cols)
           idx_rows = row_nr_nils.index(m_rows)
         end
-        ds
+        ids
       end
       #puts (remove_nils_from_matrix([[1,2,nil,4,5],[nil,3,4,5,6],[2,3,nil,5,6],[2,3,nil,5,6],[2,3,4,5,6]])).to_yaml # TO TEST
 
