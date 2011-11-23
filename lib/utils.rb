@@ -1,16 +1,20 @@
 module OpenTox
   module Algorithm
 
+
     # Gauss kernel
     # @return [Float] 
+    
     def self.gauss(x, sigma = 0.3) 
       d = 1.0 - x.to_f
       Math.exp(-(d*d)/(2*sigma*sigma))
     end
 
+
     # For symbolic features
     # @param [Array] Array to test, must indicate non-occurrence with 0.
     # @return [Boolean] Whether the feature is singular or non-occurring or present everywhere.
+
     def self.isnull_or_singular?(array)
       nr_zeroes = array.count(0)
       return (nr_zeroes == array.size) ||    # remove non-occurring feature
@@ -18,41 +22,51 @@ module OpenTox
         (nr_zeroes == 0)                # also remove feature present everywhere
     end
 
+
     # Numeric value test
     # @param[Object] value
     # @return [Boolean] Whether value is a number
+
     def self.numeric?(value)
       true if Float(value) rescue false
     end
 
+
     # For symbolic features
     # @param [Array] Array to test, must indicate non-occurrence with 0.
     # @return [Boolean] Whether the feature has variance zero.
+
     def self.zero_variance?(array)
       return (array.to_scale.variance_population == 0.0)
     end
 
+
     # Sum of an array for Arrays.
     # @param [Array] Array with values
     # @return [Integer] Sum of size of values
+  
     def self.sum_size(array)
       sum=0
       array.each { |e| sum += e.size }
       return sum
     end
 
+
     # Minimum Frequency
     # @param [Integer] per-mil value
     # return [Integer] min-frequency
+
     def self.min_frequency(training_dataset,per_mil)
       minfreq = per_mil * training_dataset.compounds.size.to_f / 1000.0 # AM sugg. 8-10 per mil for BBRC, 50 per mil for LAST
       minfreq = 2 unless minfreq > 2
       Integer (minfreq)
     end
 
+
     # Effect calculation for classification
     # @param [Array] Array of occurrences per class in the form of Enumerables.
     # @param [Array] Array of database instance counts per class.
+
     def self.effect(occurrences, db_instances)
       max=0
       max_value=0
@@ -72,9 +86,11 @@ module OpenTox
       max
     end
 
+
     # Returns Support value of an fingerprint
     # @param [Hash] params Keys: `:compound_features_hits, :weights, :training_compound_features_hits, :features, :nr_hits:, :mode` are required
     # return [Numeric] Support value 
+
     def self.p_sum_support(params)
       p_sum = 0.0
       params[:features].each{|f|
@@ -85,11 +101,16 @@ module OpenTox
       p_sum 
     end
 
+
+
+
     module Neighbors
+
 
       # Calculate the propositionalization matrix (aka instantiation matrix) via fingerprints.
       # Same for the vector describing the query compound.
       # @param[Hash] Required keys: :neighbors, :compound, :features, nr_hits, :fingerprints, :p_values
+
       def self.get_props_fingerprints (params)
         matrix = []
         begin 
@@ -100,13 +121,7 @@ module OpenTox
             row = []
             row_good = true
             params[:features].each do |f|
-              #if (!params[:fingerprints][n].nil?) && (params[:fingerprints][n].include?(f))
-              #  row << params[:p_values][f] * params[:fingerprints][n][f]
-              #else
-              #  LOGGER.debug "Warning: Neighbor with missing values skipped." if row_good
-              #  row_good = false
-              #end
-              if ! params[:fingerprints][n].nil? 
+             if ! params[:fingerprints][n].nil? 
                 row << (params[:fingerprints][n].include?(f) ? (params[:p_values][f] * params[:fingerprints][n][f]) : 0.0)
               else
                 row << 0.0
@@ -179,10 +194,10 @@ module OpenTox
             pc_descriptors = OpenTox::Dataset.find(ambit_result_uri)
 
             # Translate compounds back
-            ambit2ist = {}
+            ambit2ist = {} # keys ambit, values ist
             pc_descriptors.compounds.each do |ambit_compound|
               compound = OpenTox::Compound.new(ambit_compound)
-              ambit2ist[ambit_compound] = OpenTox::Compound.from_inchi(compound.to_inchi).uri
+              ambit2ist[ambit_compound] = compound.to_inchi
             end
             pc_descriptors.compounds.replace(ambit2ist.values)
             ambit2ist.values.each do |c|
@@ -196,10 +211,11 @@ module OpenTox
           # build matrix in same order as input neighbors
           matrix = []
           params[:neighbors].each { |c|
+            inchi = OpenTox::Compound.new(c[:compound]).to_inchi
             row = []
             pc_descriptors.features.keys.each { |f|
               entry = nil
-              entry = pc_descriptors.data_entries[c[:compound]][f] if pc_descriptors.data_entries[c[:compound]]
+              entry = pc_descriptors.data_entries[inchi][f] if pc_descriptors.data_entries[inchi]
               row << (entry.nil? ? nil : entry[0]) 
             } 
             matrix << row
@@ -208,7 +224,7 @@ module OpenTox
           # build row (query compound)
           row = []
           pc_descriptors.features.keys.each { |f|
-            entry = pc_descriptors.data_entries[params[:compound].uri][f]
+            entry = pc_descriptors.data_entries[params[:compound].to_inchi][f]
             row << (entry.nil? ? nil : entry[0]) 
           }
 
@@ -223,6 +239,7 @@ module OpenTox
           end
           size_after = row.size
           LOGGER.debug "Reduced by nils in query, M: #{matrix.size}x#{matrix[0].size}; R: #{row.size}"
+
           ids = remove_nils_from_matrix(matrix, row)
           LOGGER.debug "Reduced by nils in matrix, M: #{matrix.size}x#{matrix[0].size}; R: #{row.size}"
 
@@ -233,7 +250,6 @@ module OpenTox
           LOGGER.debug "#{e.class}: #{e.message}"
           LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
-
 
       end
 
@@ -277,12 +293,12 @@ module OpenTox
         end
         ids
       end
-      #puts (remove_nils_from_matrix([[1,2,nil,4,5],[nil,3,4,5,6],[2,3,nil,5,6],[2,3,nil,5,6],[2,3,4,5,6]])).to_yaml # TO TEST
 
 
       # Get X and Y size of a nested Array (Matrix)
       # @param [Array] Two-dimensional ruby array (matrix) with X and Y size > 0
       # @return [Arrray] X and Y size of the matrix
+      
       def self.get_sizes(matrix)
         begin
           nr_cases = matrix.size
@@ -299,6 +315,7 @@ module OpenTox
       # Get confidence for regression, with standard deviation of neighbor activity if conf_stdev is set.
       # @param[Hash] Required keys: :sims, :acts, :neighbors, :conf_stdev
       # @return[Float] Confidence
+
       def self.get_confidence(params)
         if params[:conf_stdev]
           sim_median = params[:sims].to_scale.median
@@ -320,6 +337,8 @@ module OpenTox
       end
 
     end
+
+
 
   end
 
