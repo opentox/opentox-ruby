@@ -200,7 +200,10 @@ module OpenTox
               matrix << row
             end
           }
-          matrix.sort!
+          begin
+            matrix.sort! # will fail if matrix has nils
+          rescue # ignore failure
+          end
           row = []
           pc_descriptors.features.keys.each { |f|
             entry = pc_descriptors.data_entries[params[:compound]][f]
@@ -209,18 +212,33 @@ module OpenTox
         rescue Exception => e
           LOGGER.debug "get_props_cdk failed with '" + $! + "'"
         end
+
+        LOGGER.debug "Original PC descriptors, M: #{matrix.size}x#{matrix[0].size}; R: #{row.size}"
+        size_before = row.size
+        while row.size>0
+          idx = row.index(nil)
+          break if idx.nil?
+          row.slice!(idx)
+          matrix.each { |r| r.slice!(idx) }
+        end
+        size_after = row.size
+        LOGGER.debug "Reduced by nils in query, M: #{matrix.size}x#{matrix[0].size}; R: #{row.size}"
+
+        remove_nils_from_matrix(matrix, row)
+        LOGGER.debug "Reduced by nils in matrix, M: #{matrix.size}x#{matrix[0].size}; R: #{row.size}"
+
         [ matrix, row ]
       end
 
 
-      # Removes nil entries from a numeric matrix.
+      # Removes nil entries from a numeric matrix and an associated query instance.
       # Matrix is a nested two-dimensional array.
       # Removes iteratively rows or columns with the highest fraction of nil entries, until all nil entries are removed.
       # Tie break: columns take precedence.
       # Deficient input such as [[nil],[nil]] will not be completely reduced, as the algorithm terminates if any matrix dimension (x or y) is zero.
       # @param [Array] A nested two-dimensional array containing numerics.
       # @return [Array] An array (possibly nested two-dimensional) with all nil entries removed
-      def remove_nils_from_matrix(ds)
+      def self.remove_nils_from_matrix(ds, query)
 
         return ds if (ds.length == 0 || ds[0].length == 0)
 
@@ -234,6 +252,7 @@ module OpenTox
         while ((m_cols > 0) || (m_rows > 0)) do
           if m_cols >= m_rows
             ds.each { |row| row.slice!(idx_cols) }
+            query.slice!(idx_cols)
           else
             ds.slice!(idx_rows)
           end
