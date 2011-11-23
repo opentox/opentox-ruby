@@ -213,6 +213,44 @@ module OpenTox
       end
 
 
+      # Removes nil entries from a numeric matrix.
+      # Matrix is a nested two-dimensional array.
+      # Removes iteratively rows or columns with the highest fraction of nil entries, until all nil entries are removed.
+      # Tie break: columns take precedence.
+      # Deficient input such as [[nil],[nil]] will not be completely reduced, as the algorithm terminates if any matrix dimension (x or y) is zero.
+      # @param [Array] A nested two-dimensional array containing numerics.
+      # @return [Array] An array (possibly nested two-dimensional) with all nil entries removed
+      def remove_nils_from_matrix(ds)
+
+        return ds if (ds.length == 0 || ds[0].length == 0)
+
+        col_nr_nils = (Matrix.rows(ds)).column_vectors.collect{ |cv| (cv.to_a.count(nil) / cv.size.to_f) }
+        row_nr_nils = (Matrix.rows(ds)).row_vectors.collect{ |rv| (rv.to_a.count(nil) / rv.size.to_f) }
+        m_cols = col_nr_nils.max
+        m_rows = row_nr_nils.max
+        idx_cols = col_nr_nils.index(m_cols)
+        idx_rows = row_nr_nils.index(m_rows)
+
+        while ((m_cols > 0) || (m_rows > 0)) do
+          if m_cols >= m_rows
+            ds.each { |row| row.slice!(idx_cols) }
+          else
+            ds.slice!(idx_rows)
+          end
+
+          break if (ds.length == 0) || (ds[0].length == 0)
+          col_nr_nils = Matrix.rows(ds).column_vectors.collect{ |cv| (cv.to_a.count(nil) / cv.size.to_f) }
+          row_nr_nils = Matrix.rows(ds).row_vectors.collect{ |rv| (rv.to_a.count(nil) / rv.size.to_f) }
+          m_cols = col_nr_nils.max
+          m_rows = row_nr_nils.max
+          idx_cols= col_nr_nils.index(m_cols)
+          idx_rows = row_nr_nils.index(m_rows)
+        end
+        ds
+      end
+      #puts (remove_nils_from_matrix([[1,2,nil,4,5],[nil,3,4,5,6],[2,3,nil,5,6],[2,3,nil,5,6],[2,3,4,5,6]])).to_yaml # TO TEST
+
+
       # Get X and Y size of a nested Array (Matrix)
       # @param [Array] Two-dimensional ruby array (matrix) with X and Y size > 0
       # @return [Arrray] X and Y size of the matrix
