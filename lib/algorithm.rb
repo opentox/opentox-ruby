@@ -459,6 +459,7 @@ module OpenTox
           @r.eval "r2Loo <- matrix( R2( fit, \"CV\" )$val )"
           LOGGER.debug "R-Squared (internal LOO CV), using 0 to #{maxcols} PCs: #{@r.r2Loo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
           @r.eval "ncompLoo <- which.max(r2Loo) - 1"
+          @r.eval "ncompLoo <- ncompLoo + 1" if @r.ncompLoo.to_i == 0
           LOGGER.debug "Best position: #{@r.ncompLoo.to_i}"
 
           @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
