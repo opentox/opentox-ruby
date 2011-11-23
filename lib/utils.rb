@@ -91,7 +91,7 @@ module OpenTox
       # Same for the vector describing the query compound.
       # @param[Hash] Required keys: :neighbors, :compound, :features, nr_hits, :fingerprints, :p_values
       def self.get_props_fingerprints (params)
-        matrix = Array.new
+        matrix = []
         begin 
 
           # neighbors
@@ -130,16 +130,15 @@ module OpenTox
         [ matrix, row ]
       end
 
+
       # Calculate the propositionalization matrix (aka instantiation matrix) via physico-chemical descriptors.
       # Same for the vector describing the query compound.
       # The third argument takes a string from {"geometrical", "topological", "electronic", "constitutional", "hybrid" } as in ambit_descriptors.yaml
       # @param[Hash] Required keys: :neighbors, :compound, :pc_group
       def self.get_props_pc(params)
-
         ambit_ds_service_uri = "http://apps.ideaconsult.net:8080/ambit2/dataset/"
         descs = YAML::load_file( File.join(ENV['HOME'], ".opentox", "config", "ambit_descriptors.yaml") )
         descs_uris = []
-
         descs.each { |uri, cat_name| 
           if cat_name[:category] == params[:pc_group]
             descs_uris << uri
@@ -150,9 +149,7 @@ module OpenTox
         end
         LOGGER.debug "Ambit descriptor URIs: #{descs_uris.join(", ")}"
 
-
         begin
-
           smiles = []
           params[:neighbors].each do |n|
             smiles << OpenTox::Compound.new(n[:compound]).to_smiles
@@ -161,9 +158,7 @@ module OpenTox
 
           smi_file = Tempfile.open(['pc_ambit', '.smi'])
           pc_descriptors = nil
-
           begin
-
             # Create Ambit dataset
             smi_file.puts( smiles.join("\n") )
             smi_file.close
@@ -195,24 +190,26 @@ module OpenTox
           end
 
           matrix = []
-          begin 
-            pc_descriptors.compounds.each { |c|
+          pc_descriptors.compounds.each { |c|
+            if c != params[:compound]
               row = []
               pc_descriptors.features.keys.each { |f|
                 entry = pc_descriptors.data_entries[c][f]
-                row << (entry.nil? ? nil : entry[0])
+                row << (entry.nil? ? nil : entry[0]) 
               } 
               matrix << row
-            }
-          end
-
-
+            end
+          }
+          matrix.sort!
+          row = []
+          pc_descriptors.features.keys.each { |f|
+            entry = pc_descriptors.data_entries[params[:compound]][f]
+            row << (entry.nil? ? nil : entry[0]) 
+          }
         rescue Exception => e
           LOGGER.debug "get_props_cdk failed with '" + $! + "'"
         end
-
-        #[ matrix, row ]
-
+        [ matrix, row ]
       end
 
 
