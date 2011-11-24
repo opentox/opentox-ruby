@@ -157,7 +157,7 @@ module OpenTox
         ambit_ds_service_uri = "http://apps.ideaconsult.net:8080/ambit2/dataset/"
         descs = YAML::load_file( File.join(ENV['HOME'], ".opentox", "config", "ambit_descriptors.yaml") )
         descs_uris = []
-        params[:pc_group] = "constitutional" if params[:pc_group].nil?
+        params[:pc_group] = "electronic" if params[:pc_group].nil?
         descs.each { |uri, cat_name| 
           if cat_name[:category] == params[:pc_group]
             descs_uris << uri
