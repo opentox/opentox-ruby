@@ -150,16 +150,16 @@ module OpenTox
       # Calculate the propositionalization matrix (aka instantiation matrix) via physico-chemical descriptors.
       # Same for the vector describing the query compound.
       # The third argument takes a string from {"geometrical", "topological", "electronic", "constitutional", "hybrid" } as in ambit_descriptors.yaml
-      # @param[Hash] Required keys: :neighbors, :compound, :pc_group
+      # @param[Hash] Required keys: :neighbors, :compound, :pc_type
       # @return[Array, Array] Props, ids of surviving training compounds
 
       def self.get_props_pc(params)
         ambit_ds_service_uri = "http://apps.ideaconsult.net:8080/ambit2/dataset/"
         descs = YAML::load_file( File.join(ENV['HOME'], ".opentox", "config", "ambit_descriptors.yaml") )
         descs_uris = []
-        params[:pc_group] = "electronic" if params[:pc_group].nil?
+        params[:pc_type] = "electronic" if params[:pc_type].nil?
         descs.each { |uri, cat_name| 
-          if cat_name[:category] == params[:pc_group]
+          if cat_name[:category] == params[:pc_type]
             descs_uris << uri
           end
         }
