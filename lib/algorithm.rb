@@ -426,6 +426,8 @@ module OpenTox
           maxcols = params[:maxcols]
 
           nr_cases, nr_features = get_sizes n_prop
+          maxcols = nr_features if maxcols > nr_features
+
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
           query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
 
