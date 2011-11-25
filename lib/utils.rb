@@ -191,18 +191,27 @@ module OpenTox
               ambit_result_uri += result_uri.split("?")[1] + "&"
               LOGGER.debug "Ambit (#{descs_uris.size}): #{i+1}"
             end
-            pc_descriptors = OpenTox::Dataset.find(ambit_result_uri)
+            pc_descriptors = OpenTox::Dataset.new()
+            pc_descriptors.uri = "http://foo.bar" # URI needed for SDF read-in
+            sdf = OpenTox::RestClientWrapper.get(ambit_result_uri, {:accept => "chemical/x-mdl-sdfile"})
+            pc_descriptors.load_sdf sdf
 
             # Translate compounds back
-            ambit2ist = {} # keys ambit, values ist
-            pc_descriptors.compounds.each do |ambit_compound|
-              compound = OpenTox::Compound.new(ambit_compound)
-              ambit2ist[ambit_compound] = compound.to_inchi
+            inchi2conn = {} # keys ambit, values ist
+            new_keys = []
+            pc_descriptors.compounds.each do |key|
+              new_key = OpenTox::Compound.new(key).to_inchi.split("/")[2].delete(";")
+              if new_keys.include new_key
+                raise "Error! Same structure found twice."
+              else
+                new_keys << new_key 
+              end
+              inchi2conn[key] = new_key
             end
-            pc_descriptors.compounds.replace(ambit2ist.values)
-            ambit2ist.values.each do |c|
-              pc_descriptors.data_entries[c] = pc_descriptors.data_entries[ambit2ist.index(c)]
-              pc_descriptors.data_entries.delete(ambit2ist.index(c))
+            pc_descriptors.compounds.replace(inchi2conn.values)
+            inchi2conn.values.each do |c|
+              pc_descriptors.data_entries[c] = pc_descriptors.data_entries[inchi2conn.index(c)]
+              pc_descriptors.data_entries.delete(inchi2conn.index(c))
             end
           ensure
             smi_file.unlink
@@ -211,11 +220,11 @@ module OpenTox
           # build matrix in same order as input neighbors
           matrix = []
           params[:neighbors].each { |c|
-            inchi = OpenTox::Compound.new(c[:compound]).to_inchi
+            key = OpenTox::Compound.new(c[:compound]).to_inchi.split("/")[2].delete(";") # extract connection table from Inchi
             row = []
             pc_descriptors.features.keys.each { |f|
               entry = nil
-              entry = pc_descriptors.data_entries[inchi][f] if pc_descriptors.data_entries[inchi]
+              entry = pc_descriptors.data_entries[key][f] if pc_descriptors.data_entries[key]
               row << (entry.nil? ? nil : entry[0]) 
             } 
             matrix << row
@@ -223,8 +232,9 @@ module OpenTox
 
           # build row (query compound)
           row = []
+          key = params[:compound].to_inchi.split("/")[2].delete(";")
           pc_descriptors.features.keys.each { |f|
-            entry = pc_descriptors.data_entries[params[:compound].to_inchi][f] if pc_descriptors.data_entries[params[:compound].to_inchi]
+            entry = pc_descriptors.data_entries[key][f] if pc_descriptors.data_entries[key]
             row << (entry.nil? ? nil : entry[0]) 
           }
 
