@@ -279,7 +279,7 @@ module OpenTox
                                                           :value_map => @value_map,
                                                           :nr_hits => @nr_hits,
                                                           :conf_stdev => @conf_stdev,
-                                                          :prediction_min_max => @prediction_min_max
+                                                          :prediction_min_max => @prediction_min_max,
                                                           :pc_type => @pc_type
                                                          } ) ")
 
