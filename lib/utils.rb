@@ -224,7 +224,7 @@ module OpenTox
           # build row (query compound)
           row = []
           pc_descriptors.features.keys.each { |f|
-            entry = pc_descriptors.data_entries[params[:compound].to_inchi][f]
+            entry = pc_descriptors.data_entries[params[:compound].to_inchi][f] if pc_descriptors.data_entries[params[:compound].to_inchi]
             row << (entry.nil? ? nil : entry[0]) 
           }
 

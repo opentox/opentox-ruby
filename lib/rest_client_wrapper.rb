@@ -70,7 +70,7 @@ module OpenTox
       
       begin
         #LOGGER.debug "RestCall: "+rest_call.to_s+" "+uri.to_s+" "+headers.inspect+" "+payload.inspect
-        resource = RestClient::Resource.new(uri,{:timeout => 60})
+        resource = RestClient::Resource.new(uri,{:timeout => 120})
         if rest_call=="post" || rest_call=="put"
           result = resource.send(rest_call, payload, headers)
         else
