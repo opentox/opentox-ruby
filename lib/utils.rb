@@ -1,3 +1,5 @@
+require 'csv'
+
 module OpenTox
   module Algorithm
 
@@ -175,13 +177,15 @@ module OpenTox
           end
           smiles << params[:compound].to_smiles
 
-          smi_file = Tempfile.open(['pc_ambit', '.smi'])
+          smi_file = Tempfile.open(['pc_ambit', '.csv'])
           pc_descriptors = nil
           begin
             # Create Ambit dataset
+            smi_file.puts( "SMILES\n" )
             smi_file.puts( smiles.join("\n") )
             smi_file.close
             ambit_ds_uri = OpenTox::RestClientWrapper.post(ambit_ds_service_uri, {:file => File.new(smi_file.path)}, {:content_type => "multipart/form-data", :accept => "text/uri-list"} )
+            ambit_smiles_uri = OpenTox::RestClientWrapper.get(ambit_ds_uri + "/features", {:accept=> "text/uri-list"} ).chomp
 
             # Get Ambit results
             ambit_result_uri = ambit_ds_uri + "?"
@@ -191,28 +195,20 @@ module OpenTox
               ambit_result_uri += result_uri.split("?")[1] + "&"
               LOGGER.debug "Ambit (#{descs_uris.size}): #{i+1}"
             end
-            pc_descriptors = OpenTox::Dataset.new()
-            pc_descriptors.uri = "http://foo.bar" # URI needed for SDF read-in
-            sdf = OpenTox::RestClientWrapper.get(ambit_result_uri, {:accept => "chemical/x-mdl-sdfile"})
-            pc_descriptors.load_sdf sdf
+            ambit_result_uri << ("feature_uris[]=" + ambit_smiles_uri)
 
-            # Translate compounds back
-            inchi2conn = {} # keys ambit, values ist
-            new_keys = []
-            pc_descriptors.compounds.each do |key|
-              new_key = OpenTox::Compound.new(key).to_inchi.split("/")[2].delete(";")
-              if new_keys.include new_key
-                raise "Error! Same structure found twice."
-              else
-                new_keys << new_key 
-              end
-              inchi2conn[key] = new_key
-            end
-            pc_descriptors.compounds.replace(inchi2conn.values)
-            inchi2conn.values.each do |c|
-              pc_descriptors.data_entries[c] = pc_descriptors.data_entries[inchi2conn.index(c)]
-              pc_descriptors.data_entries.delete(inchi2conn.index(c))
-            end
+            csv_data = CSV.parse( OpenTox::RestClientWrapper.get(ambit_result_uri, {:accept => "text/csv"}) )
+            # see http://snippets.dzone.com/posts/show/3899
+            headers = csv_data.shift.map {|i| i.to_s.chomp(" ") }
+            data = csv_data.map {|row| row.map {|cell| cell.to_s.chomp(" ") } }
+            pc_descriptors = data.map {|row| Hash[*headers.zip(row).flatten] }
+
+            # convert to smi-hashed data
+            my_smi = pc_descriptors.collect { |row| row["SMILES"] }
+            my_data = pc_descriptors.each { |row| row.delete("SMILES") }.each { |row| row.delete("Compound") }
+            headers.delete("SMILES") ; headers.delete("Compound")
+            pc_descriptors = {}
+            my_smi.zip(my_data) {|a,b| pc_descriptors[a] = b }
           ensure
             smi_file.unlink
           end
@@ -220,22 +216,19 @@ module OpenTox
           # build matrix in same order as input neighbors
           matrix = []
           params[:neighbors].each { |c|
-            key = OpenTox::Compound.new(c[:compound]).to_inchi.split("/")[2].delete(";") # extract connection table from Inchi
+            key = OpenTox::Compound.new(c[:compound]).to_smiles # extract connection table from Inchi
             row = []
-            pc_descriptors.features.keys.each { |f|
-              entry = nil
-              entry = pc_descriptors.data_entries[key][f] if pc_descriptors.data_entries[key]
-              row << (entry.nil? ? nil : entry[0]) 
+            headers.each { |f|
+              row << ((pc_descriptors[key][f] == "") ? nil : pc_descriptors[key][f].to_f)
             } 
             matrix << row
           }
 
           # build row (query compound)
           row = []
-          key = params[:compound].to_inchi.split("/")[2].delete(";")
-          pc_descriptors.features.keys.each { |f|
-            entry = pc_descriptors.data_entries[key][f] if pc_descriptors.data_entries[key]
-            row << (entry.nil? ? nil : entry[0]) 
+          key = params[:compound].to_smiles
+          headers.each { |f|
+            row << ((pc_descriptors[key][f] == "") ? nil : pc_descriptors[key][f].to_f)
           }
 
           # truncate nil-columns and -rows
