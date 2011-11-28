@@ -366,11 +366,14 @@ module OpenTox
           ### Transform data (discussion: http://goo.gl/U8Klu)
           # Standardize data (scale and center), adjust query accordingly
           LOGGER.debug "Standardize..."
+          temp = data_matrix.vertcat query_matrix
           (0..nr_features-1).each { |i|
-            autoscaler = OpenTox::Transform::LogAutoScale.new(data_matrix.col(i))
-            data_matrix.col(i)[0..nr_cases-1] = autoscaler.vs
-            query_matrix.col(i)[0] = autoscaler.transform(query_matrix.col(i))[0]
+            autoscaler = OpenTox::Transform::LogAutoScale.new(temp.col(i))
+            temp.col(i)[0..nr_cases] = autoscaler.vs
+            #query_matrix.col(i)[0] = autoscaler.transform(query_matrix.col(i))[0]
           }
+          data_matrix  = temp.submatrix( 0..(temp.size1-2), nil ).clone # last row: query
+          query_matrix = temp.submatrix( (temp.size1-1)..(temp.size1-1), nil ).clone # last row: query
 
           # Rotate data (pca), adjust query accordingly
           LOGGER.debug "PCA..."
@@ -437,11 +440,15 @@ module OpenTox
           ### Transform data (discussion: http://goo.gl/U8Klu)
           # Standardize data (scale and center), adjust query accordingly
           LOGGER.debug "Standardize..."
+          temp = data_matrix.vertcat query_matrix
           (0..nr_features-1).each { |i|
-            autoscaler = OpenTox::Transform::LogAutoScale.new(data_matrix.col(i))
-            data_matrix.col(i)[0..nr_cases-1] = autoscaler.vs
-            query_matrix.col(i)[0] = autoscaler.transform(query_matrix.col(i))[0]
+            autoscaler = OpenTox::Transform::LogAutoScale.new(temp.col(i))
+            temp.col(i)[0..nr_cases] = autoscaler.vs
+            #query_matrix.col(i)[0] = autoscaler.transform(query_matrix.col(i))[0]
           }
+          data_matrix  = temp.submatrix( 0..(temp.size1-2), nil ).clone # last row: query
+          query_matrix = temp.submatrix( (temp.size1-1)..(temp.size1-1), nil ).clone # last row: query
+
           # Transform y
           acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
           acts = acts_autoscaler.vs.to_a
