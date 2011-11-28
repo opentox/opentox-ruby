@@ -343,11 +343,6 @@ module OpenTox
           ids.each { |id| sims2 << sims[id] }
           sims = sims2
 
-          LOGGER.debug "#acts:"
-          LOGGER.debug acts.size
-          LOGGER.debug "#sims:"
-          LOGGER.debug sims.size
- 
           maxcols = ( params[:maxcols].nil? ? (sims.size/3.0).ceil : params[:maxcols] )
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
           prediction = pcr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
@@ -470,6 +465,11 @@ module OpenTox
           acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
           acts = acts_autoscaler.vs.to_a
           ### End of transform
+          
+          #LOGGER.debug "AM: DM"
+          #LOGGER.debug "\n" + data_matrix.to_a.collect { |row| row.join ", " }.join("\n")
+          #LOGGER.debug "AM: ACTS"
+          #LOGGER.debug acts.join ", "
           
           ### Model
           LOGGER.debug "PCR / PLSR..."
