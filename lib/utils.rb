@@ -267,7 +267,7 @@ module OpenTox
 
       def self.remove_nils_from_matrix(ds, query)
 
-        ids = (0..ds.length-1).to_a
+        ids = (0..((ds.length)-1)).to_a
         return ds if (ds.length == 0 || ds[0].length == 0)
 
         col_nr_nils = (Matrix.rows(ds)).column_vectors.collect{ |cv| (cv.to_a.count(nil) / cv.size.to_f) }
