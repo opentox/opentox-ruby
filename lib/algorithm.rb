@@ -405,7 +405,7 @@ module OpenTox
           @r.eval "pred <- predict(fit, q, interval=\"confidence\")"
           ### End of Model
           
-          point_prediction = [ @r.pred ].to_a.flatten[0] # [1] is lwr, [2] upr confidence limit.
+          point_prediction = (@r.pred.to_a.flatten)[0] # [1] is lwr, [2] upr confidence limit.
           acts_autoscaler.restore( [ point_prediction ].to_gv )[0] # return restored value of type numeric
 
         rescue Exception => e
@@ -480,7 +480,7 @@ module OpenTox
           @r.eval "pred <- drop( predict( fit, newdata = q, ncomp=ncompLoo ) )"
           ### End of Model
           
-          point_prediction = [ @r.pred ].to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
+          point_prediction = @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
           acts_autoscaler.restore( [ point_prediction ].to_gv )[0] # return restored value of type numeric
 
         rescue Exception => e
