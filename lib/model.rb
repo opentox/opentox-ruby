@@ -130,7 +130,7 @@ module OpenTox
         @min_sim = 0.3
         @prop_kernel = false
         @conf_stdev = false
-        @pc_type = "electronic"
+        @pc_type = nil
 
       end
 
