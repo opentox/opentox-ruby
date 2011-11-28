@@ -325,26 +325,25 @@ module OpenTox
         confidence=0.0
         prediction=nil
 
+        LOGGER.debug "Local MLR."
         if params[:neighbors].size>0
 
-          #acts = acts.collect { |e| e if ids.include? acts.index(e) } # THIS WON'T WORK, don't know why!
-          #acts = acts.compact
-        
-          # remove acts of removed neighbors
           acts = params[:neighbors].collect { |n| n[:activity].to_f }
-          props, ids = params[:prop_kernel] ? get_props_pc(params) : nil
-          acts2 = []
-          ids.each { |id| acts2 << acts[id] }
-          acts = acts2
-
-          # remove sims of removed neighbors
           sims = params[:neighbors].collect { |n| Algorithm.gauss(n[:similarity]) }
-          sims2 = []
-          ids.each { |id| sims2 << sims[id] }
-          sims = sims2
+
+          if params[:pc_type]
+            props, ids = params[:prop_kernel] ? get_props_pc(params) : nil
+            # remove acts and sims of removed neighbors
+            acts2 = [] ; ids.each { |id| acts2 << acts[id] } ; acts = acts2
+            sims2 = [] ; ids.each { |id| sims2 << sims[id] } ; sims = sims2
+            # AM: THIS WON'T WORK, don't know why!
+            #acts = acts.collect { |e| e if ids.include? acts.index(e) } 
+            #acts = acts.compact
+          else
+            props = params[:prop_kernel] ? get_props(params) : nil
+          end
 
           maxcols = ( params[:maxcols].nil? ? (sims.size/3.0).ceil : params[:maxcols] )
-          LOGGER.debug "Local MLR (Propositionalization / GSL)."
           prediction = pcr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
           prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
