@@ -331,8 +331,11 @@ module OpenTox
           acts = params[:neighbors].collect { |n| n[:activity].to_f }
           sims = params[:neighbors].collect { |n| Algorithm.gauss(n[:similarity]) }
 
+          # Special for mlr: use max # of cols
+          maxcols = ( params[:maxcols].nil? ? (sims.size/3.0).ceil : params[:maxcols] )
+
           if params[:pc_type]
-            props, ids = params[:prop_kernel] ? get_props_pc(params) : nil
+            props, ids = params[:prop_kernel] ? get_props_pc(params) : [nil, nil]
             # remove acts and sims of removed neighbors
             acts2 = [] ; ids.each { |id| acts2 << acts[id] } ; acts = acts2
             sims2 = [] ; ids.each { |id| sims2 << sims[id] } ; sims = sims2
@@ -340,12 +343,12 @@ module OpenTox
             #acts = acts.collect { |e| e if ids.include? acts.index(e) } 
             #acts = acts.compact
           else
-            props = params[:prop_kernel] ? get_props(params) : nil
+            props = params[:prop_kernel] ? get_props_fingerprints(params) : nil
           end
 
-          maxcols = ( params[:maxcols].nil? ? (sims.size/3.0).ceil : params[:maxcols] )
           prediction = pcr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
           prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
+
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
@@ -399,7 +402,6 @@ module OpenTox
           ### End of transform
           
           ### Model
-          LOGGER.debug "MLR..."
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
           @r.x = data_matrix.to_a.flatten
           @r.q = query_matrix.to_a.flatten
@@ -435,7 +437,7 @@ module OpenTox
 
         # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
         # Statsample operations build on GSL and offer an R-like access to data
-        LOGGER.debug "MLR..."
+        LOGGER.debug "PCR..."
         begin
           n_prop = params[:n_prop].collect
           q_prop = params[:q_prop].collect
@@ -471,7 +473,6 @@ module OpenTox
           #LOGGER.debug acts.join ", "
           
           ### Model
-          LOGGER.debug "PCR / PLSR..."
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
           @r.x = data_matrix.to_a.flatten
           @r.q = query_matrix.to_a.flatten
@@ -558,20 +559,64 @@ module OpenTox
 
         confidence = 0.0
         prediction = nil
+
+        LOGGER.debug "Local SVM Regression."
         if params[:neighbors].size>0
-          props = params[:prop_kernel] ? get_props_fingerprints(params) : nil
+
           acts = params[:neighbors].collect{ |n| n[:activity].to_f }
+          sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) }
+
+          # Special for SVM regression (not in classification): scale acts
+          acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
+          acts = acts_autoscaler.vs.to_a
+
+          if params[:pc_type]
+            props, ids = params[:prop_kernel] ? get_props_pc(params) : [nil, nil]
+            # remove acts and sims of removed neighbors
+            acts2 = [] ; ids.each { |id| acts2 << acts[id] } ; acts = acts2
+            sims2 = [] ; ids.each { |id| sims2 << sims[id] } ; sims = sims2
+            # AM: THIS WON'T WORK, don't know why!
+            #acts = acts.collect { |e| e if ids.include? acts.index(e) } 
+            #acts = acts.compact
+            
+            # n_prop => props[0], :q_prop => props[1]
+            n_prop = props[0].collect
+            q_prop = props[1].collect
+
+            nr_cases, nr_features = get_sizes n_prop
+            data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
+            query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
+
+            ## Transform data (discussion: http://goo.gl/U8Klu)
+            # Standardize data (scale and center), adjust query accordingly
+            LOGGER.debug "Standardize..."
+            temp = data_matrix.vertcat query_matrix
+            (0..nr_features-1).each { |i|
+              autoscaler = OpenTox::Transform::LogAutoScale.new(temp.col(i))
+              temp.col(i)[0..nr_cases] = autoscaler.vs
+              }
+            data_matrix  = temp.submatrix( 0..(temp.size1-2), nil ).clone # last row: query
+            query_matrix = temp.submatrix( (temp.size1-1)..(temp.size1-1), nil ).clone # last row: query
+
+            props[0] = data_matrix.to_a
+            props[1] = query_matrix.to_a.flatten
+
+           ## End of transform
+
+          else
+            props = params[:prop_kernel] ? get_props_fingerprints(params) : nil
+          end
 
           # Transform y
           acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
           acts = acts_autoscaler.vs.to_a
- 
-          sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) }
+
+          # Predict
           prediction = props.nil? ? local_svm(acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr")
+
+          # Restore
+          prediction = acts_autoscaler.restore( [ prediction ].to_gv )[0]
           prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
-
-          acts_autoscaler.restore( [ prediction ].to_gv )[0] # return restored value of type numeric
-
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
@@ -588,14 +633,31 @@ module OpenTox
 
         confidence = 0.0
         prediction = nil
+
+        LOGGER.debug "Local SVM Classification."
         if params[:neighbors].size>0
-          props = params[:prop_kernel] ? get_props_fingerprints(params) : nil
+
           acts = params[:neighbors].collect { |n| act = n[:activity] }
           sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
+
+          if params[:pc_type]
+            props, ids = params[:prop_kernel] ? get_props_pc(params) : [nil, nil]
+            # remove acts and sims of removed neighbors
+            acts2 = [] ; ids.each { |id| acts2 << acts[id] } ; acts = acts2
+            sims2 = [] ; ids.each { |id| sims2 << sims[id] } ; sims = sims2
+            # AM: THIS WON'T WORK, don't know why!
+            #acts = acts.collect { |e| e if ids.include? acts.index(e) } 
+            #acts = acts.compact
+          else
+            props = params[:prop_kernel] ? get_props_fingerprints(params) : nil
+          end
+
           prediction = props.nil? ? local_svm(acts, sims, "C-bsvc", params) : local_svm_prop(props, acts, "C-bsvc")
+
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
+          confidence = nil if prediction.nil?
         end
         {:prediction => prediction, :confidence => confidence}
         
