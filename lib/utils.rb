@@ -216,10 +216,12 @@ module OpenTox
           # build matrix in same order as input neighbors
           matrix = []
           params[:neighbors].each { |c|
-            key = OpenTox::Compound.new(c[:compound]).to_smiles # extract connection table from Inchi
+            key = OpenTox::Compound.new(c[:compound]).to_smiles
             row = []
             headers.each { |f|
-              row << ((pc_descriptors[key][f] == "") ? nil : pc_descriptors[key][f].to_f)
+              entry = nil
+              entry = ((pc_descriptors[key][f] == "") ? nil : pc_descriptors[key][f].to_f) if pc_descriptors[key]
+              row << entry
             } 
             matrix << row
           }
