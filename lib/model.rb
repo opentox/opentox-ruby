@@ -366,6 +366,7 @@ module OpenTox
         @fingerprints.keys.each do |training_compound| # AM: access all compounds
           add_neighbor @fingerprints[training_compound].keys, training_compound
         end
+        @neighbors = @neighbors.sort { |a,b| a[:similarity] <=> b[:similarity] }.reverse # order by descending sim (best neighbors first)
       end
 
       # Adds a neighbor to @neighbors if it passes the similarity threshold.
