@@ -369,12 +369,13 @@ module OpenTox
           add_neighbor @fingerprints[training_compound].keys, training_compound
         end
 
-        if @max_perc_neighbors {
+        if @max_perc_neighbors 
           @neighbors = @neighbors.sort { |a,b| a[:similarity] <=> b[:similarity] }.reverse # order by descending sim (best neighbors first)
           nr_neighbors = (@fingerprints.size.to_f * @max_perc_neighbors / 100).ceil
-          LOGGER.debug "Truncated #{@fingerprints.size} neighbors to #{nr_neighbors} (=#{@max_perc_neighbors}%)."
+          LOGGER.debug "Using #{nr_neighbors} closest neighbors (=#{@max_perc_neighbors}% of dataset) out of #{@neighbors.size}."
           @neighbors = @neighbors.take nr_neighbors
-        }
+        end
+        
       end
 
       # Adds a neighbor to @neighbors if it passes the similarity threshold.
