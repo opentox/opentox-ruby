@@ -173,9 +173,9 @@ module OpenTox
               all_p_sum = Algorithm.p_sum_support(params)
             else
               common_p_sum = 0.0
-              common_features.each{|f| common_p_sum += Algorithm.gauss(weights[f])}
+              common_features.each{|f| common_p_sum += weights[f]}
               all_p_sum = 0.0
-              all_features.each{|f| all_p_sum += Algorithm.gauss(weights[f])}
+              all_features.each{|f| all_p_sum += weights[f]}
             end
             #LOGGER.debug "common_p_sum: #{common_p_sum}, all_p_sum: #{all_p_sum}, c/a: #{common_p_sum/all_p_sum}"
             common_p_sum/all_p_sum
@@ -199,7 +199,7 @@ module OpenTox
           dist_sum = 0
           common_properties.each do |p|
             if weights
-              dist_sum += ( (properties_a[p] - properties_b[p]) * Algorithm.gauss(weights[p]) )**2
+              dist_sum += ( (properties_a[p] - properties_b[p]) * weights[p] )**2
             else
               dist_sum += (properties_a[p] - properties_b[p])**2
             end
@@ -325,7 +325,7 @@ module OpenTox
         if params[:neighbors].size>0
           props = params[:prop_kernel] ? get_props(params) : nil
           acts = params[:neighbors].collect { |n| act = n[:activity].to_f }
-          sims = params[:neighbors].collect { |n| Algorithm.gauss(n[:similarity]) }
+          sims = params[:neighbors].collect { |n| n[:similarity] }
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
           prediction = mlr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts} )
           transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})")
@@ -399,7 +399,7 @@ module OpenTox
         prediction = nil
 
         params[:neighbors].each do |neighbor|
-          neighbor_weight = Algorithm.gauss(neighbor[:similarity]).to_f
+          neighbor_weight = neighbor[:similarity].to_f
           neighbor_contribution += neighbor[:activity].to_f * neighbor_weight
 
           if params[:value_map].size == 2 # AM: provide compat to binary classification: 1=>false 2=>true
@@ -439,7 +439,7 @@ module OpenTox
         if params[:neighbors].size>0
           props = params[:prop_kernel] ? get_props(params) : nil
           acts = params[:neighbors].collect{ |n| n[:activity].to_f }
-          sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) }
+          sims = params[:neighbors].collect{ |n| n[:similarity] }
           prediction = props.nil? ? local_svm(acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr")
           transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})")
           prediction = transformer.values[0]
@@ -463,7 +463,7 @@ module OpenTox
         if params[:neighbors].size>0
           props = params[:prop_kernel] ? get_props(params) : nil
           acts = params[:neighbors].collect { |n| act = n[:activity] }
-          sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
+          sims = params[:neighbors].collect{ |n| n[:similarity] } # similarity values btwn q and nbors
           prediction = props.nil? ? local_svm(acts, sims, "C-bsvc", params) : local_svm_prop(props, acts, "C-bsvc")
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
@@ -505,7 +505,7 @@ module OpenTox
                 sim_params[:training_compound_features_hits] = neighbor_j_hits
               end
               sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values], sim_params)")
-              gram_matrix[i][j] = Algorithm.gauss(sim)
+              gram_matrix[i][j] = sim
               gram_matrix[j] = [] unless gram_matrix[j] 
               gram_matrix[j][i] = gram_matrix[i][j] # lower triangle
             end
@@ -898,13 +898,15 @@ module OpenTox
       end
 
     end
-    
+   
+    # DV: Removed Gauss kernel in this file since the additional calculations has no benefit for the result.
+    # See experiment summary: http://goo.gl/uwiKt
     # Gauss kernel
     # @return [Float] 
-    def self.gauss(x, sigma = 0.3) 
-      d = 1.0 - x.to_f
-      Math.exp(-(d*d)/(2*sigma*sigma))
-    end
+    #def self.gauss(x, sigma = 0.3) 
+    #  d = 1.0 - x.to_f
+    #  Math.exp(-(d*d)/(2*sigma*sigma))
+    #end
 
     # For symbolic features
     # @param [Array] Array to test, must indicate non-occurrence with 0.
@@ -978,7 +980,7 @@ module OpenTox
         params[:features].each{|f|
         compound_hits = params[:compound_features_hits][f]
         neighbor_hits = params[:training_compound_features_hits][f] 
-        p_sum += eval("(Algorithm.gauss(params[:weights][f]) * ([compound_hits, neighbor_hits].compact.#{params[:mode]}))")
+        p_sum += eval("(params[:weights][f] * ([compound_hits, neighbor_hits].compact.#{params[:mode]}))")
       }
       p_sum 
     end
