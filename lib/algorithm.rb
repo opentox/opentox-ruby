@@ -348,7 +348,7 @@ module OpenTox
 
           prediction = pcr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
           #prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
-          prediction = nil if prediction.infinite? 
+          prediction = nil if (!prediction.nil? && prediction.infinite?)
 
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
@@ -488,7 +488,8 @@ module OpenTox
 
           #for i in (maxcols+1)..(data_matrix.size1)
           start_neighbors_size = [12,(data_matrix.size1)].min
-          for current_neighbors_size in (start_neighbors_size..(data_matrix.size1)).step(2)
+          step_size = (data_matrix.size1 < 23) ? 1 : 2
+          for current_neighbors_size in (start_neighbors_size..(data_matrix.size1)).step(step_size)
             # adjust x and y
             @r.x = data_matrix.submatrix(0..(current_neighbors_size-1),nil).to_a.flatten
             @r.y = acts.take(current_neighbors_size).to_a.flatten
@@ -504,8 +505,7 @@ module OpenTox
             LOGGER.debug "R-Squared (internal LOO using #{current_neighbors_size} neighbors): #{@r.r2Loo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
 
             # get max R2
-            @r.eval "ncompLoo <- which.max(r2Loo) - 1"
-            @r.eval "ncompLoo <- ncompLoo + 1" if (@r.ncompLoo.to_i == 0)
+            @r.eval "ncompLoo <- which.max(r2Loo)"
             #LOGGER.debug "Best position: #{@r.ncompLoo.to_i}"
 
             # "Schleppzeiger"
