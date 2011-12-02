@@ -372,7 +372,7 @@ module OpenTox
         if @max_perc_neighbors 
           @neighbors = @neighbors.sort { |a,b| a[:similarity] <=> b[:similarity] }.reverse # order by descending sim (best neighbors first)
           nr_neighbors = (@fingerprints.size.to_f * @max_perc_neighbors / 100).ceil
-          LOGGER.debug "Using #{nr_neighbors} closest neighbors (=#{@max_perc_neighbors}% of dataset) out of #{@neighbors.size}."
+          LOGGER.debug "Maximally #{nr_neighbors} neighbors (=#{@max_perc_neighbors}% of dataset) out of actually #{@neighbors.size} neighbors."
           @neighbors = @neighbors.take nr_neighbors
         end
         
