@@ -488,8 +488,8 @@ module OpenTox
 
 
           #for i in (maxcols+1)..(data_matrix.size1)
-          start_neighbors_size = [12,(data_matrix.size1)].min
-          step_size = (data_matrix.size1 < 23) ? 1 : 2
+          start_neighbors_size = [4,(data_matrix.size1)].min
+          step_size = (data_matrix.size1 < 17) ? 1 : 2
           for current_neighbors_size in (start_neighbors_size..(data_matrix.size1)).step(step_size)
             # adjust x and y
             @r.x = data_matrix.submatrix(0..(current_neighbors_size-1),nil).to_a.flatten
