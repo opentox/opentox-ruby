@@ -442,10 +442,10 @@ module OpenTox
           n_prop = params[:n_prop].collect
           q_prop = params[:q_prop].collect
           acts = params[:acts].collect
-          maxcols = params[:maxcols]
+          #maxcols = params[:maxcols]
 
           nr_cases, nr_features = get_sizes n_prop
-          maxcols = nr_features if maxcols > nr_features
+          #maxcols = nr_features if maxcols > nr_features
 
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
           query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
@@ -474,27 +474,50 @@ module OpenTox
           
           ### Model
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
-          @r.x = data_matrix.to_a.flatten
-          @r.q = query_matrix.to_a.flatten
-          @r.y = acts.to_a.flatten
-
           @r.eval "library(\"pls\")"
-          @r.eval "x <- matrix(x, #{nr_cases}, #{nr_features}, byrow=T)"
-          @r.eval "df <- data.frame(y,x)"
 
-          @r.eval "fstr <- \"y ~ .\""
-          @r.eval "fit <- mvr( formula = as.formula(fstr), data=df, ncomp=#{maxcols}, method = \"kernelpls\", validation = \"LOO\" )"
+          @r.q = query_matrix.to_a.flatten
 
-          @r.eval "r2Loo <- matrix( R2( fit, \"CV\" )$val )"
-          LOGGER.debug "R-Squared (internal LOO CV), using 0 to #{maxcols} PCs: #{@r.r2Loo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
-          @r.eval "ncompLoo <- which.max(r2Loo) - 1"
-          @r.eval "ncompLoo <- ncompLoo + 1" if (@r.ncompLoo.to_i == 0)
+          @r.eval "best <- vector(mode=\"list\", length=3)"
+          @r.eval "best[[1]] = 0" # pc index for maximum
+          @r.eval "best[[2]] = -Inf" # R2 for maximum index
+          @r.eval "best[[3]] = NULL" # maximum fit
 
-          LOGGER.debug "Best position: #{@r.ncompLoo.to_i}"
+
+          #for i in (maxcols+1)..(data_matrix.size1)
+          start_neighbors_size = [12,(data_matrix.size1)].min
+          for current_neighbors_size in (start_neighbors_size..(data_matrix.size1)).step(2)
+            # adjust x and y
+            @r.x = data_matrix.submatrix(0..(current_neighbors_size-1),nil).to_a.flatten
+            @r.y = acts.take(current_neighbors_size).to_a.flatten
+            @r.eval "x <- matrix(x, #{current_neighbors_size}, #{nr_features}, byrow=T)"
+            @r.eval "df <- data.frame(y,x)"
+
+
+            @r.eval "fstr <- \"y ~ .\""
+            @r.eval "fit <- mvr( formula = as.formula(fstr), data=df, method = \"kernelpls\", validation = \"LOO\" )" # was using: ncomp=#{maxcols}
+
+            # get R2s
+            @r.eval "r2Loo <- matrix( R2( fit, \"CV\" )$val )"
+            LOGGER.debug "R-Squared (internal LOO using #{current_neighbors_size} neighbors): #{@r.r2Loo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
+
+            # get max R2
+            @r.eval "ncompLoo <- which.max(r2Loo) - 1"
+            @r.eval "ncompLoo <- ncompLoo + 1" if (@r.ncompLoo.to_i == 0)
+            #LOGGER.debug "Best position: #{@r.ncompLoo.to_i}"
+
+            # "Schleppzeiger"
+            @r.eval "if ( r2Loo[ncompLoo] > best[[2]]) { 
+              best[[1]] = ncompLoo
+              best[[2]] = r2Loo[ncompLoo]
+              best[[3]] = fit
+            }"
+
+          end
 
           @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
           @r.eval "names(q) = names(df)[2:length(names(df))]"
-          @r.eval "pred <- drop( predict( fit, newdata = q, ncomp=ncompLoo ) )"
+          @r.eval "pred <- drop( predict( best[[3]], newdata = q, ncomp=best[[1]] ) )"
           ### End of Model
           
           point_prediction = @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
