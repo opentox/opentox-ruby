@@ -479,11 +479,12 @@ module OpenTox
 
           @r.q = query_matrix.to_a.flatten
 
-          @r.eval "best <- vector(mode=\"list\", length=4)"
-          @r.eval "best[[1]] = 0" # pc index for maximum
-          @r.eval "best[[2]] = 0" # pc index for maximum
-          @r.eval "best[[3]] = -Inf" # R2 for maximum index
-          @r.eval "best[[4]] = NULL" # maximum fit
+          @r.eval "best <- vector(mode=\"list\", length=5)"
+          @r.eval "best[[1]] = 0" # neighbor size
+          @r.eval "best[[2]] = 0" # best nr components
+          @r.eval "best[[3]] = Inf" # RMSE of best
+          @r.eval "best[[4]] = NULL" # fit of best
+          @r.eval "best[[5]] = -Inf" # R2 of best
 
 
           #for i in (maxcols+1)..(data_matrix.size1)
@@ -501,25 +502,33 @@ module OpenTox
             @r.eval "fit <- mvr( formula = as.formula(fstr), data=df, method = \"kernelpls\", validation = \"LOO\" )" # was using: ncomp=#{maxcols}
 
             # get R2s
+            @r.eval "rmseLoo <- matrix( RMSEP( fit, \"CV\" )$val )"
             @r.eval "r2Loo <- matrix( R2( fit, \"CV\" )$val )"
-            LOGGER.debug "R-Squared (internal LOO using #{current_neighbors_size} neighbors): #{@r.r2Loo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
+            LOGGER.debug "RMSE (internal LOO using #{current_neighbors_size} neighbors): #{@r.rmseLoo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
+            #LOGGER.debug "R2 (internal LOO using #{current_neighbors_size} neighbors): #{@r.r2Loo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
 
-            # get max R2
-            @r.eval "ncompLoo <- which.max(r2Loo)"
+            # get min RMSE (10% quantile)
+            #@r.eval "ncompLoo <- which.min(rmseLoo)"
+            @r.eval "ncompLoo <- which( rmseLoo<=quantile(rmseLoo,.1) )[1]"
             #LOGGER.debug "Best position: #{@r.ncompLoo.to_i}"
 
-            # "Schleppzeiger"
-            @r.eval "if ( r2Loo[ncompLoo] > best[[3]]) { 
+            # "Schleppzeiger": values for best position, R-index: 1-nr neighbors, 2-nr components, 3-RMSE, 4-model, 5-R2]
+            @r.eval "if ( rmseLoo[ncompLoo] < best[[3]]) { 
               best[[1]] = #{current_neighbors_size}
               best[[2]] = ncompLoo
-              best[[3]] = r2Loo[ncompLoo]
+              best[[3]] = rmseLoo[ncompLoo]
               best[[4]] = fit
+              best[[5]] = r2Loo[ncompLoo]
             }"
 
           end
-          @r.eval "best_values = c(best[[1]], best[[2]], best[[3]])"
-          if (@r.best_values[2] > 0) # R2 was positive
-            LOGGER.debug "Model based on #{@r.best_values[0].to_i} neighbors and #{@r.best_values[1].to_i} components, R2 was #{sprintf("%.2f", @r.best_values[2])}."
+
+          # Must use plain value ruby array, otherwise rinruby fails
+          @r.eval "best_values = c(best[[1]], best[[2]], best[[3]], best[[5]])" # Ruby-index: 0-nr neighbors, 1-nr components, 2-RMSE, 3-R2
+
+          # If descriptors yielded improvement in RMSE
+          if (@r.best_values[1] > 1) 
+            LOGGER.debug "Model based on #{@r.best_values[0].to_i} neighbors and #{@r.best_values[1].to_i} components, RMSE #{sprintf("%.2f", @r.best_values[2])} R2 #{sprintf("%.2f", @r.best_values[3])}."
             @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
             @r.eval "names(q) = names(df)[2:length(names(df))]"
             @r.eval "pred <- drop( predict( best[[4]], newdata = q, ncomp=best[[2]] ) )"
