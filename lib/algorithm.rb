@@ -347,7 +347,8 @@ module OpenTox
           end
 
           prediction = pcr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
-          prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
+          #prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
+          prediction = nil if prediction.infinite? 
 
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
@@ -478,10 +479,11 @@ module OpenTox
 
           @r.q = query_matrix.to_a.flatten
 
-          @r.eval "best <- vector(mode=\"list\", length=3)"
+          @r.eval "best <- vector(mode=\"list\", length=4)"
           @r.eval "best[[1]] = 0" # pc index for maximum
-          @r.eval "best[[2]] = -Inf" # R2 for maximum index
-          @r.eval "best[[3]] = NULL" # maximum fit
+          @r.eval "best[[2]] = 0" # pc index for maximum
+          @r.eval "best[[3]] = -Inf" # R2 for maximum index
+          @r.eval "best[[4]] = NULL" # maximum fit
 
 
           #for i in (maxcols+1)..(data_matrix.size1)
@@ -507,21 +509,28 @@ module OpenTox
             #LOGGER.debug "Best position: #{@r.ncompLoo.to_i}"
 
             # "Schleppzeiger"
-            @r.eval "if ( r2Loo[ncompLoo] > best[[2]]) { 
-              best[[1]] = ncompLoo
-              best[[2]] = r2Loo[ncompLoo]
-              best[[3]] = fit
+            @r.eval "if ( r2Loo[ncompLoo] > best[[3]]) { 
+              best[[1]] = #{current_neighbors_size}
+              best[[2]] = ncompLoo
+              best[[3]] = r2Loo[ncompLoo]
+              best[[4]] = fit
             }"
 
           end
+          @r.eval "best_values = c(best[[1]], best[[2]], best[[3]])"
+          if (@r.best_values[2] > 0) # R2 was positive
+            LOGGER.debug "Model based on #{@r.best_values[0].to_i} neighbors and #{@r.best_values[1].to_i} components, R2 was #{sprintf("%.2f", @r.best_values[2])}."
+            @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
+            @r.eval "names(q) = names(df)[2:length(names(df))]"
+            @r.eval "pred <- drop( predict( best[[4]], newdata = q, ncomp=best[[2]] ) )"
+            point_prediction = @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
+            point_prediction = acts_autoscaler.restore( [ point_prediction ].to_gv )[0] # return restored value of type numeric
+          else
+            LOGGER.debug "No appropriate model found."
+            point_prediction = nil
+          end
+          point_prediction
 
-          @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
-          @r.eval "names(q) = names(df)[2:length(names(df))]"
-          @r.eval "pred <- drop( predict( best[[3]], newdata = q, ncomp=best[[1]] ) )"
-          ### End of Model
-          
-          point_prediction = @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
-          acts_autoscaler.restore( [ point_prediction ].to_gv )[0] # return restored value of type numeric
 
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
