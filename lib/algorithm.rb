@@ -437,19 +437,31 @@ module OpenTox
           acts.each_with_index { |elem, idx| temp_acts << elem unless outliers.include? idx }
           acts = temp_acts # same nr_features
 
-          # optimize selection of training instances -- TO COME
-          
 
-
-          # build model on best selection
+          @r.eval 'fstr <- "y ~ ."'
           @r.x = data_matrix.to_a.flatten
-          @r.q = query_matrix.to_a.flatten
           @r.y = acts.to_a.flatten
+          @r.q = query_matrix.to_a.flatten
 
           @r.eval "x <- matrix(x, #{nr_cases}, #{nr_features}, byrow=T)"
-          @r.eval "df <- data.frame(y,x)"
+          @r.eval 'df <- data.frame(y,x)'
+          @r.eval 'idx = rep(T,dim(x)[2])'
 
-          @r.eval "fstr <- \"y ~ .\""
+
+          # optimize selection of training instances
+          begin
+            LOGGER.debug "Best subset..."
+            @r.eval 'suppressPackageStartupMessages(library("leaps"))'
+            @r.eval "allss = summary( regsubsets( as.formula(fstr), data=df, nvmax=#{[ (current_neighbors_size / 3).floor, nr_features ].min}, method=\"exhaustive\") )"
+            @r.eval 'idx = as.vector(allss$which[which.max(allss$adjr2),])'
+            @r.eval 'idx = idx[2:length(idx)]' # remove intercept
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          end
+          
+          # build model on best selection
+          @r.eval "df <- df[,idx])"
           @r.eval "fit <- lm( as.formula(fstr), data=df)"
 
           @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
@@ -462,7 +474,7 @@ module OpenTox
 
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
-          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          #LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
 
       end
@@ -522,9 +534,9 @@ module OpenTox
 
           ### Model
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
-          @r.eval "suppressPackageStartupMessages(library(\"pls\"))"
-          @r.eval "suppressPackageStartupMessages(library(\"robustbase\"))"
-          @r.eval "outlier_threshold = 0.975"
+          @r.eval 'suppressPackageStartupMessages(library("pls"))'
+          @r.eval 'suppressPackageStartupMessages(library("robustbase"))'
+          @r.eval 'outlier_threshold = 0.975'
 
 
           # outlier removal -- changes cases; adjust acts accordingly (stop if query is outlier)
@@ -534,7 +546,7 @@ module OpenTox
             @r.q = query_matrix.to_a.flatten
             @r.odx = data_matrix.to_a.flatten
             @r.eval "odx <- matrix(odx, #{nr_cases}, #{nr_features}, byrow=T)"
-            @r.eval "odx <- rbind(q,odx)" # query is nr 0 (1) in ruby (R)
+            @r.eval 'odx <- rbind(q,odx)' # query is nr 0 (1) in ruby (R)
             @r.eval 'mah <- covMcd(odx)$mah' # run mcd alg
             @r.eval "mah <- pchisq(mah,#{nr_features})"
             LOGGER.debug("p-values: " + @r.mah.collect{|v| sprintf("%.2f", v)}.join(", "))
@@ -557,26 +569,26 @@ module OpenTox
 
 
           # optimize selection of training instances -- changes cases; adjust acts accordingly
-          @r.eval "best <- vector(mode=\"list\", length=5)"
-          @r.eval "best[[1]] = 0" # neighbor size
-          @r.eval "best[[2]] = 0" # best nr components
-          @r.eval "best[[3]] = Inf" # RMSE of best
-          @r.eval "best[[4]] = NULL" # fit of best
-          @r.eval "best[[5]] = -Inf" # R2 of best
+          @r.eval 'best <- vector(mode="list", length=5)'
+          @r.eval 'best[[1]] = 0' # neighbor size
+          @r.eval 'best[[2]] = 0' # best nr components
+          @r.eval 'best[[3]] = Inf' # RMSE of best
+          @r.eval 'best[[4]] = NULL' # fit of best
+          @r.eval 'best[[5]] = -Inf' # R2 of best
           start_neighbors_size = [6,(data_matrix.size1)].min
           step_size = (data_matrix.size1 < 17) ? 1 : 2
           for current_neighbors_size in (start_neighbors_size..(data_matrix.size1)).step(step_size)
             @r.x = data_matrix.submatrix(0..(current_neighbors_size-1),nil).to_a.flatten
             @r.y = acts.take(current_neighbors_size).to_a.flatten
             @r.eval "x <- matrix(x, #{current_neighbors_size}, #{nr_features}, byrow=T)"
-            @r.eval "df <- data.frame(y,x)"
-            @r.eval "fstr <- \"y ~ .\""
+            @r.eval 'df <- data.frame(y,x)'
+            @r.eval 'fstr <- "y ~ ."'
             @r.eval "fit <- mvr( formula = as.formula(fstr), data=df, method = \"kernelpls\", validation = \"LOO\", ncomp=#{[ (current_neighbors_size / 3).floor, nr_features ].min})" # was using: ncomp=#{maxcols}
-            @r.eval "rmseLoo <- matrix( RMSEP( fit, \"CV\" )$val )"
-            @r.eval "r2Loo <- matrix( R2( fit, \"CV\" )$val )"
+            @r.eval 'rmseLoo <- matrix( RMSEP( fit, "CV" )$val )'
+            @r.eval 'r2Loo <- matrix( R2( fit, "CV" )$val )'
             LOGGER.debug "RMSE (internal LOO using #{current_neighbors_size} neighbors): #{@r.rmseLoo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
             #LOGGER.debug "R2 (internal LOO using #{current_neighbors_size} neighbors): #{@r.r2Loo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
-            @r.eval "ncompLoo <- which( rmseLoo<=quantile(rmseLoo,.1) )[1]" # get min RMSE (10% quantile)
+            @r.eval 'ncompLoo <- which( rmseLoo<=quantile(rmseLoo,.1) )[1]' # get min RMSE (10% quantile)
             # "Schleppzeiger": values for best position, R-index: 1-nr neighbors, 2-nr components, 3-RMSE, 4-model, 5-R2]
             @r.eval "if ( rmseLoo[ncompLoo] < best[[3]]) { 
               best[[1]] = #{current_neighbors_size}
@@ -589,14 +601,14 @@ module OpenTox
 
 
           # build model on best selection
-          @r.eval "best_values = c(best[[1]], best[[2]], best[[3]], best[[5]])" # Ruby-index: 0-nr neighbors, 1-nr components, 2-RMSE, 3-R2
+          @r.eval 'best_values = c(best[[1]], best[[2]], best[[3]], best[[5]])' # Ruby-index: 0-nr neighbors, 1-nr components, 2-RMSE, 3-R2
                                                                                 # Must use plain value ruby array, otherwise rinruby fails
           if (@r.best_values[1] > 1) 
             LOGGER.debug "Model based on #{@r.best_values[0].to_i} neighbors and #{@r.best_values[1].to_i} components, RMSE #{sprintf("%.2f", @r.best_values[2])} R2 #{sprintf("%.2f", @r.best_values[3])}."
             @r.q = query_matrix.to_a.flatten
             @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
-            @r.eval "names(q) = names(df)[2:length(names(df))]"
-            @r.eval "pred <- drop( predict( best[[4]], newdata = q, ncomp=best[[2]] ) )"
+            @r.eval 'names(q) = names(df)[2:length(names(df))]'
+            @r.eval 'pred <- drop( predict( best[[4]], newdata = q, ncomp=best[[2]] ) )'
             point_prediction = @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
             point_prediction = acts_autoscaler.restore( [ point_prediction ].to_gv )[0] # return restored value of type numeric
           else
