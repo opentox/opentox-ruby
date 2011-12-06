@@ -569,7 +569,7 @@ module OpenTox
 
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
-          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          #LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
 
       end

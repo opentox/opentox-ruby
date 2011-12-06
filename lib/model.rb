@@ -362,6 +362,7 @@ module OpenTox
       
 
       # Find neighbors and store them as object variable, access all compounds for that.
+      # Uses either similarity threshold or percentage of most similar training data.
       def neighbors
         @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
         @neighbors = []
@@ -378,7 +379,7 @@ module OpenTox
         
       end
 
-      # Adds a neighbor to @neighbors if it passes the similarity threshold.
+      # Adds a neighbor to @neighbors if it passes the similarity threshold or @max_perc_neighbors is set
       def add_neighbor(training_features, training_compound)
         compound_features_hits = {}
         training_compound_features_hits = {}
@@ -393,7 +394,7 @@ module OpenTox
         params[:training_compound_features_hits] = training_compound_features_hits
 
         sim = eval("#{@similarity_algorithm}(training_features, @compound_features, @p_values, params)")
-        if sim > @min_sim
+        if sim > @min_sim || @max_perc_neighbors
           @activities[training_compound].each do |act|
             @neighbors << {
               :compound => training_compound,
