@@ -509,17 +509,17 @@ module OpenTox
           nr_cases, nr_features = get_sizes data_matrix.to_a
           query_matrix = pca.transform(query_matrix)
 
+          #LOGGER.debug "AM: DM"
+          #LOGGER.debug "\n" + data_matrix.to_a.collect { |row| row.join ", " }.join("\n")
+          #LOGGER.debug "AM: ACTS"
+          #LOGGER.debug acts.join ", "
+
           # Transform y
           acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
           acts = acts_autoscaler.vs.to_a
           ### End of transform
           
 
-          #LOGGER.debug "AM: DM"
-          #LOGGER.debug "\n" + data_matrix.to_a.collect { |row| row.join ", " }.join("\n")
-          #LOGGER.debug "AM: ACTS"
-          #LOGGER.debug acts.join ", "
-          
           ### Model
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
           @r.eval "suppressPackageStartupMessages(library(\"pls\"))"
@@ -571,7 +571,7 @@ module OpenTox
             @r.eval "x <- matrix(x, #{current_neighbors_size}, #{nr_features}, byrow=T)"
             @r.eval "df <- data.frame(y,x)"
             @r.eval "fstr <- \"y ~ .\""
-            @r.eval "fit <- mvr( formula = as.formula(fstr), data=df, method = \"kernelpls\", validation = \"LOO\" )" # was using: ncomp=#{maxcols}
+            @r.eval "fit <- mvr( formula = as.formula(fstr), data=df, method = \"kernelpls\", validation = \"LOO\", ncomp=#{(current_neighbors_size / 3).floor})" # was using: ncomp=#{maxcols}
             @r.eval "rmseLoo <- matrix( RMSEP( fit, \"CV\" )$val )"
             @r.eval "r2Loo <- matrix( R2( fit, \"CV\" )$val )"
             LOGGER.debug "RMSE (internal LOO using #{current_neighbors_size} neighbors): #{@r.rmseLoo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
