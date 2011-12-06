@@ -230,7 +230,9 @@ module OpenTox
           row = []
           key = params[:compound].to_smiles
           headers.each { |f|
-            row << ((pc_descriptors[key][f] == "") ? nil : pc_descriptors[key][f].to_f)
+            entry = nil
+            entry = ((pc_descriptors[key][f] == "") ? nil : pc_descriptors[key][f].to_f) if pc_descriptors[key]
+            row << entry
           }
 
           # truncate nil-columns and -rows
