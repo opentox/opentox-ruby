@@ -571,7 +571,7 @@ module OpenTox
             @r.eval "x <- matrix(x, #{current_neighbors_size}, #{nr_features}, byrow=T)"
             @r.eval "df <- data.frame(y,x)"
             @r.eval "fstr <- \"y ~ .\""
-            @r.eval "fit <- mvr( formula = as.formula(fstr), data=df, method = \"kernelpls\", validation = \"LOO\", ncomp=#{(current_neighbors_size / 3).floor})" # was using: ncomp=#{maxcols}
+            @r.eval "fit <- mvr( formula = as.formula(fstr), data=df, method = \"kernelpls\", validation = \"LOO\", ncomp=#{[ (current_neighbors_size / 3).floor, nr_features ].min})" # was using: ncomp=#{maxcols}
             @r.eval "rmseLoo <- matrix( RMSEP( fit, \"CV\" )$val )"
             @r.eval "r2Loo <- matrix( R2( fit, \"CV\" )$val )"
             LOGGER.debug "RMSE (internal LOO using #{current_neighbors_size} neighbors): #{@r.rmseLoo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
