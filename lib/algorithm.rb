@@ -398,6 +398,7 @@ module OpenTox
           data_matrix = pca.data_transformed_matrix
           nr_cases, nr_features = get_sizes data_matrix.to_a
           query_matrix = pca.transform(query_matrix)
+          LOGGER.debug "Reduced by compression, M: #{nr_cases}x#{nr_features}; R: #{query_matrix.size2}"
 
           # Transform y
           acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
@@ -448,25 +449,30 @@ module OpenTox
           @r.eval 'idx = rep(T,dim(x)[2])'
 
 
-          # optimize selection of training instances
+          # optimize selection of training instances -- changes features; adjust query accordingly
           begin
             LOGGER.debug "Best subset..."
             @r.eval 'suppressPackageStartupMessages(library("leaps"))'
-            @r.eval "allss = summary( regsubsets( as.formula(fstr), data=df, nvmax=#{[ (current_neighbors_size / 3).floor, nr_features ].min}, method=\"exhaustive\") )"
+            @r.eval "allss = summary( regsubsets( as.formula(fstr), data=df, nvmax=#{[ (nr_cases / 3).floor, nr_features ].min}, method=\"exhaustive\") )"
             @r.eval 'idx = as.vector(allss$which[which.max(allss$adjr2),])'
             @r.eval 'idx = idx[2:length(idx)]' # remove intercept
+            @r.eval 'intidx = as.integer(idx)'
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
+          LOGGER.debug "Indices: [" + @r.intidx.to_a.join(", ") + "]"
+
+          raise "No features left" if (@r.intidx.to_a.inject{|sum,elem| sum + elem}) == 0
+          
           
           # build model on best selection
-          @r.eval "df <- df[,idx])"
-          @r.eval "fit <- lm( as.formula(fstr), data=df)"
-
-          @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
-          @r.eval "names(q) = names(df)[2:length(names(df))]"
-          @r.eval "pred <- predict(fit, q, interval=\"confidence\")"
+          @r.eval 'df <- df[,idx]'
+          @r.eval 'fit <- lm( as.formula(fstr), data=df)'
+          @r.eval 'q <- q[idx]'
+          @r.eval 'q <- data.frame( matrix( q, 1, sum(idx) ) )'
+          @r.eval 'names(q) = names(df)[2:length(names(df))]'
+          @r.eval 'pred <- predict(fit, q, interval="confidence")'
           ### End of Model
           
           point_prediction = (@r.pred.to_a.flatten)[0] # [1] is lwr, [2] upr confidence limit.
@@ -520,6 +526,7 @@ module OpenTox
           data_matrix = pca.data_transformed_matrix
           nr_cases, nr_features = get_sizes data_matrix.to_a
           query_matrix = pca.transform(query_matrix)
+          LOGGER.debug "Reduced by compression, M: #{nr_cases}x#{nr_features}; R: #{query_matrix.size2}"
 
           #LOGGER.debug "AM: DM"
           #LOGGER.debug "\n" + data_matrix.to_a.collect { |row| row.join ", " }.join("\n")
