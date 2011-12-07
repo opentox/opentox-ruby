@@ -24,7 +24,11 @@ end
 
 # database
 #`redis-server /opt/redis/redis.conf` unless File.exists? "/var/run/redis.pid" # removed by AM
-Ohm.connect :thread_safe => true
+ohm_port=6379
+if !CONFIG[:ohm_port].nil? 
+  ohm_port=CONFIG[:ohm_port].to_i
+end
+Ohm.connect(:thread_safe => true, :port => ohm_port)
 
 # load mail settings for error messages
 #load File.join config_dir,"mail.rb" if File.exists?(File.join config_dir,"mail.rb")

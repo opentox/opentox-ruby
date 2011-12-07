@@ -482,10 +482,10 @@ module OpenTox
 
       # Convert to spreadsheet workbook
       # @return [Spreadsheet::Workbook] Workbook object (use the spreadsheet gemc to write a file)
-      def to_spreadsheet
+      def to_spreadsheet(sheetname="sheet1")
         Spreadsheet.client_encoding = 'UTF-8'
         book = Spreadsheet::Workbook.new
-        sheet = book.create_worksheet(:name => '')
+        sheet = book.create_worksheet(:name => "#{sheetname}")
         sheet.column(0).width = 100
         i = 0
         @rows.each do |row|
