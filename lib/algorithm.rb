@@ -346,7 +346,7 @@ module OpenTox
             props = params[:prop_kernel] ? get_props_fingerprints(params) : nil
           end
 
-          prediction = pcr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
+          prediction = mlr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
           prediction = nil if (!prediction.nil? && (prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction) )
           #prediction = nil if (!prediction.nil? && prediction.infinite?)
 
