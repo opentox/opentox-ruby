@@ -473,8 +473,9 @@ module OpenTox
           @r.eval 'nam <- names(df)'
           LOGGER.debug @r.nam.to_a.join(", ")
 
+          @r.eval 'suppressPackageStartupMessages(library("MASS"))'
           @r.eval 'df <- df[,idx]'
-          @r.eval 'fit <- lm( as.formula(fstr), data=df)'
+          @r.eval 'fit <- rlm( as.formula(fstr), data=df)'
           @r.eval 'q <- q[idx[2:length(idx)]]'
           @r.eval 'q <- data.frame( matrix( q, 1, length(q) ) )'
 
