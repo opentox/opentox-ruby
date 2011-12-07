@@ -455,7 +455,8 @@ module OpenTox
             @r.eval 'suppressPackageStartupMessages(library("leaps"))'
             @r.eval "allss = summary( regsubsets( as.formula(fstr), data=df, nvmax=#{[ (nr_cases / 3).floor, nr_features ].min}, method=\"exhaustive\") )"
             @r.eval 'idx = as.vector(allss$which[which.max(allss$adjr2),])'
-            @r.eval 'idx = idx[2:length(idx)]' # remove intercept
+            @r.eval 'idx[1] = T' # enforce intercept
+            #@r.eval 'idx = idx[2:length(idx)]' # remove intercept
             @r.eval 'intidx = as.integer(idx)'
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
@@ -463,15 +464,30 @@ module OpenTox
           end
           LOGGER.debug "Indices: [" + @r.intidx.to_a.join(", ") + "]"
 
-          raise "No features left" if (@r.intidx.to_a.inject{|sum,elem| sum + elem}) == 0
+          raise "No features left" if (@r.intidx.to_a.inject{|sum,elem| sum + elem}) == 1
           
           
           # build model on best selection
+          
+          ### DEBUG
+          @r.eval 'nam <- names(df)'
+          LOGGER.debug @r.nam.to_a.join(", ")
+
           @r.eval 'df <- df[,idx]'
           @r.eval 'fit <- lm( as.formula(fstr), data=df)'
-          @r.eval 'q <- q[idx]'
-          @r.eval 'q <- data.frame( matrix( q, 1, sum(idx) ) )'
+          @r.eval 'q <- q[idx[2:length(idx)]]'
+          @r.eval 'q <- data.frame( matrix( q, 1, length(q) ) )'
+
+          ### DEBUG
+          @r.eval 'nam <- names(df)'
+          LOGGER.debug @r.nam.to_a.join(", ")
+          
           @r.eval 'names(q) = names(df)[2:length(names(df))]'
+          
+          ### DEBUG
+          @r.eval 'nam <- names(q)'
+          LOGGER.debug @r.nam.to_a.join(", ")
+          
           @r.eval 'pred <- predict(fit, q, interval="confidence")'
           ### End of Model
           
