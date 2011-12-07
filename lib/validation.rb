@@ -1,3 +1,4 @@
+require "yaml"
 module OpenTox
   class Validation
     include OpenTox
@@ -107,6 +108,31 @@ module OpenTox
       end
       table
     end
+    
+    # returns probability-distribution for a given prediction
+    # it takes all predictions into account that have a confidence value that is >= confidence and that have the same predicted value
+    # (minimum 12 predictions with the hightest confidence are selected (even if the confidence is lower than the given param)
+    # 
+    # @param [Float] confidence value (between 0 and 1)
+    # @param [String] predicted value
+    # @param [String,optional] subjectid
+    # @return [Hash] see example
+    #
+    # Example 1:
+    # validation.probabilities(0.3,"active")
+    # -> {:min_confidence=>0.32, :num_predictions=>20, :probs=>{"active"=>0.7, "moderate"=>0.25 "inactive"=>0.05}}
+    # there have been 20 "active" predictions with confidence >= 0.3, 70 percent of them beeing correct
+    #
+    # Example 2:
+    # validation.probabilities(0.8,"active")
+    # -> {:min_confidence=>0.45, :num_predictions=>12, :probs=>{"active"=>0.9, "moderate"=>0.1 "inactive"=>0}}
+    # the given confidence value was to high (i.e. <12 predictions with confidence value >= 0.8)
+    # the top 12 "active" predictions have a min_confidence of 0.45, 90 percent of them beeing correct
+    # 
+    def probabilities( confidence, prediction, subjectid=nil )
+      YAML.load(OpenTox::RestClientWrapper.get(@uri+"/probabilities?prediction="+prediction.to_s+"&confidence="+confidence.to_s,
+        {:subjectid => subjectid, :accept => "application/x-yaml"}))
+    end
   end
   
   class Crossvalidation
@@ -168,6 +194,13 @@ module OpenTox
     def statistics( subjectid=nil )
       Validation.from_cv_statistics( @uri, subjectid )
     end
+    
+    # documentation see OpenTox::Validation.probabilities
+    def probabilities( confidence, prediction, subjectid=nil )
+      YAML.load(OpenTox::RestClientWrapper.get(@uri+"/statistics/probabilities?prediction="+prediction.to_s+"&confidence="+confidence.to_s,
+        {:subjectid => subjectid, :accept => "application/x-yaml"}))
+    end
+    
   end
   
   class ValidationReport
