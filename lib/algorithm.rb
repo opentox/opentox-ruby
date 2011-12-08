@@ -567,8 +567,8 @@ module OpenTox
           sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) }
 
           # Special for SVM regression (not in classification): scale acts
-          acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
-          acts = acts_autoscaler.vs.to_a
+          #acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
+          #acts = acts_autoscaler.vs.to_a
 
           if params[:pc_type]
             props, ids = params[:prop_kernel] ? get_props_pc(params) : [nil, nil]
