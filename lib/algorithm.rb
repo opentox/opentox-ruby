@@ -347,8 +347,8 @@ module OpenTox
           end
 
           prediction = pcr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
-          prediction = nil if (!prediction.nil? && (prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction) )
-          #prediction = nil if (!prediction.nil? && prediction.infinite?)
+          #prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
+          prediction = nil if (!prediction.nil? && prediction.infinite?)
 
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
@@ -375,8 +375,6 @@ module OpenTox
           maxcols = params[:maxcols]
 
           nr_cases, nr_features = get_sizes n_prop
-          maxcols = nr_features if maxcols > nr_features
-
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
           query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
 
@@ -398,7 +396,6 @@ module OpenTox
           data_matrix = pca.data_transformed_matrix
           nr_cases, nr_features = get_sizes data_matrix.to_a
           query_matrix = pca.transform(query_matrix)
-          LOGGER.debug "Reduced by compression, M: #{nr_cases}x#{nr_features}; R: #{query_matrix.size2}"
 
           # Transform y
           acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
@@ -407,72 +404,19 @@ module OpenTox
           
           ### Model
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
-          @r.eval "suppressPackageStartupMessages(library(\"robustbase\"))"
-          @r.eval "outlier_threshold = 0.975"
-
-          # outlier removal -- changes cases; adjust acts accordingly (stop if query is outlier)
-          outliers = []
-          begin
-            LOGGER.debug "Outliers..."
-            @r.q = query_matrix.to_a.flatten
-            @r.odx = data_matrix.to_a.flatten
-            @r.eval "odx <- matrix(odx, #{nr_cases}, #{nr_features}, byrow=T)"
-            @r.eval "odx <- rbind(q,odx)" # query is nr 0 (1) in ruby (R)
-            @r.eval 'mah <- covMcd(odx)$mah' # run mcd alg
-            @r.eval "mah <- pchisq(mah,#{nr_features})"
-            LOGGER.debug("p-values: " + @r.mah.collect{|v| sprintf("%.2f", v)}.join(", "))
-            @r.eval 'outliers <- which(mah>outlier_threshold)'
-            outliers = @r.outliers.to_a.collect{|v| v-2 } # translate to ruby index (-1 for q, -1 due to ruby)
-          rescue Exception => e
-            LOGGER.debug "#{e.class}: #{e.message}"
-            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-          end
-          LOGGER.debug "Detected #{outliers.size} outliers: [#{outliers.join(", ")}]"
-          if (outliers.include?(-1))
-            raise "Query is an outlier."
-          end
-          temp_dm = []; temp_acts = []
-          data_matrix.to_a.each_with_index { |elem, idx| temp_dm << elem unless outliers.include? idx }
-          nr_cases, nr_features = get_sizes temp_dm
-          data_matrix = GSL::Matrix.alloc(temp_dm.flatten, nr_cases, nr_features)
-          acts.each_with_index { |elem, idx| temp_acts << elem unless outliers.include? idx }
-          acts = temp_acts # same nr_features
-
-
-          @r.eval 'fstr <- "y ~ ."'
           @r.x = data_matrix.to_a.flatten
-          @r.y = acts.to_a.flatten
           @r.q = query_matrix.to_a.flatten
+          @r.y = acts.to_a.flatten
 
           @r.eval "x <- matrix(x, #{nr_cases}, #{nr_features}, byrow=T)"
-          @r.eval 'df <- data.frame(y,x)'
-          @r.eval 'idx = rep(T,dim(x)[2])'
+          @r.eval "df <- data.frame(y,x)"
 
+          @r.eval "fstr <- \"y ~ .\""
+          @r.eval "fit <- lm( as.formula(fstr), data=df)"
 
-          # optimize selection of training instances -- changes features; adjust query accordingly
-          begin
-            LOGGER.debug "Best subset..."
-            @r.eval 'suppressPackageStartupMessages(library("leaps"))'
-            @r.eval "allss = summary( regsubsets( as.formula(fstr), data=df, nvmax=#{[ (nr_cases / 3).floor, nr_features ].min}, method=\"exhaustive\") )"
-            @r.eval 'idx = as.vector(allss$which[which.max(allss$adjr2),])'
-            @r.eval 'idx = idx[2:length(idx)]' # remove intercept
-            @r.eval 'intidx = as.integer(idx)'
-          rescue Exception => e
-            LOGGER.debug "#{e.class}: #{e.message}"
-            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-          end
-          LOGGER.debug "Indices: [" + @r.intidx.to_a.join(", ") + "]"
-
-          raise "No features left" if (@r.intidx.to_a.inject{|sum,elem| sum + elem}) == 0
-          
-          
-          # build model on best selection
-          @r.eval 'df <- df[,idx]'
-          @r.eval 'fit <- lm( as.formula(fstr), data=df)'
-          @r.eval 'q <- q[idx]'
-          @r.eval 'q <- data.frame( matrix( q, 1, sum(idx) ) )'
-          @r.eval 'names(q) = names(df)[2:length(names(df))]'
-          @r.eval 'pred <- predict(fit, q, interval="confidence")'
+          @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
+          @r.eval "names(q) = names(df)[2:length(names(df))]"
+          @r.eval "pred <- predict(fit, q, interval=\"confidence\")"
           ### End of Model
           
           point_prediction = (@r.pred.to_a.flatten)[0] # [1] is lwr, [2] upr confidence limit.
@@ -499,10 +443,10 @@ module OpenTox
           n_prop = params[:n_prop].collect
           q_prop = params[:q_prop].collect
           acts = params[:acts].collect
-          maxcols = params[:maxcols]
+          #maxcols = params[:maxcols]
 
           nr_cases, nr_features = get_sizes n_prop
-          maxcols = nr_features if maxcols > nr_features
+          #maxcols = nr_features if maxcols > nr_features
 
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
           query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
@@ -519,83 +463,57 @@ module OpenTox
           data_matrix  = temp.submatrix( 0..(temp.size1-2), nil ).clone # last row: query
           query_matrix = temp.submatrix( (temp.size1-1)..(temp.size1-1), nil ).clone # last row: query
 
-
-          # PCA on data -- changes features; adjust query accordingly
-          LOGGER.debug "PCA..."
-          pca = OpenTox::Transform::PCA.new(data_matrix,0.05,maxcols)
-          data_matrix = pca.data_transformed_matrix
-          nr_cases, nr_features = get_sizes data_matrix.to_a
-          query_matrix = pca.transform(query_matrix)
-          LOGGER.debug "Reduced by compression, M: #{nr_cases}x#{nr_features}; R: #{query_matrix.size2}"
-
-          #LOGGER.debug "AM: DM"
-          #LOGGER.debug "\n" + data_matrix.to_a.collect { |row| row.join ", " }.join("\n")
-          #LOGGER.debug "AM: ACTS"
-          #LOGGER.debug acts.join ", "
-
           # Transform y
           acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
           acts = acts_autoscaler.vs.to_a
           ### End of transform
           
-
+          #LOGGER.debug "AM: DM"
+          #LOGGER.debug "\n" + data_matrix.to_a.collect { |row| row.join ", " }.join("\n")
+          #LOGGER.debug "AM: ACTS"
+          #LOGGER.debug acts.join ", "
+          
           ### Model
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
-          @r.eval 'suppressPackageStartupMessages(library("pls"))'
-          @r.eval 'suppressPackageStartupMessages(library("robustbase"))'
-          @r.eval 'outlier_threshold = 0.975'
+          @r.eval "suppressPackageStartupMessages(library(\"pls\"))"
+
+          @r.q = query_matrix.to_a.flatten
+
+          @r.eval "best <- vector(mode=\"list\", length=5)"
+          @r.eval "best[[1]] = 0" # neighbor size
+          @r.eval "best[[2]] = 0" # best nr components
+          @r.eval "best[[3]] = Inf" # RMSE of best
+          @r.eval "best[[4]] = NULL" # fit of best
+          @r.eval "best[[5]] = -Inf" # R2 of best
 
 
-          # outlier removal -- changes cases; adjust acts accordingly (stop if query is outlier)
-          outliers = []
-          begin
-            LOGGER.debug "Outliers..."
-            @r.q = query_matrix.to_a.flatten
-            @r.odx = data_matrix.to_a.flatten
-            @r.eval "odx <- matrix(odx, #{nr_cases}, #{nr_features}, byrow=T)"
-            @r.eval 'odx <- rbind(q,odx)' # query is nr 0 (1) in ruby (R)
-            @r.eval 'mah <- covMcd(odx)$mah' # run mcd alg
-            @r.eval "mah <- pchisq(mah,#{nr_features})"
-            LOGGER.debug("p-values: " + @r.mah.collect{|v| sprintf("%.2f", v)}.join(", "))
-            @r.eval 'outliers <- which(mah>outlier_threshold)'
-            outliers = @r.outliers.to_a.collect{|v| v-2 } # translate to ruby index (-1 for q, -1 due to ruby)
-          rescue Exception => e
-            LOGGER.debug "#{e.class}: #{e.message}"
-            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-          end
-          LOGGER.debug "Detected #{outliers.size} outliers: [#{outliers.join(", ")}]"
-          if (outliers.include?(-1))
-            raise "Query is an outlier."
-          end
-          temp_dm = []; temp_acts = []
-          data_matrix.to_a.each_with_index { |elem, idx| temp_dm << elem unless outliers.include? idx }
-          nr_cases, nr_features = get_sizes temp_dm
-          data_matrix = GSL::Matrix.alloc(temp_dm.flatten, nr_cases, nr_features)
-          acts.each_with_index { |elem, idx| temp_acts << elem unless outliers.include? idx }
-          acts = temp_acts # same nr_features
-
-
-          # optimize selection of training instances -- changes cases; adjust acts accordingly
-          @r.eval 'best <- vector(mode="list", length=5)'
-          @r.eval 'best[[1]] = 0' # neighbor size
-          @r.eval 'best[[2]] = 0' # best nr components
-          @r.eval 'best[[3]] = Inf' # RMSE of best
-          @r.eval 'best[[4]] = NULL' # fit of best
-          @r.eval 'best[[5]] = -Inf' # R2 of best
-          start_neighbors_size = [6,(data_matrix.size1)].min
+          #for i in (maxcols+1)..(data_matrix.size1)
+          start_neighbors_size = 4
+          raise "Too few neighbors" if start_neighbors_size > data_matrix.size1
           step_size = (data_matrix.size1 < 17) ? 1 : 2
           for current_neighbors_size in (start_neighbors_size..(data_matrix.size1)).step(step_size)
+            # adjust x and y
             @r.x = data_matrix.submatrix(0..(current_neighbors_size-1),nil).to_a.flatten
             @r.y = acts.take(current_neighbors_size).to_a.flatten
             @r.eval "x <- matrix(x, #{current_neighbors_size}, #{nr_features}, byrow=T)"
-            @r.eval 'df <- data.frame(y,x)'
-            @r.eval 'fstr <- "y ~ ."'
-            @r.eval "fit <- mvr( formula = as.formula(fstr), data=df, method = \"kernelpls\", validation = \"LOO\", ncomp=#{[ (current_neighbors_size / 3).floor, nr_features ].min})" # was using: ncomp=#{maxcols}
-            @r.eval 'rmseLoo <- matrix( RMSEP( fit, "CV" )$val )'
-            @r.eval 'r2Loo <- matrix( R2( fit, "CV" )$val )'
+            @r.eval "df <- data.frame(y,x)"
+
+
+            @r.eval "fstr <- \"y ~ .\""
+            @r.eval "fit <- mvr( formula = as.formula(fstr), data=df, method = \"kernelpls\", validation = \"LOO\" )" # was using: ncomp=#{maxcols}
+
+            # get R2s
+            @r.eval "rmseLoo <- matrix( RMSEP( fit, \"CV\" )$val )"
+            #@r.eval "rmseLoo[dim(rmseLoo)[1],] = c(Inf)" 
+            @r.eval "r2Loo <- matrix( R2( fit, \"CV\" )$val )"
             LOGGER.debug "RMSE (internal LOO using #{current_neighbors_size} neighbors): #{@r.rmseLoo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
             #LOGGER.debug "R2 (internal LOO using #{current_neighbors_size} neighbors): #{@r.r2Loo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
-            @r.eval 'ncompLoo <- which( rmseLoo<=quantile(rmseLoo,.1) )[1]' # get min RMSE (10% quantile)
+
+            # get min RMSE (10% quantile)
+            #@r.eval "ncompLoo <- which.min(rmseLoo)"
+            @r.eval "ncompLoo <- which( rmseLoo<=quantile(rmseLoo,.1) )[1]"
+            #LOGGER.debug "Best position: #{@r.ncompLoo.to_i}"
+
             # "Schleppzeiger": values for best position, R-index: 1-nr neighbors, 2-nr components, 3-RMSE, 4-model, 5-R2]
             @r.eval "if ( rmseLoo[ncompLoo] < best[[3]]) { 
               best[[1]] = #{current_neighbors_size}
@@ -604,24 +522,23 @@ module OpenTox
               best[[4]] = fit
               best[[5]] = r2Loo[ncompLoo]
             }"
+
           end
 
+          # Must use plain value ruby array, otherwise rinruby fails
+          @r.eval "best_values = c(best[[1]], best[[2]], best[[3]], best[[5]])" # Ruby-index: 0-nr neighbors, 1-nr components, 2-RMSE, 3-R2
 
-          # build model on best selection
-          @r.eval 'best_values = c(best[[1]], best[[2]], best[[3]], best[[5]])' # Ruby-index: 0-nr neighbors, 1-nr components, 2-RMSE, 3-R2
-                                                                                # Must use plain value ruby array, otherwise rinruby fails
-          if (@r.best_values[1] > 1) 
+          #if (@r.best_values[1] < (@r.best_values[0]-1))
             LOGGER.debug "Model based on #{@r.best_values[0].to_i} neighbors and #{@r.best_values[1].to_i} components, RMSE #{sprintf("%.2f", @r.best_values[2])} R2 #{sprintf("%.2f", @r.best_values[3])}."
-            @r.q = query_matrix.to_a.flatten
             @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
-            @r.eval 'names(q) = names(df)[2:length(names(df))]'
-            @r.eval 'pred <- drop( predict( best[[4]], newdata = q, ncomp=best[[2]] ) )'
+            @r.eval "names(q) = names(df)[2:length(names(df))]"
+            @r.eval "pred <- drop( predict( best[[4]], newdata = q, ncomp=best[[2]] ) )"
             point_prediction = @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
             point_prediction = acts_autoscaler.restore( [ point_prediction ].to_gv )[0] # return restored value of type numeric
-          else
-            LOGGER.debug "No appropriate model found."
-            point_prediction = nil
-          end
+          #else
+          #  LOGGER.debug "No appropriate model found."
+          #  point_prediction = nil
+          #end
           point_prediction
 
 
@@ -830,7 +747,7 @@ module OpenTox
 
           #LOGGER.debug gram_matrix.to_yaml
           @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
-          @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
+          @r.eval "suppressPackageStartupMessages(library('kernlab'))" # this requires R package "kernlab" to be installed
           LOGGER.debug "Setting R data ..."
           # set data
           @r.gram_matrix = gram_matrix.flatten
@@ -892,7 +809,7 @@ module OpenTox
           else
             #LOGGER.debug gram_matrix.to_yaml
             @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
-            @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
+            @r.eval "suppressPackageStartupMessages(library('kernlab'))" # this requires R package "kernlab" to be installed
             LOGGER.debug "Setting R data ..."
             # set data
             @r.n_prop = n_prop.flatten

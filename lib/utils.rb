@@ -168,7 +168,6 @@ module OpenTox
         if descs_uris.size == 0
           raise "Error! Empty set of descriptors. Did you supply one of [geometrical, topological, electronic, constitutional, hybrid] ?"
         end
-        LOGGER.debug "Ambit descriptor URIs: #{descs_uris.join(", ")}"
 
         begin
           smiles = []
