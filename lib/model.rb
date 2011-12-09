@@ -394,7 +394,7 @@ module OpenTox
         params[:training_compound_features_hits] = training_compound_features_hits
 
         sim = eval("#{@similarity_algorithm}(training_features, @compound_features, @p_values, params)")
-        if sim > @min_sim
+        if sim > @min_sim || @max_perc_neighbors
           @activities[training_compound].each do |act|
             @neighbors << {
               :compound => training_compound,

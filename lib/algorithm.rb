@@ -372,6 +372,7 @@ module OpenTox
           n_prop = params[:n_prop].collect
           q_prop = params[:q_prop].collect
           acts = params[:acts].collect
+          sims = params[:sims].collect
           maxcols = params[:maxcols]
 
           nr_cases, nr_features = get_sizes n_prop
@@ -410,7 +411,7 @@ module OpenTox
           @r.eval "suppressPackageStartupMessages(library(\"robustbase\"))"
           @r.eval "outlier_threshold = 0.999"
 
-          # outlier removal -- changes cases; adjust acts accordingly (stop if query is outlier)
+          # outlier removal -- changes cases; adjust acts and sims accordingly (stop if query is outlier)
           outliers = []
           begin
             LOGGER.debug "Outliers..."
@@ -431,17 +432,20 @@ module OpenTox
           if (outliers.include?(-1))
             raise "Query is an outlier."
           end
-          temp_dm = []; temp_acts = []
+          temp_dm = []; temp_acts = []; temp_sims = []
           data_matrix.to_a.each_with_index { |elem, idx| temp_dm << elem unless outliers.include? idx }
           nr_cases, nr_features = get_sizes temp_dm
           data_matrix = GSL::Matrix.alloc(temp_dm.flatten, nr_cases, nr_features)
           acts.each_with_index { |elem, idx| temp_acts << elem unless outliers.include? idx }
           acts = temp_acts # same nr_features
+          sims.each_with_index { |elem, idx| temp_sims << elem unless outliers.include? idx }
+          sims = temp_sims # same nr_features
 
 
           @r.eval 'fstr <- "y ~ ."'
           @r.x = data_matrix.to_a.flatten
           @r.y = acts.to_a.flatten
+          @r.w = sims.to_a.flatten
           @r.q = query_matrix.to_a.flatten
 
           @r.eval "x <- matrix(x, #{nr_cases}, #{nr_features}, byrow=T)"
@@ -449,7 +453,7 @@ module OpenTox
           @r.eval 'idx = rep(T,dim(x)[2])'
 
 
-          # optimize selection of training instances -- changes features; adjust query accordingly
+          # optimize selection features; adjust query accordingly
           begin
             LOGGER.debug "Best subset..."
             @r.eval 'suppressPackageStartupMessages(library("leaps"))'
@@ -475,7 +479,7 @@ module OpenTox
 
           @r.eval 'suppressPackageStartupMessages(library("MASS"))'
           @r.eval 'df <- df[,idx]'
-          @r.eval 'fit <- rlm( as.formula(fstr), data=df, psi = psi.bisquare, method="MM")'
+          @r.eval 'fit <- rlm( as.formula(fstr), data=df, psi = psi.bisquare, method="MM", weights=w, wt.method="case")'
           @r.eval 'q <- q[idx[2:length(idx)]]'
           @r.eval 'q <- data.frame( matrix( q, 1, length(q) ) )'
 
