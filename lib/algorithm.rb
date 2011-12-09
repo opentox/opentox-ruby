@@ -408,7 +408,7 @@ module OpenTox
           ### Model
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
           @r.eval "suppressPackageStartupMessages(library(\"robustbase\"))"
-          @r.eval "outlier_threshold = 0.975"
+          @r.eval "outlier_threshold = 0.999"
 
           # outlier removal -- changes cases; adjust acts accordingly (stop if query is outlier)
           outliers = []
@@ -475,7 +475,7 @@ module OpenTox
 
           @r.eval 'suppressPackageStartupMessages(library("MASS"))'
           @r.eval 'df <- df[,idx]'
-          @r.eval 'fit <- rlm( as.formula(fstr), data=df)'
+          @r.eval 'fit <- rlm( as.formula(fstr), data=df, psi = psi.bisquare)'
           @r.eval 'q <- q[idx[2:length(idx)]]'
           @r.eval 'q <- data.frame( matrix( q, 1, length(q) ) )'
 
