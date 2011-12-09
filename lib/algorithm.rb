@@ -457,7 +457,7 @@ module OpenTox
           begin
             LOGGER.debug "Best subset..."
             @r.eval 'suppressPackageStartupMessages(library("leaps"))'
-            @r.eval "allss = summary( regsubsets( as.formula(fstr), data=df, nvmax=#{[ (nr_cases / 3).floor, nr_features ].min}, method=\"exhaustive\") )"
+            @r.eval "allss = summary( regsubsets( as.formula(fstr), data=df, nvmax=#{[ (nr_cases / 3).floor, nr_features ].min}, method=\"exhaustive\", weights=w) )"
             @r.eval 'idx = as.vector(allss$which[which.max(allss$adjr2),])'
             @r.eval 'idx[1] = T' # enforce intercept
             #@r.eval 'idx = idx[2:length(idx)]' # remove intercept
