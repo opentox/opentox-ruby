@@ -347,8 +347,8 @@ module OpenTox
           end
 
           prediction = mlr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
-          prediction = nil if (!prediction.nil? && (prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction) )
-          #prediction = nil if (!prediction.nil? && prediction.infinite?)
+          #prediction = nil if (!prediction.nil? && (prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction) )
+          prediction = nil if (!prediction.nil? && prediction.infinite?)
 
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
