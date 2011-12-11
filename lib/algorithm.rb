@@ -479,7 +479,7 @@ module OpenTox
 
           @r.eval 'suppressPackageStartupMessages(library("MASS"))'
           @r.eval 'df <- df[,idx]'
-          @r.eval 'fit <- rlm( as.formula(fstr), data=df, psi = psi.bisquare, method="MM", weights=w, wt.method="case")'
+          @r.eval 'fit <- rlm( as.formula(fstr), data=df, psi = psi.bisquare, weights=w, wt.method="case")'
           @r.eval 'q <- q[idx[2:length(idx)]]'
           @r.eval 'q <- data.frame( matrix( q, 1, length(q) ) )'
 
