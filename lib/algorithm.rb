@@ -417,6 +417,7 @@ module OpenTox
             LOGGER.debug "Outliers..."
             @r.q = query_matrix.to_a.flatten
             @r.odx = data_matrix.to_a.flatten
+            @r.y = acts.to_a.flatten
             @r.eval "odx <- matrix(odx, #{nr_cases}, #{nr_features}, byrow=T)"
             @r.eval "odx <- rbind(q,odx)" # query is nr 0 (1) in ruby (R)
             @r.eval 'mah <- covMcd(odx)$mah' # run mcd alg
@@ -424,6 +425,14 @@ module OpenTox
             LOGGER.debug("p-values: " + @r.mah.collect{|v| sprintf("%.2f", v)}.join(", "))
             @r.eval 'outliers <- which(mah>outlier_threshold)'
             outliers = @r.outliers.to_a.collect{|v| v-2 } # translate to ruby index (-1 for q, -1 due to ruby)
+
+            @r.eval 'fqu = matrix(summary(y))[2]'
+            @r.eval 'tqu = matrix(summary(y))[5]'
+            @r.eval 'outliers <- which(y>(tqu+1.5*IQR(y)))' # univariate outliers due to Tukey (http://goo.gl/mwzNH)
+            outliers << @r.outliers.to_a.collect{|v| v-1 } # translate to ruby index (-1 due to ruby)
+            @r.eval 'outliers <- which(y<(fqu-1.5*IQR(y)))'
+            outliers << @r.outliers.to_a.collect{|v| v-1 }
+            outliers.flatten!
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
@@ -440,6 +449,20 @@ module OpenTox
           acts = temp_acts # same nr_features
           sims.each_with_index { |elem, idx| temp_sims << elem unless outliers.include? idx }
           sims = temp_sims # same nr_features
+
+
+          ## one-off
+          #outliers = []
+          #outliers << acts.each_with_index.max[1]
+          #outliers << acts.each_with_index.min[1]
+          #temp_dm = []; temp_acts = []; temp_sims = []
+          #data_matrix.to_a.each_with_index { |elem, idx| temp_dm << elem unless outliers.include? idx }
+          #nr_cases, nr_features = get_sizes temp_dm
+          #data_matrix = GSL::Matrix.alloc(temp_dm.flatten, nr_cases, nr_features)
+          #acts.each_with_index { |elem, idx| temp_acts << elem unless outliers.include? idx }
+          #acts = temp_acts # same nr_features
+          #sims.each_with_index { |elem, idx| temp_sims << elem unless outliers.include? idx }
+          #sims = temp_sims # same nr_features
 
 
           @r.eval 'fstr <- "y ~ ."'
