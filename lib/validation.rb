@@ -67,7 +67,7 @@ module OpenTox
     # @return [String] report uri
     def find_or_create_report( subjectid=nil, waiting_task=nil )
       @report = ValidationReport.find_for_validation(@uri, subjectid) unless @report
-      @report = ValidationReport.create(@uri, subjectid, waiting_task) unless @report
+      @report = ValidationReport.create(@uri, {}, subjectid, waiting_task) unless @report
       @report.uri
     end
     
@@ -229,12 +229,18 @@ module OpenTox
     
     # creates a validation report via validation
     # @param [String] validation uri 
+    # @param [Hash] params addiditonal possible 
+    #               (min_confidence, params={}, min_num_predictions, max_num_predictions)
     # @param [String,optional] subjectid
     # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @return [OpenTox::ValidationReport]
-    def self.create( validation_uri, subjectid=nil, waiting_task=nil )
+    def self.create( validation_uri, params={}, subjectid=nil, waiting_task=nil )
+      params = {} if params==nil
+      raise OpenTox::BadRequestError.new "params is no hash" unless params.is_a?(Hash)
+      params[:validation_uris] = validation_uri
+      params[:subjectid] = subjectid
       uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-validation"],"/report/validation"),
-        { :validation_uris => validation_uri, :subjectid => subjectid }, {}, waiting_task )
+        params, {}, waiting_task )
       ValidationReport.new(uri)
     end
     
@@ -301,15 +307,17 @@ module OpenTox
       uris.size==0 ? nil : AlgorithmComparisonReport.new(uris[-1])
     end
     
-    # creates a crossvalidation report via crossvalidation
+    # creates a algorithm comparison report via crossvalidation uris
     # @param [Hash] crossvalidation uri_hash, see example 
+    # @param [Hash] params addiditonal possible 
+    #               (ttest_significance, ttest_attributes, min_confidence, min_num_predictions, max_num_predictions)
     # @param [String,optional] subjectid
     # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @return [OpenTox::AlgorithmComparisonReport]
     # example for hash:
     # { :lazar-bbrc => [ http://host/validation/crossvalidation/x1, http://host/validation/crossvalidation/x2 ],
     #   :lazar-last => [ http://host/validation/crossvalidation/xy, http://host/validation/crossvalidation/xy ] }
-    def self.create( crossvalidation_uri_hash, subjectid=nil, waiting_task=nil )
+    def self.create( crossvalidation_uri_hash, params={}, subjectid=nil, waiting_task=nil )
       identifier = []
       validation_uris = []
       crossvalidation_uri_hash.each do |id, uris|
@@ -318,8 +326,13 @@ module OpenTox
           validation_uris << uri
         end
       end
+      params = {} if params==nil
+      raise OpenTox::BadRequestError.new "params is no hash" unless params.is_a?(Hash)
+      params[:validation_uris] = validation_uris.join(",")
+      params[:identifier] = identifier.join(",")
+      params[:subjectid] = subjectid
       uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-validation"],"/report/algorithm_comparison"),
-        { :validation_uris => validation_uris.join(","), :identifier => identifier.join(","), :subjectid => subjectid }, {}, waiting_task )
+        params, {}, waiting_task )
       AlgorithmComparisonReport.new(uri)
     end
   end  
