@@ -386,7 +386,7 @@ module OpenTox
           LOGGER.debug "Standardize..."
           temp = data_matrix.vertcat query_matrix
           (0..nr_features-1).each { |i|
-            autoscaler = OpenTox::Transform::LogAutoScale.new(temp.col(i))
+            autoscaler = OpenTox::Transform::AutoScale.new(temp.col(i))
             temp.col(i)[0..nr_cases] = autoscaler.vs
             #query_matrix.col(i)[0] = autoscaler.transform(query_matrix.col(i))[0]
           }
@@ -556,7 +556,7 @@ module OpenTox
           LOGGER.debug "Standardize..."
           temp = data_matrix.vertcat query_matrix
           (0..nr_features-1).each { |i|
-            autoscaler = OpenTox::Transform::LogAutoScale.new(temp.col(i))
+            autoscaler = OpenTox::Transform::AutoScale.new(temp.col(i))
             temp.col(i)[0..nr_cases] = autoscaler.vs
             #query_matrix.col(i)[0] = autoscaler.transform(query_matrix.col(i))[0]
           }
@@ -744,10 +744,6 @@ module OpenTox
           acts = params[:neighbors].collect{ |n| n[:activity].to_f }
           sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) }
 
-          # Special for SVM regression (not in classification): scale acts
-          acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
-          acts = acts_autoscaler.vs.to_a
-
           if params[:pc_type]
             props, ids = params[:prop_kernel] ? get_props_pc(params) : [nil, nil]
             # remove acts and sims of removed neighbors
@@ -770,7 +766,7 @@ module OpenTox
             LOGGER.debug "Standardize..."
             temp = data_matrix.vertcat query_matrix
             (0..nr_features-1).each { |i|
-              autoscaler = OpenTox::Transform::LogAutoScale.new(temp.col(i))
+              autoscaler = OpenTox::Transform::AutoScale.new(temp.col(i))
               temp.col(i)[0..nr_cases] = autoscaler.vs
               }
             data_matrix  = temp.submatrix( 0..(temp.size1-2), nil ).clone # last row: query
