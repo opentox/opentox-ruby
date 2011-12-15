@@ -102,7 +102,7 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :conf_stdev, :prediction_min_max, :pc_type, :max_perc_neighbors
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :conf_stdev, :prediction_min_max, :pc_type, :max_perc_neighbors, :pc
 
       def initialize(uri=nil)
 
@@ -121,6 +121,7 @@ module OpenTox
         @fingerprints = {}
         @value_map = {}
         @prediction_min_max = [] 
+        @pc = {}
 
         @feature_calculation_algorithm = "Substructure.match"
         @similarity_algorithm = "Similarity.tanimoto"
