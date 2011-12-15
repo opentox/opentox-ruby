@@ -157,16 +157,18 @@ module OpenTox
 
       def self.get_props_pc(params)
         ambit_ds_service_uri = "http://apps.ideaconsult.net:8080/ambit2/dataset/"
+        ambit_mopac_model_uri = "http://apps.ideaconsult.net:8080/ambit2/model/69632"
         descs = YAML::load_file( File.join(ENV['HOME'], ".opentox", "config", "ambit_descriptors.yaml") )
         descs_uris = []
         params[:pc_type] = "electronic" if params[:pc_type].nil? # rescue missing pc_type
+        types = params[:pc_type].split(",")
         descs.each { |uri, cat_name| 
-          if cat_name[:category] == params[:pc_type]
+          if types.include? cat_name[:category]
             descs_uris << uri
           end
         }
         if descs_uris.size == 0
-          raise "Error! Empty set of descriptors. Did you supply one of [geometrical, topological, electronic, constitutional, hybrid] ?"
+          raise "Error! Empty set of descriptors. Did you supply one of [geometrical, topological, electronic, constitutional, hybrid, cpsa] ?"
         end
         LOGGER.debug "Ambit descriptor URIs: #{descs_uris.join(", ")}"
 
@@ -186,6 +188,8 @@ module OpenTox
             smi_file.close
             ambit_ds_uri = OpenTox::RestClientWrapper.post(ambit_ds_service_uri, {:file => File.new(smi_file.path)}, {:content_type => "multipart/form-data", :accept => "text/uri-list"} )
             ambit_smiles_uri = OpenTox::RestClientWrapper.get(ambit_ds_uri + "/features", {:accept=> "text/uri-list"} ).chomp
+            ambit_ds_mopac_uri = OpenTox::RestClientWrapper.post(ambit_mopac_model_uri, {:dataset_uri => ambit_ds_uri}, {:accept => "text/uri-list"} ) if types.include? "cpsa"
+            LOGGER.debug "MOPAC dataset: #{ambit_ds_mopac_uri }"
 
             # Get Ambit results
             ambit_result_uri = ambit_ds_uri + "?"
@@ -195,7 +199,8 @@ module OpenTox
               ambit_result_uri += result_uri.split("?")[1] + "&"
               LOGGER.debug "Ambit (#{descs_uris.size}): #{i+1}"
             end
-            ambit_result_uri << ("feature_uris[]=" + ambit_smiles_uri)
+            ambit_result_uri << ("feature_uris[]=" + URI.encode_www_form_component(ambit_smiles_uri))
+            LOGGER.debug "Ambit result: #{ambit_result_uri}"
 
             csv_data = CSV.parse( OpenTox::RestClientWrapper.get(ambit_result_uri, {:accept => "text/csv"}) )
             # see http://snippets.dzone.com/posts/show/3899
@@ -209,6 +214,9 @@ module OpenTox
             headers.delete("SMILES") ; headers.delete("Compound")
             pc_descriptors = {}
             my_smi.zip(my_data) {|a,b| pc_descriptors[a] = b }
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           ensure
             smi_file.unlink
           end
@@ -217,21 +225,31 @@ module OpenTox
           matrix = []
           params[:neighbors].each { |c|
             key = OpenTox::Compound.new(c[:compound]).to_smiles
+            if pc_descriptors[key].nil?
+              LOGGER.debug "WARNING: Training compound key '#{key}' missing in PC data"
+            end
             row = []
             headers.each { |f|
               entry = nil
-              entry = ((pc_descriptors[key][f] == "") ? nil : pc_descriptors[key][f].to_f) if pc_descriptors[key]
+              if pc_descriptors[key]
+                entry = ((pc_descriptors[key][f] == "") ? nil : pc_descriptors[key][f].to_f) 
+              end
               row << entry
             } 
             matrix << row
           }
 
           # build row (query compound)
-          row = []
           key = params[:compound].to_smiles
+          if pc_descriptors[key].nil?
+            LOGGER.debug "WARNING: Query compound key '#{key}' missing in PC data"
+          end
+          row = []
           headers.each { |f|
             entry = nil
-            entry = ((pc_descriptors[key][f] == "") ? nil : pc_descriptors[key][f].to_f) if pc_descriptors[key]
+            if pc_descriptors[key]
+              entry = ((pc_descriptors[key][f] == "") ? nil : pc_descriptors[key][f].to_f) 
+            end
             row << entry
           }
 
@@ -249,6 +267,8 @@ module OpenTox
 
           ids = remove_nils_from_matrix(matrix, row)
           LOGGER.debug "Reduced by nils in matrix, M: #{matrix.size}x#{matrix[0].size}; R: #{row.size}"
+
+          LOGGER.debug matrix.collect { |r| r.join(", ") }.join("\n")
 
           # done
           [[ matrix, row ], ids ]

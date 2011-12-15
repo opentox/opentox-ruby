@@ -451,20 +451,6 @@ module OpenTox
           sims = temp_sims # same nr_features
 
 
-          ## one-off
-          #outliers = []
-          #outliers << acts.each_with_index.max[1]
-          #outliers << acts.each_with_index.min[1]
-          #temp_dm = []; temp_acts = []; temp_sims = []
-          #data_matrix.to_a.each_with_index { |elem, idx| temp_dm << elem unless outliers.include? idx }
-          #nr_cases, nr_features = get_sizes temp_dm
-          #data_matrix = GSL::Matrix.alloc(temp_dm.flatten, nr_cases, nr_features)
-          #acts.each_with_index { |elem, idx| temp_acts << elem unless outliers.include? idx }
-          #acts = temp_acts # same nr_features
-          #sims.each_with_index { |elem, idx| temp_sims << elem unless outliers.include? idx }
-          #sims = temp_sims # same nr_features
-
-
           @r.eval 'fstr <- "y ~ ."'
           @r.x = data_matrix.to_a.flatten
           @r.y = acts.to_a.flatten
