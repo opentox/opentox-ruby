@@ -156,70 +156,25 @@ module OpenTox
       # @return[Array, Array] Props, ids of surviving training compounds
 
       def self.get_props_pc(params)
-        ambit_ds_service_uri = "http://apps.ideaconsult.net:8080/ambit2/dataset/"
-        ambit_mopac_model_uri = "http://apps.ideaconsult.net:8080/ambit2/model/69632"
-        descs = YAML::load_file( File.join(ENV['HOME'], ".opentox", "config", "ambit_descriptors.yaml") )
-        descs_uris = []
-        params[:pc_type] = "electronic" if params[:pc_type].nil? # rescue missing pc_type
-        types = params[:pc_type].split(",")
-        descs.each { |uri, cat_name| 
-          if types.include? cat_name[:category]
-            descs_uris << uri
-          end
-        }
-        if descs_uris.size == 0
-          raise "Error! Empty set of descriptors. Did you supply one of [geometrical, topological, electronic, constitutional, hybrid, cpsa] ?"
-        end
-        LOGGER.debug "Ambit descriptor URIs: #{descs_uris.join(", ")}"
 
         begin
-          smiles = []
-          params[:neighbors].each do |n|
-            smiles << OpenTox::Compound.new(n[:compound]).to_smiles
-          end
-          smiles << params[:compound].to_smiles
 
-          smi_file = Tempfile.open(['pc_ambit', '.csv'])
-          pc_descriptors = nil
-          begin
-            # Create Ambit dataset
-            smi_file.puts( "SMILES\n" )
-            smi_file.puts( smiles.join("\n") )
-            smi_file.close
-            ambit_ds_uri = OpenTox::RestClientWrapper.post(ambit_ds_service_uri, {:file => File.new(smi_file.path)}, {:content_type => "multipart/form-data", :accept => "text/uri-list"} )
-            ambit_smiles_uri = OpenTox::RestClientWrapper.get(ambit_ds_uri + "/features", {:accept=> "text/uri-list"} ).chomp
-            ambit_ds_mopac_uri = OpenTox::RestClientWrapper.post(ambit_mopac_model_uri, {:dataset_uri => ambit_ds_uri}, {:accept => "text/uri-list"} ) if types.include? "cpsa"
-            LOGGER.debug "MOPAC dataset: #{ambit_ds_mopac_uri }"
+          compounds = params[:neighbors].collect { |n| n[:compound] }
+          compounds << params[:compound].uri
+          ambit_result_uri = get_pc_descriptors( { :compounds => compounds, :pc_type => params[:pc_type] } )
 
-            # Get Ambit results
-            ambit_result_uri = ambit_ds_uri + "?"
-            descs_uris.each_with_index do |uri, i|
-              algorithm = OpenTox::Algorithm::Generic.new(uri)
-              result_uri = algorithm.run({:dataset_uri => ambit_ds_uri})
-              ambit_result_uri += result_uri.split("?")[1] + "&"
-              LOGGER.debug "Ambit (#{descs_uris.size}): #{i+1}"
-            end
-            ambit_result_uri << ("feature_uris[]=" + URI.encode_www_form_component(ambit_smiles_uri))
-            LOGGER.debug "Ambit result: #{ambit_result_uri}"
+          csv_data = CSV.parse( OpenTox::RestClientWrapper.get(ambit_result_uri, {:accept => "text/csv"}) )
+          # see http://snippets.dzone.com/posts/show/3899
+          headers = csv_data.shift.map {|i| i.to_s.chomp(" ") }
+          data = csv_data.map {|row| row.map {|cell| cell.to_s.chomp(" ") } }
+          pc_descriptors = data.map {|row| Hash[*headers.zip(row).flatten] }
 
-            csv_data = CSV.parse( OpenTox::RestClientWrapper.get(ambit_result_uri, {:accept => "text/csv"}) )
-            # see http://snippets.dzone.com/posts/show/3899
-            headers = csv_data.shift.map {|i| i.to_s.chomp(" ") }
-            data = csv_data.map {|row| row.map {|cell| cell.to_s.chomp(" ") } }
-            pc_descriptors = data.map {|row| Hash[*headers.zip(row).flatten] }
-
-            # convert to smi-hashed data
-            my_smi = pc_descriptors.collect { |row| row["SMILES"] }
-            my_data = pc_descriptors.each { |row| row.delete("SMILES") }.each { |row| row.delete("Compound") }
-            headers.delete("SMILES") ; headers.delete("Compound")
-            pc_descriptors = {}
-            my_smi.zip(my_data) {|a,b| pc_descriptors[a] = b }
-          rescue Exception => e
-            LOGGER.debug "#{e.class}: #{e.message}"
-            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-          ensure
-            smi_file.unlink
-          end
+          # convert to smi-hashed data
+          my_smi = pc_descriptors.collect { |row| row["SMILES"] }
+          my_data = pc_descriptors.each { |row| row.delete("SMILES") }.each { |row| row.delete("Compound") }
+          headers.delete("SMILES") ; headers.delete("Compound")
+          pc_descriptors = {}
+          my_smi.zip(my_data) {|a,b| pc_descriptors[a] = b }
 
           # build matrix in same order as input neighbors
           matrix = []
@@ -272,6 +227,76 @@ module OpenTox
 
           # done
           [[ matrix, row ], ids ]
+
+        rescue Exception => e
+          LOGGER.debug "#{e.class}: #{e.message}"
+          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+        end
+
+      end
+
+      # Calculates PC descriptors via Ambit -- DO NOT OVERLOAD Ambit.
+      # @param[Hash] Required keys: :compounds, :pc_type
+      # @return[String] Ambit result uri
+      def self.get_pc_descriptors(params)
+
+        begin
+
+          ambit_ds_service_uri = "http://apps.ideaconsult.net:8080/ambit2/dataset/"
+          ambit_mopac_model_uri = "http://apps.ideaconsult.net:8080/ambit2/model/69632"
+          descs = YAML::load_file( File.join(ENV['HOME'], ".opentox", "config", "ambit_descriptors.yaml") )
+          descs_uris = []
+          params[:pc_type] = "electronic,cpsa" if params[:pc_type].nil? # rescue missing pc_type
+          types = params[:pc_type].split(",")
+          descs.each { |uri, cat_name| 
+            if types.include? cat_name[:category]
+              descs_uris << uri
+            end
+          }
+          if descs_uris.size == 0
+            raise "Error! Empty set of descriptors. Did you supply one of [geometrical, topological, electronic, constitutional, hybrid, cpsa] ?"
+          end
+          #LOGGER.debug "Ambit descriptor URIs: #{descs_uris.join(", ")}"
+  
+          begin
+            # Create SMI
+            smiles = []
+            params[:compounds].each do |n|
+              smiles << OpenTox::Compound.new(n).to_smiles
+            end
+            smi_file = Tempfile.open(['pc_ambit', '.csv'])
+            pc_descriptors = nil
+  
+            # Create Ambit dataset
+            smi_file.puts( "SMILES\n" )
+            smi_file.puts( smiles.join("\n") )
+            smi_file.close
+            ambit_ds_uri = OpenTox::RestClientWrapper.post(ambit_ds_service_uri, {:file => File.new(smi_file.path)}, {:content_type => "multipart/form-data", :accept => "text/uri-list"} )
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          ensure
+            smi_file.unlink
+          end
+          ambit_smiles_uri = OpenTox::RestClientWrapper.get(ambit_ds_uri + "/features", {:accept=> "text/uri-list"} ).chomp
+
+          # Calculate 3D for CPSA
+          if types.include? "cpsa"
+            ambit_ds_mopac_uri = OpenTox::RestClientWrapper.post(ambit_mopac_model_uri, {:dataset_uri => ambit_ds_uri}, {:accept => "text/uri-list"} ) 
+            LOGGER.debug "MOPAC dataset: #{ambit_ds_mopac_uri }"
+          end
+  
+          # Get Ambit results
+          ambit_result_uri = ambit_ds_uri + "?"
+          descs_uris.each_with_index do |uri, i|
+            algorithm = OpenTox::Algorithm::Generic.new(uri)
+            result_uri = algorithm.run({:dataset_uri => ambit_ds_uri})
+            ambit_result_uri += result_uri.split("?")[1] + "&"
+            LOGGER.debug "Ambit (#{descs_uris.size}): #{i+1}"
+          end
+          ambit_result_uri << ("feature_uris[]=" + URI.encode_www_form_component(ambit_smiles_uri))
+          LOGGER.debug "Ambit result: #{ambit_result_uri}"
+          ambit_result_uri
 
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
