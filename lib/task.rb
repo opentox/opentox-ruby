@@ -252,6 +252,8 @@ module OpenTox
       check_state
       while self.running? or self.queued?
         sleep dur
+        #LOGGER.debug "dv ---------------- dur: '#{dur}'"
+        dur = dur*2 unless dur>=300.0 
         load_metadata 
         # if another (sub)task is waiting for self, set progress accordingly 
         waiting_task.progress(@metadata[OT.percentageCompleted].to_f) if waiting_task
