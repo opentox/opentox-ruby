@@ -121,7 +121,6 @@ module OpenTox
         @fingerprints = {}
         @value_map = {}
         @prediction_min_max = [] 
-        @pc = {}
 
         @feature_calculation_algorithm = "Substructure.match"
         @similarity_algorithm = "Similarity.tanimoto"
@@ -133,6 +132,7 @@ module OpenTox
         @conf_stdev = false
         @pc_type = nil
         @max_perc_neighbors = nil
+        @pc = {}
       end
 
       # Get URIs of all lazar models
@@ -184,12 +184,13 @@ module OpenTox
         lazar.prediction_min_max = hash["prediction_min_max"] if hash["prediction_min_max"]
         lazar.pc_type = hash["pc_type"] if hash["pc_type"]
         lazar.max_perc_neighbors = hash["max_perc_neighbors"] if hash["max_perc_neighbors"]
+        lazar.pc = hash["pc"] if hash["pc"]
 
         lazar
       end
 
         def to_json
-        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :min_sim => @min_sim, :subjectid => @subjectid, :prop_kernel => @prop_kernel, :value_map => @value_map, :nr_hits => @nr_hits, :conf_stdev => @conf_stdev, :prediction_min_max => @prediction_min_max, :pc_type => @pc_type, :max_perc_neighbors => @max_perc_neighbors})
+        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :min_sim => @min_sim, :subjectid => @subjectid, :prop_kernel => @prop_kernel, :value_map => @value_map, :nr_hits => @nr_hits, :conf_stdev => @conf_stdev, :prediction_min_max => @prediction_min_max, :pc_type => @pc_type, :max_perc_neighbors => @max_perc_neighbors, :pc => @pc})
       end
 
       def run( params, accept_header=nil, waiting_task=nil )
