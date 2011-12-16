@@ -17,7 +17,8 @@ module OpenTox
         ds = OpenTox::Dataset.find(params[:dataset_uri])
         compounds = ds.compounds.collect
         ambit_result_uri = get_pc_descriptors( { :compounds => compounds, :pc_type => params[:pc_type] } )
-        csv_data = CSV.parse( OpenTox::RestClientWrapper.get(ambit_result_uri2, {:accept => "text/csv"}) )
+        LOGGER.debug "Ambit result uri: '#{ambit_result_uri}'"
+        csv_data = CSV.parse( OpenTox::RestClientWrapper.get(ambit_result_uri, {:accept => "text/csv"}) )
 
         index_ambit_uri = csv_data[0].index("Compound")
         csv_data.map {|i| i.delete_at(index_ambit_uri)}
@@ -192,6 +193,9 @@ module OpenTox
       p_sum 
     end
 
+
+    # neighbors
+
     module Neighbors
 
       # Calculate the propositionalization matrix (aka instantiation matrix) via fingerprints.
@@ -278,6 +282,75 @@ module OpenTox
       end
 
     end
+
+
+
+
+    # Similarity calculations
+    module Similarity
+
+      # Tanimoto similarity
+      # @param [Array] features_a Features of first compound
+      # @param [Array] features_b Features of second compound
+      # @param [optional, Hash] weights Weights for all features
+      # @param [optional, Hash] params Keys: `:training_compound, :compound, :training_compound_features_hits, :nr_hits, :compound_features_hits` are required
+      # @return [Float] (Weighted) tanimoto similarity
+      def self.tanimoto(features_a,features_b,weights=nil,params=nil)
+        common_features = features_a & features_b
+        all_features = (features_a + features_b).uniq
+        #LOGGER.debug "dv --------------- common: #{common_features}, all: #{all_features}"
+        if common_features.size > 0
+          if weights
+            #LOGGER.debug "nr_hits: #{params[:nr_hits]}"
+            if !params.nil? && params[:nr_hits]
+              params[:weights] = weights
+              params[:mode] = "min"
+              params[:features] = common_features
+              common_p_sum = Algorithm.p_sum_support(params)
+              params[:mode] = "max"
+              params[:features] = all_features
+              all_p_sum = Algorithm.p_sum_support(params)
+            else
+              common_p_sum = 0.0
+              common_features.each{|f| common_p_sum += weights[f]}
+              all_p_sum = 0.0
+              all_features.each{|f| all_p_sum += weights[f]}
+            end
+            #LOGGER.debug "common_p_sum: #{common_p_sum}, all_p_sum: #{all_p_sum}, c/a: #{common_p_sum/all_p_sum}"
+            common_p_sum/all_p_sum
+          else
+            #LOGGER.debug "common_features : #{common_features}, all_features: #{all_features}, c/a: #{(common_features.size/all_features.size).to_f}"
+            common_features.size.to_f/all_features.size.to_f
+          end
+        else
+          0.0
+        end
+      end
+
+      # Euclidean similarity
+      # @param [Hash] properties_a Properties of first compound
+      # @param [Hash] properties_b Properties of second compound
+      # @param [optional, Hash] weights Weights for all properties
+      # @return [Float] (Weighted) euclidean similarity
+      def self.euclidean(properties_a,properties_b,weights=nil)
+        common_properties = properties_a.keys & properties_b.keys
+        if common_properties.size > 1
+          dist_sum = 0
+          common_properties.each do |p|
+            if weights
+              dist_sum += ( (properties_a[p] - properties_b[p]) * weights[p] )**2
+            else
+              dist_sum += (properties_a[p] - properties_b[p])**2
+            end
+          end
+          1/(1+Math.sqrt(dist_sum))
+        else
+          0.0
+        end
+      end
+
+    end
+
 
   end
 
