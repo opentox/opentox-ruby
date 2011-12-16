@@ -5,6 +5,8 @@ R = nil
 require "rinruby" 
 require "statsample"
 require 'uri'
+require 'utils.rb'
+
 
 module OpenTox
 
