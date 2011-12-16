@@ -704,7 +704,7 @@ module OpenTox
 
             # Restore
             prediction = acts_autoscaler.restore( [ prediction ].to_gv )[0]
-            prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
+            prediction = nil if prediction.infinite? 
             LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
             params[:conf_stdev] = false if params[:conf_stdev].nil?
             confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
