@@ -319,7 +319,7 @@ module OpenTox
           row = book.row(i)
           value_maps = detect_new_values(row, value_maps)
           value_maps.each_with_index { |vm,j|
-            if vm.size > 5 # 5 is the maximum nr of classes supported by Fminer.
+            if vm.size > 3 # 5 is the maximum nr of classes supported by Fminer.
               regression_features[j]=true 
             else
               regression_features[j]=false
