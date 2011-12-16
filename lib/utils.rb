@@ -200,11 +200,12 @@ module OpenTox
 
       # Calculate the propositionalization matrix (aka instantiation matrix) via fingerprints.
       # Same for the vector describing the query compound.
-      # @param[Hash] Required keys: :neighbors, compound, features, nr_hits, fingerprints, p_values
+      # @param[Hash] Required keys: :neighbors, :compound, :features, :nr_hits, :fingerprints, :p_values
+
       def self.get_props_fingerprints (params)
-        matrix = Array.new
+        matrix = []
         begin 
-          
+
           # neighbors
           params[:neighbors].each do |n|
             n = n[:compound]
@@ -225,7 +226,7 @@ module OpenTox
             end
             matrix << row if row_good
           end
-      
+
           row = []
           params[:features].each do |f|
             if params[:nr_hits]
@@ -236,7 +237,8 @@ module OpenTox
             end
           end
         rescue Exception => e
-          LOGGER.debug "get_props_fingerprints failed with '" + $! + "'"
+          LOGGER.debug "#{e.class}: #{e.message}"
+          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
         [ matrix, row ]
       end

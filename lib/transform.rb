@@ -22,20 +22,6 @@ module OpenTox
           end
         end
 
-        # @param [GSL::Vector] values to transform.
-        # @return [GSL::Vector] transformed values.
-        def transform values
-          begin
-            raise "Cannot transform, values empty." if values.size==0
-            vs = values.clone
-            vs = mvlog(vs)
-            @autoscaler.transform(vs)
-          rescue Exception => e
-            LOGGER.debug "#{e.class}: #{e.message}"
-            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-          end
-        end
-
         # @param [GSL::Vector] values to restore.
         # @return [GSL::Vector] transformed values.
         def restore values

@@ -102,7 +102,7 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :conf_stdev, :prediction_min_max
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :conf_stdev, :prediction_min_max, :max_perc_neighbors
 
       def initialize(uri=nil)
 
@@ -130,6 +130,7 @@ module OpenTox
         @min_sim = 0.3
         @prop_kernel = false
         @conf_stdev = false
+        @max_perc_neighbors = nil
 
       end
 
@@ -180,11 +181,13 @@ module OpenTox
         lazar.nr_hits = hash["nr_hits"] if hash["nr_hits"]
         lazar.conf_stdev = hash["conf_stdev"] if hash["conf_stdev"]
         lazar.prediction_min_max = hash["prediction_min_max"] if hash["prediction_min_max"]
+        lazar.max_perc_neighbors = hash["max_perc_neighbors"] if hash["max_perc_neighbors"]
+
         lazar
       end
 
       def to_json
-        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :min_sim => @min_sim, :subjectid => @subjectid, :prop_kernel => @prop_kernel, :value_map => @value_map, :nr_hits => @nr_hits, :conf_stdev => @conf_stdev, :prediction_min_max => @prediction_min_max})
+        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :min_sim => @min_sim, :subjectid => @subjectid, :prop_kernel => @prop_kernel, :value_map => @value_map, :nr_hits => @nr_hits, :conf_stdev => @conf_stdev, :prediction_min_max => @prediction_min_max, :max_perc_neighbors => @max_perc_neighbors})
       end
 
       def run( params, accept_header=nil, waiting_task=nil )
@@ -266,6 +269,7 @@ module OpenTox
         unless database_activity(subjectid) # adds database activity to @prediction_dataset
 
           neighbors
+
           prediction = eval("#{@prediction_algorithm} ( { :neighbors => @neighbors, 
                                                           :compound => @compound,
                                                           :features => @features, 
@@ -362,9 +366,17 @@ module OpenTox
         @fingerprints.keys.each do |training_compound| # AM: access all compounds
           add_neighbor @fingerprints[training_compound].keys, training_compound
         end
+
+        if @max_perc_neighbors 
+          @neighbors = @neighbors.sort { |a,b| a[:similarity] <=> b[:similarity] }.reverse # order by descending sim (best neighbors first)
+          nr_neighbors = (@fingerprints.size.to_f * @max_perc_neighbors / 100).ceil
+          LOGGER.debug "Maximally #{nr_neighbors} neighbors (=#{@max_perc_neighbors}% of dataset) out of actually #{@neighbors.size} neighbors."
+          @neighbors = @neighbors.take nr_neighbors
+        end
+        
       end
 
-      # Adds a neighbor to @neighbors if it passes the similarity threshold.
+      # Adds a neighbor to @neighbors if it passes the similarity threshold
       def add_neighbor(training_features, training_compound)
         compound_features_hits = {}
         training_compound_features_hits = {}
