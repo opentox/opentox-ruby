@@ -215,5 +215,87 @@ module OpenTox
 
       end
 
+
+      # Singular Value Decomposition
+      # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
+      class SVD
+        attr_accessor :data_matrix, :compression, :data_transformed_matrix, :uk, :vk
+
+        # Creates a transformed dataset as GSL::Matrix.
+        #
+        # @param [GSL::Matrix] Data matrix
+        # @param [Float] Compression ratio from [0,1], default 0.20
+        # @return [GSL::Matrix] Data transformed matrix
+
+        def initialize data_matrix, compression=0.20
+          begin
+            @data_matrix = data_matrix.clone
+            @compression = compression
+            @uk = nil
+            @vk = nil
+            @eigk = nil
+
+            # Compute the SVD Decomposition
+            # vt is *not* the transpose of V here, but simply V (see http://goo.gl/mm2xz)
+            u, vt, s = data_matrix.SV_decomp 
+            
+            # Determine cutoff index
+            s2 = s.mul(s) ; s2_sum = s2.sum
+            s2_run = 0
+            k = s2.size - 1
+            s2.to_a.reverse.each { |v| 
+              s2_run += v
+              frac = s2_run / s2_sum
+              break if frac > compression
+              k -= 1
+            }
+            k += 1 if k == 0 # avoid uni-dimensional (always cos sim of 1)
+            
+            # Take the 2-rank approximation of the Matrix
+            #   - Take first k columns of u
+            #   - Take first k columns of vt
+            #   - Take the first k eigenvalues
+            @uk = u.submatrix(nil, (0..k)) # used to transform column format data
+            @vk = vt.submatrix(nil, (0..k)) # used to transform row format data
+            s = GSL::Matrix.diagonal(s)
+            @eigk_inv = s.submatrix((0..k), (0..k)).inv
+
+            # Transform data
+            @data_transformed_matrix = @data_matrix * @vk * @eigk_inv
+            @data_transformed_matrix
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          end
+        end
+
+
+        # Transforms data instance (1 row) to feature space found by SVD.
+        #
+        # @param [GSL::Matrix] Data matrix (1 x m).
+        # @return [GSL::Matrix] Transformed data matrix.
+        def transform_instance values
+          begin
+            values * @vk * @eigk_inv
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          end
+        end
+
+        # Transforms data feature (1 column) to feature space found by SVD.
+        #
+        # @param [GSL::Matrix] Data matrix (1 x n).
+        # @return [GSL::Matrix] Transformed data matrix.
+        def transform_feature values
+          begin
+            values * @uk * @eigk_inv
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          end
+        end
+      end
+
     end
 end

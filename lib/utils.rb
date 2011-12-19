@@ -367,11 +367,14 @@ module OpenTox
             b << properties_b[p]
           end
 
-          a.to_gv.dot(b.to_gv) / (a.to_gv.norm * b.to_gv.norm)
-
+          self.cosine_num a.to_gv, b.to_gv
         else
           0.0
         end
+      end
+
+      def self.cosine_num(a, b)
+        a.dot(b) / (a.norm * b.norm)
       end
 
     end
