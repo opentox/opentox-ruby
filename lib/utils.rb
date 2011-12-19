@@ -351,6 +351,29 @@ module OpenTox
         end
       end
 
+      # Cosine similarity
+      # @param [Hash] properties_a Properties of first compound
+      # @param [Hash] properties_b Properties of second compound
+      # @return [Float] (Weighted) euclidean similarity
+      def self.cosine(properties_a,properties_b,weights=nil)
+        
+        common_properties = properties_a.keys & properties_b.keys
+
+        if common_properties.size > 1
+
+          a = []; b = []
+          common_properties.each do |p|
+            a << properties_a[p]
+            b << properties_b[p]
+          end
+
+          a.to_gv.dot(b.to_gv) / (a.to_gv.norm * b.to_gv.norm)
+
+        else
+          0.0
+        end
+      end
+
     end
 
 
