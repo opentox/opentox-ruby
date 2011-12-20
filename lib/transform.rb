@@ -219,7 +219,7 @@ module OpenTox
       # Singular Value Decomposition
       # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
       class SVD
-        attr_accessor :data_matrix, :compression, :data_transformed_matrix, :uk, :vk
+        attr_accessor :data_matrix, :compression, :data_transformed_matrix, :uk, :vk, :eigk, :eigk_inv
 
         # Creates a transformed dataset as GSL::Matrix.
         #
@@ -231,12 +231,9 @@ module OpenTox
           begin
             @data_matrix = data_matrix.clone
             @compression = compression
-            @uk = nil
-            @vk = nil
-            @eigk = nil
 
-            # Compute the SVD Decomposition
-            # vt is *not* the transpose of V here, but simply V (see http://goo.gl/mm2xz)
+            # Compute the SV Decomposition X=USV
+            # vt is *not* the transpose of V here, but V itself (see http://goo.gl/mm2xz)!
             u, vt, s = data_matrix.SV_decomp 
             
             # Determine cutoff index
@@ -251,18 +248,19 @@ module OpenTox
             }
             k += 1 if k == 0 # avoid uni-dimensional (always cos sim of 1)
             
-            # Take the 2-rank approximation of the Matrix
+            # Take the k-rank approximation of the Matrix
             #   - Take first k columns of u
             #   - Take first k columns of vt
             #   - Take the first k eigenvalues
             @uk = u.submatrix(nil, (0..k)) # used to transform column format data
             @vk = vt.submatrix(nil, (0..k)) # used to transform row format data
             s = GSL::Matrix.diagonal(s)
-            @eigk_inv = s.submatrix((0..k), (0..k)).inv
+            @eigk = s.submatrix((0..k), (0..k))
+            @eigk_inv = @eigk.inv
 
             # Transform data
-            @data_transformed_matrix = @data_matrix * @vk * @eigk_inv
-            @data_transformed_matrix
+            @data_transformed_matrix = @data_matrix * @vk * @eigk_inv # = @uk for all SVs
+
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
@@ -282,6 +280,7 @@ module OpenTox
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
         end
+        alias :transform :transform_instance # make this the default (see PCA interface)
 
         # Transforms data feature (1 column) to feature space found by SVD.
         #
@@ -295,6 +294,22 @@ module OpenTox
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
         end
+
+
+        # Restores data in the original feature space (possibly with compression loss).
+        #
+        # @param [GSL::Matrix] Transformed data matrix.
+        # @return [GSL::Matrix] Data matrix.
+        def restore
+          begin 
+            @data_transformed_matrix * @eigk * @vk.transpose  # reverse svd
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          end
+        end
+
+
       end
 
     end
