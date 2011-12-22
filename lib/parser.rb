@@ -347,7 +347,7 @@ module OpenTox
           row = split_row(row)
           value_maps = detect_new_values(row, value_maps)
           value_maps.each_with_index { |vm,j|
-            if vm.size > 5 # 5 is the maximum nr of classes supported by Fminer.
+            if vm.size > 3 # max 3 classes.
               regression_features[j]=true 
             else
               regression_features[j]=false
@@ -417,7 +417,9 @@ module OpenTox
         @duplicates[compound.inchi] << smiles+", "+row.join(", ")
 
         row.each_index do |i|
+
           value = row[i]
+          raise "Data contains missing values" if value.size == 0
           feature = @features[i]
 
           type = nil
@@ -456,7 +458,7 @@ module OpenTox
       end
 
       def split_row(row)
-        row.chomp.gsub(/["']/,'').split(/\s*[,;\t]\s*/) # remove quotes
+        row.chomp.gsub(/["']/,'').split(/\s*[,;\t]\s*/,-1) # -1: do not skip empty cells
       end
 
     end
