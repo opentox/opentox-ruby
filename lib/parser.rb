@@ -330,6 +330,7 @@ module OpenTox
         2.upto(book.last_row) { |i| 
           row = book.row(i)
           raise "Entry has size #{row.size}, different from headers (#{headers.size})" if row.size != headers.size
+          LOGGER.warn "Row has #{row.count("")} missing values" if row.include? ""
           add_values row, regression_features
         }
         warnings
@@ -361,6 +362,7 @@ module OpenTox
         input.each { |row| 
           row = split_row(row)
           raise "Entry has size #{row.size}, different from headers (#{headers.size})" if row.size != headers.size
+          LOGGER.warn "Row has #{row.count("")} missing values" if row.include? ""
           add_values row, regression_features
         }
         warnings
@@ -426,7 +428,7 @@ module OpenTox
         row.each_index do |i|
 
           value = row[i]
-          LOGGER.warn "Data contains missing values" if value.size == 0 # String is empty
+          #LOGGER.warn "Missing values for #{smiles}" if value.size == 0 # String is empty
           feature = @features[i]
 
           type = feature_type(value) # May be NIL
