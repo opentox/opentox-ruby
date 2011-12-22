@@ -429,14 +429,17 @@ module OpenTox
           LOGGER.warn "Data contains missing values" if value.size == 0 # String is empty
           feature = @features[i]
 
-          type = feature_type(value)
-          if (regression_features[i])
-            if type != OT.NumericFeature # e.g. NIL or STRING
-              LOGGER.warn "Expected numeric values"
-            end
-          elsif type != nil
-            type = OT.NominalFeature
-          end
+          type = feature_type(value) # May be NIL
+
+          #if (regression_features[i]) # Number should be treated as numeric!
+          #  if type != OT.NumericFeature # e.g. NIL or STRING
+          #    LOGGER.warn "Expected numeric values"
+          #  end
+          #elsif type != nil  # Number should be treated as nominal!
+          #  type = OT.NominalFeature
+          #end
+
+          type = OT.NominalFeature unless (type.nil? || regression_features[i])
           @feature_types[feature] << type unless type.nil?
 
           val = nil
