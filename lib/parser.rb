@@ -329,7 +329,7 @@ module OpenTox
         }
         2.upto(book.last_row) { |i| 
           row = book.row(i)
-          raise "Entry has size different from headers" if row.size != headers.size
+          raise "Entry has size #{row.size}, different from headers (#{headers.size})" if row.size != headers.size
           add_values row, regression_features
         }
         warnings
@@ -360,7 +360,7 @@ module OpenTox
         }
         input.each { |row| 
           row = split_row(row)
-          raise "Entry has size different from headers" if row.size != headers.size
+          raise "Entry has size #{row.size}, different from headers (#{headers.size})" if row.size != headers.size
           add_values row, regression_features
         }
         warnings
@@ -399,6 +399,7 @@ module OpenTox
       end
 
       def add_features(row)
+        row=row.collect
         row.shift  # get rid of smiles entry
         row.each do |feature_name|
           feature_uri = File.join(@dataset.uri,"feature",URI.encode(feature_name))
