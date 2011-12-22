@@ -356,10 +356,24 @@ module OpenTox
 
       # Find neighbors and store them as object variable, access all compounds for that.
       def neighbors
+        # Calculation of needed values for query compound
         @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
+        
+        # Adding fingerprint of query compound with features and values(p_value*nr_hits)
+        @compound_fingerprints = {}
+        @compound_features.each do |feature, value| # value is nil if "Substructure.match"
+          LOGGER.debug "dv ----------- feature #{feature}"
+          if @nr_hits
+            @compound_fingerprints[feature] = @p_values[feature] * value
+          else
+            @compound_fingerprints[feature] = @p_values[feature]
+          end
+          LOGGER.debug "dv ---------- value #{@compound_fingerprints[feature]}"
+        end
+
         @neighbors = []
         @fingerprints.keys.each do |training_compound| # AM: access all compounds
-          add_neighbor @fingerprints[training_compound].keys, training_compound
+          add_neighbor @fingerprints[training_compound], training_compound
         end
 
         if @max_perc_neighbors 
@@ -372,26 +386,14 @@ module OpenTox
       end
 
       # Adds a neighbor to @neighbors if it passes the similarity threshold
-      def add_neighbor(training_features, training_compound)
-        compound_features_hits = {}
-        training_compound_features_hits = {}
-        if @nr_hits
-          compound_features_hits = @compound.match_hits(@compound_features)
-          training_compound_features_hits = @fingerprints[training_compound]
-          #LOGGER.debug "dv ------------ training_compound_features_hits:#{training_compound_features_hits.class}  #{training_compound_features_hits}"
-        end
-        params = {}
-        params[:nr_hits] = @nr_hits
-        params[:compound_features_hits] = compound_features_hits
-        params[:training_compound_features_hits] = training_compound_features_hits
-
-        sim = eval("#{@similarity_algorithm}(training_features, @compound_features, @p_values, params)")
+      def add_neighbor(training_fingerprints, training_compound)
+        sim = eval("#{@similarity_algorithm}(training_fingerprints, @compound_fingerprints)")
         if sim > @min_sim
           @activities[training_compound].each do |act|
             @neighbors << {
               :compound => training_compound,
               :similarity => sim,
-              :features => training_features,
+              :features => training_fingerprints.keys,
               :activity => act
             }
           end

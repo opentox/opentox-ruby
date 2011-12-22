@@ -757,7 +757,6 @@ module OpenTox
         LOGGER.debug "Local SVM (Weighted Tanimoto Kernel)."
         neighbor_matches = params[:neighbors].collect{ |n| n[:features] } # URIs of matches
         gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
-
         prediction = nil
         if Algorithm::zero_variance? acts
           prediction = acts[0]
@@ -769,13 +768,13 @@ module OpenTox
             # upper triangle
             ((i+1)..(neighbor_matches.length-1)).each do |j|
               neighbor_j_hits= params[:fingerprints][params[:neighbors][j][:compound]]
-              sim_params = {}
-              if params[:nr_hits]
-                sim_params[:nr_hits] = true
-                sim_params[:compound_features_hits] = neighbor_i_hits
-                sim_params[:training_compound_features_hits] = neighbor_j_hits
-              end
-              sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values], sim_params)")
+              #sim_params = {}
+              #if params[:nr_hits]
+              #  sim_params[:nr_hits] = true
+              #  sim_params[:compound_features_hits] = neighbor_i_hits
+              #  sim_params[:training_compound_features_hits] = neighbor_j_hits
+              #end
+              sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values])")
               gram_matrix[i][j] = sim
               gram_matrix[j] = [] unless gram_matrix[j] 
               gram_matrix[j][i] = gram_matrix[i][j] # lower triangle
@@ -899,6 +898,14 @@ module OpenTox
       def self.match(compound,features)
         compound.match(features)
       end
+      
+      # Substructure matching with number of non-unique hits
+      # @param [OpenTox::Compound] compound Compound
+      # @param [Array] features Array with Smarts strings
+      # @return [Hash] Hash with matching Smarts and number of hits 
+      def self.match_hits(compound,features)
+        compound.match_hits(features)
+      end  
     end
 
     module Dataset

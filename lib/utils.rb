@@ -5,11 +5,9 @@ module OpenTox
 
   module Algorithm
 
-    # Calculate the propositionalization matrix (aka instantiation matrix) via physico-chemical descriptors.
-    # Same for the vector describing the query compound.
-    # The third argument takes a string from {"geometrical", "topological", "electronic", "constitutional", "hybrid" } as in ambit_descriptors.yaml
+    # Calculate physico-chemical descriptors.
     # @param[Hash] Required keys: :dataset_uri, :pc_type
-    # @return[Array, Array] Props, ids of surviving training compounds
+    # @return[String] dataset uri
 
     def self.pc_descriptors(params)
 
@@ -17,6 +15,7 @@ module OpenTox
         ds = OpenTox::Dataset.find(params[:dataset_uri])
         compounds = ds.compounds.collect
         ambit_result_uri = get_pc_descriptors( { :compounds => compounds, :pc_type => params[:pc_type] } )
+        #ambit_result_uri = "http://apps.ideaconsult.net:8080/ambit2/dataset/987103?feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Ffeature%2F4276789&feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Fmodel%2F16%2Fpredicted" # for testing
         LOGGER.debug "Ambit result uri: '#{ambit_result_uri}'"
         csv_data = CSV.parse( OpenTox::RestClientWrapper.get(ambit_result_uri, {:accept => "text/csv"}) )
 
@@ -180,20 +179,6 @@ module OpenTox
       max
     end
     
-    # Returns Support value of an fingerprint
-    # @param [Hash] params Keys: `:compound_features_hits, :weights, :training_compound_features_hits, :features, :nr_hits:, :mode` are required
-    # return [Numeric] Support value 
-    def self.p_sum_support(params)
-      p_sum = 0.0
-        params[:features].each{|f|
-        compound_hits = params[:compound_features_hits][f]
-        neighbor_hits = params[:training_compound_features_hits][f] 
-        p_sum += eval("(Algorithm.gauss(params[:weights][f]) * ([compound_hits, neighbor_hits].compact.#{params[:mode]}))")
-      }
-      p_sum 
-    end
-
-
     # neighbors
 
     module Neighbors
@@ -292,38 +277,18 @@ module OpenTox
     module Similarity
 
       # Tanimoto similarity
-      # @param [Array] features_a Features of first compound
-      # @param [Array] features_b Features of second compound
-      # @param [optional, Hash] weights Weights for all features
-      # @param [optional, Hash] params Keys: `:training_compound, :compound, :training_compound_features_hits, :nr_hits, :compound_features_hits` are required
+      # @param [Hash] fingerprints_a Features and values of first compound
+      # @param [Hash] fingerprints_b Features and values of second compound
       # @return [Float] (Weighted) tanimoto similarity
-      def self.tanimoto(features_a,features_b,weights=nil,params=nil)
-        common_features = features_a & features_b
-        all_features = (features_a + features_b).uniq
-        #LOGGER.debug "dv --------------- common: #{common_features}, all: #{all_features}"
+      def self.tanimoto(fingerprints_a,fingerprints_b,weights=nil,params=nil)
+        common_features = fingerprints_a.keys & fingerprints_b.keys
+        all_features = (fingerprints_a.keys + fingerprints_b.keys).uniq
         if common_features.size > 0
-          if weights
-            #LOGGER.debug "nr_hits: #{params[:nr_hits]}"
-            if !params.nil? && params[:nr_hits]
-              params[:weights] = weights
-              params[:mode] = "min"
-              params[:features] = common_features
-              common_p_sum = Algorithm.p_sum_support(params)
-              params[:mode] = "max"
-              params[:features] = all_features
-              all_p_sum = Algorithm.p_sum_support(params)
-            else
-              common_p_sum = 0.0
-              common_features.each{|f| common_p_sum += weights[f]}
-              all_p_sum = 0.0
-              all_features.each{|f| all_p_sum += weights[f]}
-            end
-            #LOGGER.debug "common_p_sum: #{common_p_sum}, all_p_sum: #{all_p_sum}, c/a: #{common_p_sum/all_p_sum}"
-            common_p_sum/all_p_sum
-          else
-            #LOGGER.debug "common_features : #{common_features}, all_features: #{all_features}, c/a: #{(common_features.size/all_features.size).to_f}"
-            common_features.size.to_f/all_features.size.to_f
-          end
+          common_p_sum = 0.0
+          common_features.each{|f| common_p_sum += [fingerprints_a[f],fingerprints_b[f]].compact.min}
+          all_p_sum = 0.0
+          all_features.each{|f| all_p_sum += [fingerprints_a[f],fingerprints_b[f]].compact.max}
+          common_p_sum/all_p_sum
         else
           0.0
         end
