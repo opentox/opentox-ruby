@@ -311,7 +311,8 @@ module OpenTox
       # @return [OpenTox::Dataset] Dataset object with Excel data
       def load_spreadsheet(book)
         book.default_sheet = 0
-        add_features book.row(1)
+        headers = book.row(1)
+        add_features = headers
         value_maps = Array.new
         regression_features=Array.new
 
@@ -327,7 +328,9 @@ module OpenTox
           }
         }
         2.upto(book.last_row) { |i| 
-          add_values book.row(i), regression_features
+          row = book.row(i)
+          raise "Entry has size different from headers" if row.size != headers.size
+          add_values row, regression_features
         }
         warnings
         @dataset
@@ -339,7 +342,8 @@ module OpenTox
       def load_csv(csv)
         row = 0
         input = csv.split("\n")
-        add_features split_row(input.shift)
+        headers = split_row(input.shift)
+        add_features headers
         value_maps = Array.new
         regression_features=Array.new
 
@@ -355,7 +359,9 @@ module OpenTox
           }
         }
         input.each { |row| 
-          add_values split_row(row), regression_features
+          row = split_row(row)
+          raise "Entry has size different from headers" if row.size != headers.size
+          add_values row, regression_features
         }
         warnings
         @dataset
@@ -419,7 +425,7 @@ module OpenTox
         row.each_index do |i|
 
           value = row[i]
-          raise "Data contains missing values" if value.size == 0
+          LOGGER.warn "Data contains missing values" if value.size == 0
           feature = @features[i]
 
           type = nil
