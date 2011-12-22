@@ -426,38 +426,42 @@ module OpenTox
         row.each_index do |i|
 
           value = row[i]
-          LOGGER.warn "Data contains missing values" if value.size == 0
+          LOGGER.warn "Data contains missing values" if value.size == 0 # String is empty
           feature = @features[i]
 
-          type = nil
+          type = feature_type(value)
           if (regression_features[i])
-            type = feature_type(value)
-            if type != OT.NumericFeature
-              raise "Error! Expected numeric values."
+            if type != OT.NumericFeature # e.g. NIL or STRING
+              LOGGER.warn "Expected numeric values"
             end
-          else
+          elsif type != nil
             type = OT.NominalFeature
           end
-          @feature_types[feature] << type 
+          @feature_types[feature] << type unless type.nil?
 
+          val = nil
           case type
           when OT.NumericFeature
             val = value.to_f
           when OT.NominalFeature
             val = value.to_s
           end
-          if val!=nil
+
+          if val != nil
             @dataset.add(compound.uri, feature, val)
-            if type!=OT.NumericFeature
+            if type != OT.NumericFeature
               @dataset.features[feature][OT.acceptValue] = [] unless @dataset.features[feature][OT.acceptValue]
               @dataset.features[feature][OT.acceptValue] << val.to_s unless @dataset.features[feature][OT.acceptValue].include?(val.to_s)
             end
           end
+
         end
       end
 
       def feature_type(value)
-        if OpenTox::Algorithm::numeric? value
+        if value == ""
+          return nil
+        elsif OpenTox::Algorithm::numeric? value
           return OT.NumericFeature
         else
           return OT.NominalFeature
@@ -552,12 +556,15 @@ module OpenTox
       private
 
       def feature_type(value)
-        if OpenTox::Algorithm::numeric? value
+        if value.nil?
+          return nil
+        elsif OpenTox::Algorithm::numeric? value
           return OT.NumericFeature
         else
           return OT.NominalFeature
         end
       end
+
     end
 
     # quick hack to enable sdf import via csv
