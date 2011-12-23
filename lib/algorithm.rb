@@ -755,26 +755,26 @@ module OpenTox
       # @return [Numeric] A prediction value.
       def self.local_svm(acts, sims, type, params)
         LOGGER.debug "Local SVM (Weighted Tanimoto Kernel)."
-        neighbor_matches = params[:neighbors].collect{ |n| n[:features] } # URIs of matches
         gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
         prediction = nil
         if Algorithm::zero_variance? acts
           prediction = acts[0]
         else
           # gram matrix
-          (0..(neighbor_matches.length-1)).each do |i|
-            neighbor_i_hits = params[:fingerprints][params[:neighbors][i][:compound]]
+
+              #LOGGER.debug "dv -------- #{params[:fingerprints].to_yaml}"
+          params[:neighbors].each_index do |i|
             gram_matrix[i] = [] unless gram_matrix[i]
             # upper triangle
-            ((i+1)..(neighbor_matches.length-1)).each do |j|
-              neighbor_j_hits= params[:fingerprints][params[:neighbors][j][:compound]]
-              #sim_params = {}
-              #if params[:nr_hits]
-              #  sim_params[:nr_hits] = true
-              #  sim_params[:compound_features_hits] = neighbor_i_hits
-              #  sim_params[:training_compound_features_hits] = neighbor_j_hits
-              #end
-              sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values])")
+            params[:neighbors].each_index do |j|
+              #LOGGER.debug "dv -------- #{params[:neighbors][i].class}"
+              #LOGGER.debug "dv -------- #{params[:neighbors][i].to_yaml}"
+              #LOGGER.debug "dv -------- #{params[:neighbors][i][:compound].to_yaml}"
+              #sim = Similarity.tanimoto(params[:fingerprints][params[:neighbors][i][:compound]], params[:fingerprints][params[:neighbors][j][:compound]], params[:p_values])
+              sim = eval("#{params[:similarity_algorithm]}(
+                         params[:fingerprints][params[:neighbors][i][:compound]], 
+                         params[:fingerprints][params[:neighbors][j][:compound]], 
+                         params[:p_values])")
               gram_matrix[i][j] = sim
               gram_matrix[j] = [] unless gram_matrix[j] 
               gram_matrix[j][i] = gram_matrix[i][j] # lower triangle
@@ -789,7 +789,7 @@ module OpenTox
           LOGGER.debug "Setting R data ..."
           # set data
           @r.gram_matrix = gram_matrix.flatten
-          @r.n = neighbor_matches.size
+          @r.n = params[:neighbors].size
           @r.y = acts
           @r.sims = sims
 

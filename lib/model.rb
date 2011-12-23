@@ -102,7 +102,7 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :conf_stdev, :max_perc_neighbors
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :conf_stdev, :max_perc_neighboris#, :nr_hits 
 
       def initialize(uri=nil)
 
@@ -125,7 +125,7 @@ module OpenTox
         @similarity_algorithm = "Similarity.tanimoto"
         @prediction_algorithm = "Neighbors.weighted_majority_vote"
         
-        @nr_hits = false
+#        @nr_hits = false
         @min_sim = 0.3
         @prop_kernel = false
         @conf_stdev = false
@@ -177,7 +177,7 @@ module OpenTox
         lazar.subjectid = hash["subjectid"] if hash["subjectid"]
         lazar.prop_kernel = hash["prop_kernel"] if hash["prop_kernel"]
         lazar.value_map = hash["value_map"] if hash["value_map"]
-        lazar.nr_hits = hash["nr_hits"] if hash["nr_hits"]
+        #lazar.nr_hits = hash["nr_hits"] if hash["nr_hits"]
         lazar.conf_stdev = hash["conf_stdev"] if hash["conf_stdev"]
         lazar.max_perc_neighbors = hash["max_perc_neighbors"] if hash["max_perc_neighbors"]
 
@@ -185,7 +185,8 @@ module OpenTox
       end
 
       def to_json
-        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :min_sim => @min_sim, :subjectid => @subjectid, :prop_kernel => @prop_kernel, :value_map => @value_map, :nr_hits => @nr_hits, :conf_stdev => @conf_stdev, :max_perc_neighbors => @max_perc_neighbors})
+        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :min_sim => @min_sim, :subjectid => @subjectid, :prop_kernel => @prop_kernel, :value_map => @value_map,  :conf_stdev => @conf_stdev, :max_perc_neighbors => @max_perc_neighbors})
+#      :nr_hits => @nr_hits,
       end
 
       def run( params, accept_header=nil, waiting_task=nil )
@@ -265,18 +266,29 @@ module OpenTox
         unless database_activity(subjectid) # adds database activity to @prediction_dataset
 
           neighbors
-
+          prediction_fingerprints = @fingerprints.merge({@compound.uri => @compound_fingerprints})
+         # LOGGER.debug "dv ------- #{@prediction_fingerprints.to_yaml}"
+         # prediction = Neighbors.local_svm_classification( { :neighbors => @neighbors, 
+         #                                                 :compound => @compound,
+         #                                                 :features => @features, 
+         #                                                 :p_values => @p_values, 
+         #                                                 :fingerprints => prediction_fingerprints,
+         #                                                 :similarity_algorithm => @similarity_algorithm, 
+         #                                                 :prop_kernel => @prop_kernel,
+         #                                                 :value_map => @value_map,
+         #                                                 :conf_stdev => @conf_stdev
+         #                                                } )
           prediction = eval("#{@prediction_algorithm} ( { :neighbors => @neighbors, 
                                                           :compound => @compound,
                                                           :features => @features, 
                                                           :p_values => @p_values, 
-                                                          :fingerprints => @fingerprints,
+                                                          :fingerprints => prediction_fingerprints,
                                                           :similarity_algorithm => @similarity_algorithm, 
                                                           :prop_kernel => @prop_kernel,
                                                           :value_map => @value_map,
-                                                          :nr_hits => @nr_hits,
                                                           :conf_stdev => @conf_stdev
                                                          } ) ")
+
 
           value_feature_uri = File.join( @uri, "predicted", "value")
           confidence_feature_uri = File.join( @uri, "predicted", "confidence")
@@ -362,7 +374,7 @@ module OpenTox
         # Adding fingerprint of query compound with features and values(p_value*nr_hits)
         @compound_fingerprints = {}
         @compound_features.each do |feature, value| # value is nil if "Substructure.match"
-          if @nr_hits
+          if @feature_calculation_algorithm == "Substructure.match_hits" 
             @compound_fingerprints[feature] = @p_values[feature] * value
           else
             @compound_fingerprints[feature] = @p_values[feature]
