@@ -370,6 +370,8 @@ module OpenTox
             @compound_fingerprints[feature] = @p_values[feature] * value
           elsif @feature_calculation_algorithm == "Substructure.match"
             @compound_fingerprints[feature] = @p_values[feature]
+          elsif @feature_calculation_algorithm == "Substructure.lookup"
+            @compound_fingerprints[feature] = value
           end
         end
 
