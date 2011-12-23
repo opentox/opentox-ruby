@@ -932,7 +932,7 @@ module OpenTox
       # @param [String] feature dataset uri
       # @return [Hash] Hash with matching Smarts and number of hits 
       def self.lookup(params)
-        params[:compound].lookup(params[:features], params[:feature_dataset_uri])
+        params[:compound].lookup(params[:features], params[:feature_dataset_uri],params[:pc_type])
       end  
     end
 

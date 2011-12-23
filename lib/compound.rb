@@ -191,6 +191,24 @@ module OpenTox
       return smarts_hits
       #smarts_array.collect { |s| s if match?(s)}.compact
 		end
+    
+    # Lookup numerical values, returns hash with feature name as key and value as value 
+    # @param [Array] Array of feature names
+    # @param [String] Feature dataset uri
+    # @return [Hash] Hash with feature name as key and value as value
+		def lookup(feature_array,feature_dataset_uri,pc_type)
+      ds = OpenTox::Dataset.find(feature_dataset_uri)
+      entry = ds[self.uri]
+      result = feature_array.collect {|v| entry[v]}
+      if result.nil?
+        uri = OpenTox::Algorithm.get_pc_descriptors({:compounds => [self.uri], :pc_type => pc_type})
+        uri = OpenTox::Algorithm.load_ds_csv(uri)
+        ds = OpenTox::Dataset.find(uri)
+        entry = ds[self.uri]
+        result = feature_array.collect {|v| entry[v]}
+      end
+      return result
+		end
 
 
     # Get URI of compound image with highlighted fragments
