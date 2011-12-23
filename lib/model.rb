@@ -362,13 +362,11 @@ module OpenTox
         # Adding fingerprint of query compound with features and values(p_value*nr_hits)
         @compound_fingerprints = {}
         @compound_features.each do |feature, value| # value is nil if "Substructure.match"
-          LOGGER.debug "dv ----------- feature #{feature}"
           if @nr_hits
             @compound_fingerprints[feature] = @p_values[feature] * value
           else
             @compound_fingerprints[feature] = @p_values[feature]
           end
-          LOGGER.debug "dv ---------- value #{@compound_fingerprints[feature]}"
         end
 
         @neighbors = []
