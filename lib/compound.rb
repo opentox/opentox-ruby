@@ -207,6 +207,7 @@ module OpenTox
         entry = ds[self.uri]
         result = feature_array.collect {|v| entry[v]}
       end
+      ds.delete
       return result
 		end
 

@@ -102,7 +102,7 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :conf_stdev, :max_perc_neighboris#, :nr_hits 
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :conf_stdev, :max_perc_neighboris, :pc_type
 
       def initialize(uri=nil)
 
@@ -125,7 +125,7 @@ module OpenTox
         @similarity_algorithm = "Similarity.tanimoto"
         @prediction_algorithm = "Neighbors.weighted_majority_vote"
         
-#        @nr_hits = false
+        @pc_type = nil
         @min_sim = 0.3
         @prop_kernel = false
         @conf_stdev = false
@@ -177,16 +177,15 @@ module OpenTox
         lazar.subjectid = hash["subjectid"] if hash["subjectid"]
         lazar.prop_kernel = hash["prop_kernel"] if hash["prop_kernel"]
         lazar.value_map = hash["value_map"] if hash["value_map"]
-        #lazar.nr_hits = hash["nr_hits"] if hash["nr_hits"]
         lazar.conf_stdev = hash["conf_stdev"] if hash["conf_stdev"]
         lazar.max_perc_neighbors = hash["max_perc_neighbors"] if hash["max_perc_neighbors"]
+        lazar.pc_type = hash["pc_type"] if hash["pc_type"]
 
         lazar
       end
 
       def to_json
-        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :min_sim => @min_sim, :subjectid => @subjectid, :prop_kernel => @prop_kernel, :value_map => @value_map,  :conf_stdev => @conf_stdev, :max_perc_neighbors => @max_perc_neighbors})
-#      :nr_hits => @nr_hits,
+        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :min_sim => @min_sim, :subjectid => @subjectid, :prop_kernel => @prop_kernel, :value_map => @value_map,  :conf_stdev => @conf_stdev, :max_perc_neighbors => @max_perc_neighbors, :pc_type => pc_type})
       end
 
       def run( params, accept_header=nil, waiting_task=nil )

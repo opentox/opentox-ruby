@@ -12,10 +12,10 @@ module OpenTox
     def self.pc_descriptors(params)
 
       begin
-        #ds = OpenTox::Dataset.find(params[:dataset_uri])
-        #compounds = ds.compounds.collect
-        #ambit_result_uri = get_pc_descriptors( { :compounds => compounds, :pc_type => params[:pc_type] } )
-        ambit_result_uri = "http://apps.ideaconsult.net:8080/ambit2/dataset/987103?feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Ffeature%2F4276789&feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Fmodel%2F16%2Fpredicted" # for testing
+        ds = OpenTox::Dataset.find(params[:dataset_uri])
+        compounds = ds.compounds.collect
+        ambit_result_uri = get_pc_descriptors( { :compounds => compounds, :pc_type => params[:pc_type] } )
+        #ambit_result_uri = "http://apps.ideaconsult.net:8080/ambit2/dataset/987103?feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Ffeature%2F4276789&feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Fmodel%2F16%2Fpredicted" # for testing
         LOGGER.debug "Ambit result uri: '#{ambit_result_uri}'"
         load_ds_csv(ambit_result_uri)
         # csv_data = CSV.parse( OpenTox::RestClientWrapper.get(ambit_result_uri, {:accept => "text/csv"}) )
