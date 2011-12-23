@@ -888,6 +888,25 @@ module OpenTox
       end
 
     end
+    
+   # module Substructure
+   #   include Algorithm
+   #   # Substructure matching
+   #   # @param [OpenTox::Compound] compound Compound
+   #   # @param [Array] features Array with Smarts strings
+   #   # @return [Array] Array with matching Smarts
+   #   def self.match(compound,features)
+   #     compound.match(features)
+   #   end
+   #   
+   #   # Substructure matching with number of non-unique hits
+   #   # @param [OpenTox::Compound] compound Compound
+   #   # @param [Array] features Array with Smarts strings
+   #   # @return [Hash] Hash with matching Smarts and number of hits 
+   #   def self.match_hits(compound,features)
+   #     compound.match_hits(features)
+   #   end  
+   # end
 
     module Substructure
       include Algorithm
@@ -895,16 +914,25 @@ module OpenTox
       # @param [OpenTox::Compound] compound Compound
       # @param [Array] features Array with Smarts strings
       # @return [Array] Array with matching Smarts
-      def self.match(compound,features)
-        compound.match(features)
+      def self.match(params)
+        params[:compound].match(params[:features])
       end
       
       # Substructure matching with number of non-unique hits
       # @param [OpenTox::Compound] compound Compound
       # @param [Array] features Array with Smarts strings
       # @return [Hash] Hash with matching Smarts and number of hits 
-      def self.match_hits(compound,features)
-        compound.match_hits(features)
+      def self.match_hits(params)
+        params[:compound].match_hits(params[:features])
+      end
+      
+      # Substructure matching with number of non-unique hits
+      # @param [OpenTox::Compound] compound Compound
+      # @param [Array] features Array with Smarts strings
+      # @param [String] feature dataset uri
+      # @return [Hash] Hash with matching Smarts and number of hits 
+      def self.lookup(params)
+        params[:compound].lookup(params[:features], params[:feature_dataset_uri])
       end  
     end
 

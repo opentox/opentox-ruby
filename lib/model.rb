@@ -267,17 +267,6 @@ module OpenTox
 
           neighbors
           prediction_fingerprints = @fingerprints.merge({@compound.uri => @compound_fingerprints})
-         # LOGGER.debug "dv ------- #{@prediction_fingerprints.to_yaml}"
-         # prediction = Neighbors.local_svm_classification( { :neighbors => @neighbors, 
-         #                                                 :compound => @compound,
-         #                                                 :features => @features, 
-         #                                                 :p_values => @p_values, 
-         #                                                 :fingerprints => prediction_fingerprints,
-         #                                                 :similarity_algorithm => @similarity_algorithm, 
-         #                                                 :prop_kernel => @prop_kernel,
-         #                                                 :value_map => @value_map,
-         #                                                 :conf_stdev => @conf_stdev
-         #                                                } )
           prediction = eval("#{@prediction_algorithm} ( { :neighbors => @neighbors, 
                                                           :compound => @compound,
                                                           :features => @features, 
@@ -369,14 +358,18 @@ module OpenTox
       # Find neighbors and store them as object variable, access all compounds for that.
       def neighbors
         # Calculation of needed values for query compound
-        @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
+        @compound_features = eval("#{@feature_calculation_algorithm}({
+                                  :compound => @compound, 
+                                  :features => @features, 
+                                  :feature_dataset_uri => @metadata[OT.featureDataset]
+                                  })") if @feature_calculation_algorithm
         
         # Adding fingerprint of query compound with features and values(p_value*nr_hits)
         @compound_fingerprints = {}
         @compound_features.each do |feature, value| # value is nil if "Substructure.match"
           if @feature_calculation_algorithm == "Substructure.match_hits" 
             @compound_fingerprints[feature] = @p_values[feature] * value
-          else
+          elsif @feature_calculation_algorithm == "Substructure.match"
             @compound_fingerprints[feature] = @p_values[feature]
           end
         end
