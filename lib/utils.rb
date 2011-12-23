@@ -204,7 +204,7 @@ module OpenTox
               #  row_good = false
               #end
               if ! params[:fingerprints][n].nil? 
-                row << (params[:fingerprints][n].include?(f) ? (params[:p_values][f] * params[:fingerprints][n][f]) : 0.0)
+                row << (params[:fingerprints][n].include?(f) ? params[:fingerprints][n][f] : 0.0)
               else
                 row << 0.0
               end
@@ -214,14 +214,7 @@ module OpenTox
 
           row = []
           params[:features].each do |f|
-              row << (params[:fingerprints][params[:compound].uri].include?(f) ? (params[:p_values][f] * params[:fingerprints][params[:compound].uri][f]) : 0.0)
-#       if params[:nr_hits]
-#              compound_feature_hits = params[:compound].match_hits([f])
-#              row << (compound_feature_hits.size == 0 ? 0.0 : (params[:p_values][f] * compound_feature_hits[f]))
-#            else
-#              row << (params[:compound].match([f]).size == 0 ? 0.0 : params[:p_values][f])
-#            end
-      
+            row << (params[:fingerprints][params[:compound].uri].include?(f) ? params[:fingerprints][params[:compound].uri][f] : 0.0)
           end
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
