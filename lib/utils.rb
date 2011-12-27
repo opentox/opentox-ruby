@@ -16,20 +16,8 @@ module OpenTox
         compounds = ds.compounds.collect
         ambit_result_uri = get_pc_descriptors( { :compounds => compounds, :pc_type => params[:pc_type] } )
         #ambit_result_uri = "http://apps.ideaconsult.net:8080/ambit2/dataset/987103?feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Ffeature%2F4276789&feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Fmodel%2F16%2Fpredicted" # for testing
-        LOGGER.debug "Ambit result uri: '#{ambit_result_uri}'"
+        LOGGER.debug "Ambit result uri for #{params.inspect}: '#{ambit_result_uri}'"
         load_ds_csv(ambit_result_uri)
-        # csv_data = CSV.parse( OpenTox::RestClientWrapper.get(ambit_result_uri, {:accept => "text/csv"}) )
- 
-        # index_ambit_uri = csv_data[0].index("Compound")
-        # csv_data.map {|i| i.delete_at(index_ambit_uri)}
-        # csv_data[0].each {|cell| cell.chomp!(" ")}
-        # 
-        # parser = OpenTox::Parser::Spreadsheets.new
-        # ds = OpenTox::Dataset.new
-        # ds.save
-        # parser.dataset = ds
-        # ds = parser.load_csv(csv_data.collect{|r| r.join(",")}.join("\n"))
-        # ds.save
       rescue Exception => e
         LOGGER.debug "#{e.class}: #{e.message}"
         LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
@@ -37,6 +25,9 @@ module OpenTox
 
     end
     
+    # Load dataset via CSV
+    # @param[String] dataset uri where first feature is "Compound", second is "SMILES"
+    # @return[String] dataset uri
     def self.load_ds_csv(uri)
       
       csv_data = CSV.parse( OpenTox::RestClientWrapper.get(uri, {:accept => "text/csv"}) )
@@ -49,6 +40,36 @@ module OpenTox
       parser.dataset = ds
       ds = parser.load_csv(csv_data.collect{|r| r.join(",")}.join("\n"))
       ds.save
+
+      #master=nil
+      #Dir.glob('*.csv').each do |csvf| #Goes thru all csv files
+      #  next if csvf != 'test.csv' && csvf != 'master.csv'
+      #
+      #  new_data = CSV.read(csvf) # Reads in each one
+      #
+      #  if new_data[0] && new_data[0].size>1
+      #
+      #    if master.nil?
+      #      master = new_data
+      #      next
+      #    else
+      #      nr_cols = (new_data[0].size)-1
+      #      puts nr_cols
+      #      master.each {|row| nr_cols.times { row.push('') }  } # Adds another column to all rows
+      #      new_data.each do |row| #Goes thru each line of the file
+      #        temp = master.assoc(row[0]) # Finds the appropriate line in master
+      #        ((-1*nr_cols)..-1).collect.each { |idx|
+      #          temp[idx] = row[nr_cols+idx+1] if temp #updates last column if line is found
+      #        }
+      #      end
+      #    end
+      #
+      #  end
+      #end
+      #
+      #csv = CSV.open('output.csv','wb') #opens output csv file for writing
+      #master.each {|row| csv << row} #Goes thru modified master and saves it to file
+
 
     end
 

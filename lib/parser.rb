@@ -398,7 +398,7 @@ module OpenTox
             type = types.first
           end
           @dataset.add_feature_metadata(feature,{RDF.type => [type]})
-          info += "\"#{@dataset.feature_name(feature)}\" detected as #{type.split('#').last}."
+          info += "\"#{@dataset.feature_name(feature)}\" detected as #{type.split('#').last}." if type
 
           # TODO: rewrite feature values
           # TODO if value.to_f == 0 @activity_errors << "#{smiles} Zero values not allowed for regression datasets - entry ignored."
