@@ -728,17 +728,11 @@ module OpenTox
         prediction = nil
 
         LOGGER.debug "Local SVM Classification."
-        if params[:neighbors].size>0
-
-          acts = params[:neighbors].collect { |n| act = n[:activity] }
-          sims = params[:neighbors].collect{ |n| n[:similarity] } # similarity values btwn q and nbors
-
-          props = params[:prop_kernel] ? get_props_fingerprints(params) : nil
-          prediction = props.nil? ? local_svm(acts, sims, "C-bsvc", params) : local_svm_prop(props, acts, "C-bsvc")
-
+        if params[:props][0].size>0
+          prediction = params[:prop_kernel] ? local_svm_prop(params[:props], params[:acts], "C-bsvc") : local_svm(params[:props], params[:acts], "C-bsvc", params[:sims], params) 
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
-          confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
+          confidence = get_confidence({:sims => params[:sims][1], :acts => params[:acts], :conf_stdev => params[:conf_stdev]})
         end
         {:prediction => prediction, :confidence => confidence}
         
@@ -751,36 +745,36 @@ module OpenTox
       # @param [Array] acts, activities for neighbors.
       # @param [Array] sims, similarities for neighbors.
       # @param [String] type, one of "nu-svr" (regression) or "C-bsvc" (classification).
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required
+      # @param [Hash] params Keys `:p_values,:similarity_algorithm` are required
       # @return [Numeric] A prediction value.
-      def self.local_svm(acts, sims, type, params)
+      def self.local_svm(props, acts, type, sims, params)
         LOGGER.debug "Local SVM (Weighted Tanimoto Kernel)."
+
+        n_prop = props[0] # is a matrix, i.e. two nested Arrays.
+        q_prop = props[1] # is an Array.
         gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
+        
         prediction = nil
         if Algorithm::zero_variance? acts
           prediction = acts[0]
         else
-          # gram matrix
-
-              #LOGGER.debug "dv -------- #{params[:fingerprints].to_yaml}"
-          params[:neighbors].each_index do |i|
-            gram_matrix[i] = [] unless gram_matrix[i]
-            # upper triangle
-            params[:neighbors].each_index do |j|
-              #LOGGER.debug "dv -------- #{params[:neighbors][i].class}"
-              #LOGGER.debug "dv -------- #{params[:neighbors][i].to_yaml}"
-              #LOGGER.debug "dv -------- #{params[:neighbors][i][:compound].to_yaml}"
-              #sim = Similarity.tanimoto(params[:fingerprints][params[:neighbors][i][:compound]], params[:fingerprints][params[:neighbors][j][:compound]], params[:p_values])
-              sim = eval("#{params[:similarity_algorithm]}(
-                         params[:fingerprints][params[:neighbors][i][:compound]], 
-                         params[:fingerprints][params[:neighbors][j][:compound]], 
-                         params[:p_values])")
-              gram_matrix[i][j] = sim
-              gram_matrix[j] = [] unless gram_matrix[j] 
-              gram_matrix[j][i] = gram_matrix[i][j] # lower triangle
-            end
-            gram_matrix[i][i] = 1.0
-          end
+          ## gram matrix
+          gram_matrix = sims[0]
+          #n_prop.each_index do |i|
+          #  gram_matrix[i] = [] unless gram_matrix[i]
+          #  n_prop.each_index do |j|
+          #    if (j>i)
+          #      sim = eval("#{params[:similarity_algorithm]}(
+          #                 n_prop[i],
+          #                 n_prop[j],
+          #                 params[:p_values])")
+          #      gram_matrix[i][j] = sim
+          #      gram_matrix[j] = [] unless gram_matrix[j] 
+          #      gram_matrix[j][i] = gram_matrix[i][j]
+          #    end
+          #  end
+          #  gram_matrix[i][i] = 1.0
+          #end
 
 
           #LOGGER.debug gram_matrix.to_yaml
@@ -789,9 +783,9 @@ module OpenTox
           LOGGER.debug "Setting R data ..."
           # set data
           @r.gram_matrix = gram_matrix.flatten
-          @r.n = params[:neighbors].size
+          @r.n = n_prop.size
           @r.y = acts
-          @r.sims = sims
+          @r.sims = sims[1]
 
           begin
             LOGGER.debug "Preparing R data ..."

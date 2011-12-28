@@ -266,17 +266,35 @@ module OpenTox
 
           neighbors
           prediction_fingerprints = @fingerprints.merge({@compound.uri => @compound_fingerprints})
-          prediction = eval("#{@prediction_algorithm} ( { :neighbors => @neighbors, 
-                                                          :compound => @compound,
-                                                          :features => @features, 
+          props = OpenTox::Algorithm::Neighbors.get_props_fingerprints({:neighbors => @neighbors, :features => @features, :fingerprints => prediction_fingerprints, :compound => @compound})
+          acts = @neighbors.collect { |n| n[:activity] }
+
+          gram_matrix = []
+          @neighbors.each_index do |i|
+            gram_matrix[i] = [] unless gram_matrix[i]
+            @neighbors.each_index do |j|
+              if (j>i)
+                sim = eval("#{@similarity_algorithm}(
+                           @fingerprints[@neighbors[i][:compound]], 
+                           @fingerprints[@neighbors[j][:compound]], 
+                           @p_values)")
+                gram_matrix[i][j] = sim
+                gram_matrix[j] = [] unless gram_matrix[j]
+                gram_matrix[j][i] = gram_matrix[i][j]
+              end
+            end
+            gram_matrix[i][i] = 1.0
+          end
+          sims = [ gram_matrix, @neighbors.collect { |n| n[:similarity] } ] 
+
+          prediction = eval("#{@prediction_algorithm} ( { :props => props,
+                                                          :acts => acts,
+                                                          :sims => sims,
                                                           :p_values => @p_values, 
-                                                          :fingerprints => prediction_fingerprints,
                                                           :similarity_algorithm => @similarity_algorithm, 
                                                           :prop_kernel => @prop_kernel,
-                                                          :value_map => @value_map,
                                                           :conf_stdev => @conf_stdev
                                                          } ) ")
-
 
           value_feature_uri = File.join( @uri, "predicted", "value")
           confidence_feature_uri = File.join( @uri, "predicted", "confidence")

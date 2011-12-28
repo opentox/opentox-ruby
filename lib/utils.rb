@@ -268,7 +268,7 @@ module OpenTox
       
       
       # Get confidence for regression, with standard deviation of neighbor activity if conf_stdev is set.
-      # @param[Hash] Required keys: :sims, :acts, :neighbors, :conf_stdev
+      # @param[Hash] Required keys: :sims, :acts, :conf_stdev
       # @return[Float] Confidence
       def self.get_confidence(params)
         if params[:conf_stdev]
@@ -284,7 +284,7 @@ module OpenTox
           end
         else
           conf = params[:sims].inject{|sum,x| sum + x }
-          confidence = conf/params[:neighbors].size
+          confidence = conf/params[:sims].size
         end
         LOGGER.debug "Confidence is: '" + confidence.to_s + "'."
         return confidence
