@@ -700,14 +700,14 @@ module OpenTox
             acts = acts_autoscaler.vs.to_a
 
             # Predict
-            prediction = props.nil? ? local_svm(acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr")
+            prediction = props.nil? ? local_svm(params[:acts], params[:sims], "nu-svr", params) : local_svm_prop(params[:props], params[:acts], "nu-svr")
 
             # Restore
             prediction = acts_autoscaler.restore( [ prediction ].to_gv )[0]
             prediction = nil if prediction.infinite? 
             LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
             params[:conf_stdev] = false if params[:conf_stdev].nil?
-            confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
+            confidence = get_confidence({:sims => params[:sims][1], :acts => params[:acts], :conf_stdev => params[:conf_stdev]})
             confidence = 0.0 if prediction.nil?
           end
 
@@ -729,7 +729,7 @@ module OpenTox
 
         LOGGER.debug "Local SVM Classification."
         if params[:props][0].size>0
-          prediction = params[:prop_kernel] ? local_svm_prop(params[:props], params[:acts], "C-bsvc") : local_svm(params[:props], params[:acts], "C-bsvc", params[:sims], params) 
+          prediction = params[:prop_kernel] ? local_svm_prop( params[:props], params[:acts], "C-bsvc") : local_svm( params[:sims], params[:acts], "C-bsvc") 
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => params[:sims][1], :acts => params[:acts], :conf_stdev => params[:conf_stdev]})
@@ -745,47 +745,25 @@ module OpenTox
       # @param [Array] acts, activities for neighbors.
       # @param [Array] sims, similarities for neighbors.
       # @param [String] type, one of "nu-svr" (regression) or "C-bsvc" (classification).
-      # @param [Hash] params Keys `:p_values,:similarity_algorithm` are required
       # @return [Numeric] A prediction value.
-      def self.local_svm(props, acts, type, sims, params)
+      def self.local_svm(sims, acts, type)
         LOGGER.debug "Local SVM (Weighted Tanimoto Kernel)."
 
-        n_prop = props[0] # is a matrix, i.e. two nested Arrays.
-        q_prop = props[1] # is an Array.
         gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
         
         prediction = nil
         if Algorithm::zero_variance? acts
           prediction = acts[0]
         else
-          ## gram matrix
-          gram_matrix = sims[0]
-          #n_prop.each_index do |i|
-          #  gram_matrix[i] = [] unless gram_matrix[i]
-          #  n_prop.each_index do |j|
-          #    if (j>i)
-          #      sim = eval("#{params[:similarity_algorithm]}(
-          #                 n_prop[i],
-          #                 n_prop[j],
-          #                 params[:p_values])")
-          #      gram_matrix[i][j] = sim
-          #      gram_matrix[j] = [] unless gram_matrix[j] 
-          #      gram_matrix[j][i] = gram_matrix[i][j]
-          #    end
-          #  end
-          #  gram_matrix[i][i] = 1.0
-          #end
-
-
           #LOGGER.debug gram_matrix.to_yaml
           @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
           @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
           LOGGER.debug "Setting R data ..."
           # set data
-          @r.gram_matrix = gram_matrix.flatten
-          @r.n = n_prop.size
-          @r.y = acts
+          @r.gram_matrix = sims[0].flatten
           @r.sims = sims[1]
+          @r.n = acts.size
+          @r.y = acts
 
           begin
             LOGGER.debug "Preparing R data ..."
