@@ -270,7 +270,7 @@ module OpenTox
           sims = params[:neighbors].collect { |n| n[:similarity] }
           maxcols = ( params[:maxcols].nil? ? (sims.size/3.0).ceil : params[:maxcols] )
 
-          props = params[:prop_kernel] ? get_props_fingerprints(params) : nil
+          props = params[:props] ? get_props_fingerprints(params) : nil
           prediction = pcr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
           prediction = nil if (!prediction.nil? && prediction.infinite?)
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
@@ -669,7 +669,7 @@ module OpenTox
           if params[:acts].size>0
 
             ## Transform data (discussion: http://goo.gl/U8Klu)
-            if params[:prop_kernel]
+            if params[:props]
               n_prop = params[:props][0].collect
               q_prop = params[:props][1].collect
 
@@ -695,7 +695,7 @@ module OpenTox
             acts = acts_autoscaler.vs.to_a
 
             # Predict
-            prediction = params[:prop_kernel] ? local_svm_prop( props, acts, "nu-svr") : local_svm( params[:sims], acts, "nu-svr")
+            prediction = params[:props] ? local_svm_prop( props, acts, "nu-svr") : local_svm( params[:sims], acts, "nu-svr")
 
             # Restore
             prediction = acts_autoscaler.restore( [ prediction ].to_gv )[0]
@@ -725,7 +725,7 @@ module OpenTox
 
         LOGGER.debug "Local SVM Classification."
         if params[:acts].size>0
-          prediction = params[:prop_kernel] ? local_svm_prop( params[:props], params[:acts], "C-bsvc") : local_svm( params[:sims], params[:acts], "C-bsvc") 
+          prediction = params[:props] ? local_svm_prop( params[:props], params[:acts], "C-bsvc") : local_svm( params[:sims], params[:acts], "C-bsvc") 
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => params[:sims][1], :acts => params[:acts], :conf_stdev => params[:conf_stdev]})

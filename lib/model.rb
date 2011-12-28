@@ -268,7 +268,7 @@ module OpenTox
           prediction_fingerprints = @fingerprints.merge({@compound.uri => @compound_fingerprints})
           
           # props
-          props = OpenTox::Algorithm::Neighbors.get_props_fingerprints({:neighbors => @neighbors, :features => @features, :fingerprints => prediction_fingerprints, :compound => @compound})
+          props = @prop_kernel ? OpenTox::Algorithm::Neighbors.get_props_fingerprints({:neighbors => @neighbors, :features => @features, :fingerprints => prediction_fingerprints, :compound => @compound}) : nil
 
           # acts
           acts = @neighbors.collect { |n| n[:activity] }
@@ -296,7 +296,6 @@ module OpenTox
           prediction = eval("#{@prediction_algorithm} ( { :props => props,
                                                           :acts => acts,
                                                           :sims => sims,
-                                                          :prop_kernel => @prop_kernel,
                                                           :value_map => @value_map,
                                                           :conf_stdev => @conf_stdev
                                                          } ) ")
