@@ -622,12 +622,13 @@ module OpenTox
         confidence = 0.0
         prediction = nil
 
-        params[:neighbors].each do |neighbor|
-          neighbor_weight = neighbor[:similarity].to_f
-          neighbor_contribution += neighbor[:activity].to_f * neighbor_weight
+        LOGGER.debug "Weighted Majority Vote Classification."
+        params[:acts].each_index do |idx|
+          neighbor_weight = params[:sims][1][idx]
+          neighbor_contribution += params[:acts][idx] * neighbor_weight
 
           if params[:value_map].size == 2 # AM: provide compat to binary classification: 1=>false 2=>true
-            case neighbor[:activity]
+            case params[:acts][idx]
             when 1
               confidence_sum -= neighbor_weight
             when 2
@@ -640,18 +641,20 @@ module OpenTox
 
         if params[:value_map].size == 2 
           if confidence_sum >= 0.0
-            prediction = 2 unless params[:neighbors].size==0
+            prediction = 2 unless params[:acts].size==0
           elsif confidence_sum < 0.0
-            prediction = 1 unless params[:neighbors].size==0
+            prediction = 1 unless params[:acts].size==0
           end
         else 
-          prediction = (neighbor_contribution/confidence_sum).round  unless params[:neighbors].size==0  # AM: new multinomial prediction
+          prediction = (neighbor_contribution/confidence_sum).round  unless params[:acts].size==0  # AM: new multinomial prediction
         end 
         LOGGER.debug "Prediction is: '" + prediction.to_s + "'." unless prediction.nil?
-        confidence = confidence_sum/params[:neighbors].size if params[:neighbors].size > 0
+        confidence = confidence_sum/params[:acts].size if params[:acts].size > 0
         LOGGER.debug "Confidence is: '" + confidence.to_s + "'." unless prediction.nil?
         return {:prediction => prediction, :confidence => confidence.abs}
       end
+
+
 
       # Local support vector regression from neighbors 
       # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required

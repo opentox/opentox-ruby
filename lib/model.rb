@@ -266,9 +266,14 @@ module OpenTox
 
           neighbors
           prediction_fingerprints = @fingerprints.merge({@compound.uri => @compound_fingerprints})
+          
+          # props
           props = OpenTox::Algorithm::Neighbors.get_props_fingerprints({:neighbors => @neighbors, :features => @features, :fingerprints => prediction_fingerprints, :compound => @compound})
+
+          # acts
           acts = @neighbors.collect { |n| n[:activity] }
 
+          # sims
           gram_matrix = []
           @neighbors.each_index do |i|
             gram_matrix[i] = [] unless gram_matrix[i]
@@ -287,12 +292,12 @@ module OpenTox
           end
           sims = [ gram_matrix, @neighbors.collect { |n| n[:similarity] } ] 
 
+          # prediction
           prediction = eval("#{@prediction_algorithm} ( { :props => props,
                                                           :acts => acts,
                                                           :sims => sims,
-                                                          :p_values => @p_values, 
-                                                          :similarity_algorithm => @similarity_algorithm, 
                                                           :prop_kernel => @prop_kernel,
+                                                          :value_map => @value_map,
                                                           :conf_stdev => @conf_stdev
                                                          } ) ")
 
