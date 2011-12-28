@@ -663,22 +663,18 @@ module OpenTox
           prediction = nil
 
           LOGGER.debug "Local SVM Regression."
-          if params[:neighbors].size>0
+          if params[:acts].size>0
 
-            acts = params[:neighbors].collect{ |n| n[:activity].to_f }
-            sims = params[:neighbors].collect{ |n| n[:similarity] }
-
-            props = params[:prop_kernel] ? get_props_fingerprints(params) : nil
-            if props
-              n_prop = props[0].collect
-              q_prop = props[1].collect
+            ## Transform data (discussion: http://goo.gl/U8Klu)
+            if params[:prop_kernel]
+              n_prop = params[:props][0].collect
+              q_prop = params[:props][1].collect
 
               nr_cases, nr_features = get_sizes n_prop
               data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
               query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
 
-              ## Transform data (discussion: http://goo.gl/U8Klu)
-              # Standardize data (scale and center), adjust query accordingly
+
               LOGGER.debug "Standardize..."
               temp = data_matrix.vertcat query_matrix
               (0..nr_features-1).each { |i|
@@ -688,19 +684,15 @@ module OpenTox
               data_matrix  = temp.submatrix( 0..(temp.size1-2), nil ).clone # last row: query
               query_matrix = temp.submatrix( (temp.size1-1)..(temp.size1-1), nil ).clone # last row: query
 
-              props[0] = data_matrix.to_a
-              props[1] = query_matrix.to_a.flatten
+              props = [ data_matrix.to_a, query_matrix.to_a.flatten ]
             end
 
-            ## End of transform
-
-
             # Transform y
-            acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
+            acts_autoscaler = OpenTox::Transform::LogAutoScale.new(params[:acts].to_gv)
             acts = acts_autoscaler.vs.to_a
 
             # Predict
-            prediction = props.nil? ? local_svm(params[:acts], params[:sims], "nu-svr", params) : local_svm_prop(params[:props], params[:acts], "nu-svr")
+            prediction = params[:prop_kernel] ? local_svm_prop( props, acts, "nu-svr") : local_svm( params[:sims], acts, "nu-svr")
 
             # Restore
             prediction = acts_autoscaler.restore( [ prediction ].to_gv )[0]
@@ -709,6 +701,7 @@ module OpenTox
             params[:conf_stdev] = false if params[:conf_stdev].nil?
             confidence = get_confidence({:sims => params[:sims][1], :acts => params[:acts], :conf_stdev => params[:conf_stdev]})
             confidence = 0.0 if prediction.nil?
+
           end
 
           {:prediction => prediction, :confidence => confidence}
@@ -728,11 +721,12 @@ module OpenTox
         prediction = nil
 
         LOGGER.debug "Local SVM Classification."
-        if params[:props][0].size>0
+        if params[:acts].size>0
           prediction = params[:prop_kernel] ? local_svm_prop( params[:props], params[:acts], "C-bsvc") : local_svm( params[:sims], params[:acts], "C-bsvc") 
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => params[:sims][1], :acts => params[:acts], :conf_stdev => params[:conf_stdev]})
+          confidence = 0.0 if prediction.nil?
         end
         {:prediction => prediction, :confidence => confidence}
         
