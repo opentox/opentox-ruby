@@ -5,11 +5,9 @@ module OpenTox
 
   module Algorithm
 
-    # Calculate the propositionalization matrix (aka instantiation matrix) via physico-chemical descriptors.
-    # Same for the vector describing the query compound.
-    # The third argument takes a string from {"geometrical", "topological", "electronic", "constitutional", "hybrid" } as in ambit_descriptors.yaml
+    # Calculate physico-chemical descriptors.
     # @param[Hash] Required keys: :dataset_uri, :pc_type
-    # @return[Array, Array] Props, ids of surviving training compounds
+    # @return[String] dataset uri
 
     def self.pc_descriptors(params)
 
@@ -17,29 +15,58 @@ module OpenTox
         ds = OpenTox::Dataset.find(params[:dataset_uri])
         compounds = ds.compounds.collect
         ambit_result_uri = get_pc_descriptors( { :compounds => compounds, :pc_type => params[:pc_type] } )
-        LOGGER.debug "Ambit result uri: '#{ambit_result_uri}'"
-        csv_data = CSV.parse( OpenTox::RestClientWrapper.get(ambit_result_uri, {:accept => "text/csv"}) )
-
-        index_ambit_uri = csv_data[0].index("Compound")
-        csv_data.map {|i| i.delete_at(index_ambit_uri)}
-        csv_data[0].each {|cell| cell.chomp!(" ")}
-        
-        parser = OpenTox::Parser::Spreadsheets.new
-        ds = OpenTox::Dataset.new
-        ds.save
-        parser.dataset = ds
-        ds = parser.load_csv(csv_data.collect{|r| r.join(",")}.join("\n"))
-        ds.save
+        #ambit_result_uri = ["http://apps.ideaconsult.net:8080/ambit2/dataset/987103?" ,"feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Ffeature%2F4276789&", "feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Fmodel%2F16%2Fpredicted"] # for testing
+        LOGGER.debug "Ambit result uri for #{params.inspect}: '#{ambit_result_uri.join('')}'"
+        load_ds_csv(ambit_result_uri)
       rescue Exception => e
         LOGGER.debug "#{e.class}: #{e.message}"
         LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
       end
 
     end
+    
+    # Load dataset via CSV
+    # @param[String] dataset uri where first feature is "Compound", second is "SMILES"
+    # @return[Array] Ambit result uri, piecewise (1st: base, 2nd: SMILES, 3rd+: features
+    def self.load_ds_csv(ambit_result_uri)
+
+      master=nil
+      (1..(ambit_result_uri.size-1)).collect { |idx|
+        curr_uri = ambit_result_uri[0] + ambit_result_uri[idx]
+        LOGGER.debug "Requesting #{curr_uri}"
+        csv_data = CSV.parse( OpenTox::RestClientWrapper.get(curr_uri, {:accept => "text/csv"}) )
+        if csv_data[0] && csv_data[0].size>1
+          if master.nil?
+            master = csv_data
+            next
+          else
+            nr_cols = (csv_data[0].size)-1
+            LOGGER.debug "Merging #{nr_cols} new columns"
+            master.each {|row| nr_cols.times { row.push(nil) }  } # Adds empty columns to all rows
+            csv_data.each do |row|
+              temp = master.assoc(row[0]) # Finds the appropriate line in master
+              ((-1*nr_cols)..-1).collect.each { |idx|
+                temp[idx] = row[nr_cols+idx+1] if temp # Uupdates columns if line is found
+              }
+            end
+          end
+        end
+      }
+
+      index_uri = master[0].index("Compound")
+      master.map {|i| i.delete_at(index_uri)}
+      master[0].each {|cell| cell.chomp!(" ")}
+      parser = OpenTox::Parser::Spreadsheets.new
+      ds = OpenTox::Dataset.new
+      ds.save
+      parser.dataset = ds
+      ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"))
+      ds.save
+    end
 
     # Calculates PC descriptors via Ambit -- DO NOT OVERLOAD Ambit.
     # @param[Hash] Required keys: :compounds, :pc_type
-    # @return[String] Ambit result uri
+    # @return[Array] Ambit result uri, piecewise (1st: base, 2nd: SMILES, 3rd+: features
     def self.get_pc_descriptors(params)
 
       begin
@@ -89,7 +116,8 @@ module OpenTox
         end
 
         # Get Ambit results
-        ambit_result_uri = ambit_ds_uri + "?"
+        ambit_result_uri = [] # 1st pos: base uri, then features
+        ambit_result_uri << ambit_ds_uri + "?"
         ambit_result_uri << ("feature_uris[]=" + URI.encode_www_form_component(ambit_smiles_uri) + "&")
         descs_uris.each_with_index do |uri, i|
           algorithm = OpenTox::Algorithm::Generic.new(uri)
@@ -97,9 +125,7 @@ module OpenTox
           ambit_result_uri << result_uri.split("?")[1] + "&"
           LOGGER.debug "Ambit (#{descs_uris.size}): #{i+1}"
         end
-        #ambit_result_uri << ("feature_uris[]=" + URI.encode_www_form_component(ambit_smiles_uri))
-        #ambit_result_uri = ("&feature_uris[]=" + URI.encode_www_form_component(ambit_smiles_uri)) + ambit_result_uri
-        LOGGER.debug "Ambit result: #{ambit_result_uri}"
+        #LOGGER.debug "Ambit result: #{ambit_result_uri.join('')}"
         ambit_result_uri
 
       rescue Exception => e
@@ -180,20 +206,6 @@ module OpenTox
       max
     end
     
-    # Returns Support value of an fingerprint
-    # @param [Hash] params Keys: `:compound_features_hits, :weights, :training_compound_features_hits, :features, :nr_hits:, :mode` are required
-    # return [Numeric] Support value 
-    def self.p_sum_support(params)
-      p_sum = 0.0
-        params[:features].each{|f|
-        compound_hits = params[:compound_features_hits][f]
-        neighbor_hits = params[:training_compound_features_hits][f] 
-        p_sum += eval("(Algorithm.gauss(params[:weights][f]) * ([compound_hits, neighbor_hits].compact.#{params[:mode]}))")
-      }
-      p_sum 
-    end
-
-
     # neighbors
 
     module Neighbors
@@ -219,7 +231,7 @@ module OpenTox
               #  row_good = false
               #end
               if ! params[:fingerprints][n].nil? 
-                row << (params[:fingerprints][n].include?(f) ? (params[:p_values][f] * params[:fingerprints][n][f]) : 0.0)
+                row << (params[:fingerprints][n].include?(f) ? params[:fingerprints][n][f] : 0.0)
               else
                 row << 0.0
               end
@@ -229,12 +241,7 @@ module OpenTox
 
           row = []
           params[:features].each do |f|
-            if params[:nr_hits]
-              compound_feature_hits = params[:compound].match_hits([f])
-              row << (compound_feature_hits.size == 0 ? 0.0 : (params[:p_values][f] * compound_feature_hits[f]))
-            else
-              row << (params[:compound].match([f]).size == 0 ? 0.0 : params[:p_values][f])
-            end
+            row << (params[:fingerprints][params[:compound].uri].include?(f) ? params[:fingerprints][params[:compound].uri][f] : 0.0)
           end
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
@@ -261,7 +268,7 @@ module OpenTox
       
       
       # Get confidence for regression, with standard deviation of neighbor activity if conf_stdev is set.
-      # @param[Hash] Required keys: :sims, :acts, :neighbors, :conf_stdev
+      # @param[Hash] Required keys: :sims, :acts, :conf_stdev
       # @return[Float] Confidence
       def self.get_confidence(params)
         if params[:conf_stdev]
@@ -277,7 +284,7 @@ module OpenTox
           end
         else
           conf = params[:sims].inject{|sum,x| sum + x }
-          confidence = conf/params[:neighbors].size
+          confidence = conf/params[:sims].size
         end
         LOGGER.debug "Confidence is: '" + confidence.to_s + "'."
         return confidence
@@ -292,38 +299,18 @@ module OpenTox
     module Similarity
 
       # Tanimoto similarity
-      # @param [Array] features_a Features of first compound
-      # @param [Array] features_b Features of second compound
-      # @param [optional, Hash] weights Weights for all features
-      # @param [optional, Hash] params Keys: `:training_compound, :compound, :training_compound_features_hits, :nr_hits, :compound_features_hits` are required
+      # @param [Hash] fingerprints_a Features and values of first compound
+      # @param [Hash] fingerprints_b Features and values of second compound
       # @return [Float] (Weighted) tanimoto similarity
-      def self.tanimoto(features_a,features_b,weights=nil,params=nil)
-        common_features = features_a & features_b
-        all_features = (features_a + features_b).uniq
-        #LOGGER.debug "dv --------------- common: #{common_features}, all: #{all_features}"
+      def self.tanimoto(fingerprints_a,fingerprints_b,weights=nil,params=nil)
+        common_features = fingerprints_a.keys & fingerprints_b.keys
+        all_features = (fingerprints_a.keys + fingerprints_b.keys).uniq
         if common_features.size > 0
-          if weights
-            #LOGGER.debug "nr_hits: #{params[:nr_hits]}"
-            if !params.nil? && params[:nr_hits]
-              params[:weights] = weights
-              params[:mode] = "min"
-              params[:features] = common_features
-              common_p_sum = Algorithm.p_sum_support(params)
-              params[:mode] = "max"
-              params[:features] = all_features
-              all_p_sum = Algorithm.p_sum_support(params)
-            else
-              common_p_sum = 0.0
-              common_features.each{|f| common_p_sum += weights[f]}
-              all_p_sum = 0.0
-              all_features.each{|f| all_p_sum += weights[f]}
-            end
-            #LOGGER.debug "common_p_sum: #{common_p_sum}, all_p_sum: #{all_p_sum}, c/a: #{common_p_sum/all_p_sum}"
-            common_p_sum/all_p_sum
-          else
-            #LOGGER.debug "common_features : #{common_features}, all_features: #{all_features}, c/a: #{(common_features.size/all_features.size).to_f}"
-            common_features.size.to_f/all_features.size.to_f
-          end
+          common_p_sum = 0.0
+          common_features.each{|f| common_p_sum += [fingerprints_a[f],fingerprints_b[f]].compact.min}
+          all_p_sum = 0.0
+          all_features.each{|f| all_p_sum += [fingerprints_a[f],fingerprints_b[f]].compact.max}
+          common_p_sum/all_p_sum
         else
           0.0
         end

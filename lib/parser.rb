@@ -290,10 +290,11 @@ module OpenTox
         @features = []
         @feature_types = {}
 
-        @format_errors = ""
+        @format_errors = []
         @smiles_errors = []
         @activity_errors = []
         @duplicates = {}
+        @max_class_values = 3
       end
 
       def detect_new_values(row, value_maps)
@@ -309,7 +310,7 @@ module OpenTox
       # Load Spreadsheet book (created with roo gem http://roo.rubyforge.org/, excel format specification: http://toxcreate.org/help)
       # @param [Excel] book Excel workbook object (created with roo gem)
       # @return [OpenTox::Dataset] Dataset object with Excel data
-      def load_spreadsheet(book)
+      def load_spreadsheet(book, drop_missing=false)
         book.default_sheet = 0
         headers = book.row(1)
         add_features = headers
@@ -320,7 +321,7 @@ module OpenTox
           row = book.row(i)
           value_maps = detect_new_values(row, value_maps)
           value_maps.each_with_index { |vm,j|
-            if vm.size > 3 # 5 is the maximum nr of classes supported by Fminer.
+            if vm.size > @max_class_values # 5 is the maximum nr of classes supported by Fminer.
               regression_features[j]=true 
             else
               regression_features[j]=false
@@ -328,10 +329,18 @@ module OpenTox
           }
         }
         2.upto(book.last_row) { |i| 
+          drop=false
           row = book.row(i)
           raise "Entry has size #{row.size}, different from headers (#{headers.size})" if row.size != headers.size
-          LOGGER.warn "Row has #{row.count("")} missing values" if row.include? ""
-          add_values row, regression_features
+          if row.include?("")
+            @format_errors << "Row #{i} has #{row.count("")} missing values" 
+            drop=true
+            drop_missing=true if (row.count("") == row.size-1) 
+          end
+          add_values(row, regression_features) unless (drop_missing && drop)
+          if (drop_missing && drop) 
+            @format_errors << "Row #{i} not added" 
+          end
         }
         warnings
         @dataset
@@ -340,7 +349,7 @@ module OpenTox
       # Load CSV string (format specification: http://toxcreate.org/help)
       # @param [String] csv CSV representation of the dataset
       # @return [OpenTox::Dataset] Dataset object with CSV data
-      def load_csv(csv)
+      def load_csv(csv, drop_missing=false)
         row = 0
         input = csv.split("\n")
         headers = split_row(input.shift)
@@ -352,18 +361,26 @@ module OpenTox
           row = split_row(row)
           value_maps = detect_new_values(row, value_maps)
           value_maps.each_with_index { |vm,j|
-            if vm.size > 3 # max 3 classes.
+            if vm.size > @max_class_values # max @max_class_values classes.
               regression_features[j]=true 
             else
               regression_features[j]=false
             end
           }
         }
-        input.each { |row| 
+        input.each_with_index { |row, i| 
+          drop=false
           row = split_row(row)
           raise "Entry has size #{row.size}, different from headers (#{headers.size})" if row.size != headers.size
-          LOGGER.warn "Row has #{row.count("")} missing values" if row.include? ""
-          add_values row, regression_features
+          if row.include?("")
+            @format_errors << "Row #{i} has #{row.count("")} missing values" 
+            drop=true
+            drop_missing=true if (row.count("") == row.size-1) 
+          end
+          add_values(row, regression_features) unless (drop_missing && drop)
+          if (drop_missing && drop) 
+            @format_errors << "Row #{i} not added" 
+          end
         }
         warnings
         @dataset
@@ -381,7 +398,7 @@ module OpenTox
             type = types.first
           end
           @dataset.add_feature_metadata(feature,{RDF.type => [type]})
-          info += "\"#{@dataset.feature_name(feature)}\" detected as #{type.split('#').last}."
+          info += "\"#{@dataset.feature_name(feature)}\" detected as #{type.split('#').last}." if type
 
           # TODO: rewrite feature values
           # TODO if value.to_f == 0 @activity_errors << "#{smiles} Zero values not allowed for regression datasets - entry ignored."
@@ -392,6 +409,7 @@ module OpenTox
         warnings = ''
         warnings += "<p>Incorrect Smiles structures (ignored):</p>" + @smiles_errors.join("<br/>") unless @smiles_errors.empty?
         warnings += "<p>Irregular activities (ignored):</p>" + @activity_errors.join("<br/>") unless @activity_errors.empty?
+        warnings += "<p>Format errors:</p>" + @format_errors.join("<br/>") unless @format_errors.empty?
         duplicate_warnings = ''
         @duplicates.each {|inchi,lines| duplicate_warnings << "<p>#{lines.join('<br/>')}</p>" if lines.size > 1 }
         warnings += "<p>Duplicated structures (all structures/activities used for model building, please  make sure, that the results were obtained from <em>independent</em> experiments):</p>" + duplicate_warnings unless duplicate_warnings.empty?
@@ -432,15 +450,6 @@ module OpenTox
           feature = @features[i]
 
           type = feature_type(value) # May be NIL
-
-          #if (regression_features[i]) # Number should be treated as numeric!
-          #  if type != OT.NumericFeature # e.g. NIL or STRING
-          #    LOGGER.warn "Expected numeric values"
-          #  end
-          #elsif type != nil  # Number should be treated as nominal!
-          #  type = OT.NominalFeature
-          #end
-
           type = OT.NominalFeature unless (type.nil? || regression_features[i])
           @feature_types[feature] << type unless type.nil?
 
@@ -503,14 +512,14 @@ module OpenTox
       def clean_features
         ignored_features = []
         features.each do |feature|
-          if feature_values(feature).size > 5
+          if feature_values(feature).size > @max_class_values
             if feature_types(feature).size == 1 and feature_types(feature).first == OT.NumericFeature
               # REGRESSION
             elsif feature_types(feature).include? OT.NumericFeature
               @data.each{|c,row| row[feature] = nil unless OpenTox::Algorithm::numeric?(row[feature]) } # delete nominal features
               @activity_errors << "Nominal feature values of #{feature} ignored (using numeric features for regression models)."
             else
-              @activity_errors << "Feature #{feature} ignored (more than 5 nominal feature values and no numeric values)."
+              @activity_errors << "Feature #{feature} ignored (more than #{@max_class_values} nominal feature values and no numeric values)."
               ignored_features << feature
               next
             end

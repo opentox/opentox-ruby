@@ -270,7 +270,7 @@ module OpenTox
           sims = params[:neighbors].collect { |n| n[:similarity] }
           maxcols = ( params[:maxcols].nil? ? (sims.size/3.0).ceil : params[:maxcols] )
 
-          props = params[:prop_kernel] ? get_props_fingerprints(params) : nil
+          props = params[:props] ? get_props_fingerprints(params) : nil
           prediction = pcr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
           prediction = nil if (!prediction.nil? && prediction.infinite?)
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
@@ -622,12 +622,13 @@ module OpenTox
         confidence = 0.0
         prediction = nil
 
-        params[:neighbors].each do |neighbor|
-          neighbor_weight = neighbor[:similarity].to_f
-          neighbor_contribution += neighbor[:activity].to_f * neighbor_weight
+        LOGGER.debug "Weighted Majority Vote Classification."
+        params[:acts].each_index do |idx|
+          neighbor_weight = params[:sims][1][idx]
+          neighbor_contribution += params[:acts][idx] * neighbor_weight
 
           if params[:value_map].size == 2 # AM: provide compat to binary classification: 1=>false 2=>true
-            case neighbor[:activity]
+            case params[:acts][idx]
             when 1
               confidence_sum -= neighbor_weight
             when 2
@@ -640,18 +641,20 @@ module OpenTox
 
         if params[:value_map].size == 2 
           if confidence_sum >= 0.0
-            prediction = 2 unless params[:neighbors].size==0
+            prediction = 2 unless params[:acts].size==0
           elsif confidence_sum < 0.0
-            prediction = 1 unless params[:neighbors].size==0
+            prediction = 1 unless params[:acts].size==0
           end
         else 
-          prediction = (neighbor_contribution/confidence_sum).round  unless params[:neighbors].size==0  # AM: new multinomial prediction
+          prediction = (neighbor_contribution/confidence_sum).round  unless params[:acts].size==0  # AM: new multinomial prediction
         end 
         LOGGER.debug "Prediction is: '" + prediction.to_s + "'." unless prediction.nil?
-        confidence = confidence_sum/params[:neighbors].size if params[:neighbors].size > 0
+        confidence = confidence_sum/params[:acts].size if params[:acts].size > 0
         LOGGER.debug "Confidence is: '" + confidence.to_s + "'." unless prediction.nil?
         return {:prediction => prediction, :confidence => confidence.abs}
       end
+
+
 
       # Local support vector regression from neighbors 
       # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required
@@ -663,22 +666,18 @@ module OpenTox
           prediction = nil
 
           LOGGER.debug "Local SVM Regression."
-          if params[:neighbors].size>0
+          if params[:acts].size>0
 
-            acts = params[:neighbors].collect{ |n| n[:activity].to_f }
-            sims = params[:neighbors].collect{ |n| n[:similarity] }
-
-            props = params[:prop_kernel] ? get_props_fingerprints(params) : nil
-            if props
-              n_prop = props[0].collect
-              q_prop = props[1].collect
+            ## Transform data (discussion: http://goo.gl/U8Klu)
+            if params[:props]
+              n_prop = params[:props][0].collect
+              q_prop = params[:props][1].collect
 
               nr_cases, nr_features = get_sizes n_prop
               data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
               query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
 
-              ## Transform data (discussion: http://goo.gl/U8Klu)
-              # Standardize data (scale and center), adjust query accordingly
+
               LOGGER.debug "Standardize..."
               temp = data_matrix.vertcat query_matrix
               (0..nr_features-1).each { |i|
@@ -688,27 +687,24 @@ module OpenTox
               data_matrix  = temp.submatrix( 0..(temp.size1-2), nil ).clone # last row: query
               query_matrix = temp.submatrix( (temp.size1-1)..(temp.size1-1), nil ).clone # last row: query
 
-              props[0] = data_matrix.to_a
-              props[1] = query_matrix.to_a.flatten
+              props = [ data_matrix.to_a, query_matrix.to_a.flatten ]
             end
 
-            ## End of transform
-
-
             # Transform y
-            acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
+            acts_autoscaler = OpenTox::Transform::LogAutoScale.new(params[:acts].to_gv)
             acts = acts_autoscaler.vs.to_a
 
             # Predict
-            prediction = props.nil? ? local_svm(acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr")
+            prediction = params[:props] ? local_svm_prop( props, acts, "nu-svr") : local_svm( params[:sims], acts, "nu-svr")
 
             # Restore
             prediction = acts_autoscaler.restore( [ prediction ].to_gv )[0]
             prediction = nil if prediction.infinite? 
             LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
             params[:conf_stdev] = false if params[:conf_stdev].nil?
-            confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
+            confidence = get_confidence({:sims => params[:sims][1], :acts => params[:acts], :conf_stdev => params[:conf_stdev]})
             confidence = 0.0 if prediction.nil?
+
           end
 
           {:prediction => prediction, :confidence => confidence}
@@ -728,17 +724,12 @@ module OpenTox
         prediction = nil
 
         LOGGER.debug "Local SVM Classification."
-        if params[:neighbors].size>0
-
-          acts = params[:neighbors].collect { |n| act = n[:activity] }
-          sims = params[:neighbors].collect{ |n| n[:similarity] } # similarity values btwn q and nbors
-
-          props = params[:prop_kernel] ? get_props_fingerprints(params) : nil
-          prediction = props.nil? ? local_svm(acts, sims, "C-bsvc", params) : local_svm_prop(props, acts, "C-bsvc")
-
+        if params[:acts].size>0
+          prediction = params[:props] ? local_svm_prop( params[:props], params[:acts], "C-bsvc") : local_svm( params[:sims], params[:acts], "C-bsvc") 
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
-          confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
+          confidence = get_confidence({:sims => params[:sims][1], :acts => params[:acts], :conf_stdev => params[:conf_stdev]})
+          confidence = 0.0 if prediction.nil?
         end
         {:prediction => prediction, :confidence => confidence}
         
@@ -751,48 +742,25 @@ module OpenTox
       # @param [Array] acts, activities for neighbors.
       # @param [Array] sims, similarities for neighbors.
       # @param [String] type, one of "nu-svr" (regression) or "C-bsvc" (classification).
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required
       # @return [Numeric] A prediction value.
-      def self.local_svm(acts, sims, type, params)
+      def self.local_svm(sims, acts, type)
         LOGGER.debug "Local SVM (Weighted Tanimoto Kernel)."
-        neighbor_matches = params[:neighbors].collect{ |n| n[:features] } # URIs of matches
-        gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
 
+        gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
+        
         prediction = nil
         if Algorithm::zero_variance? acts
           prediction = acts[0]
         else
-          # gram matrix
-          (0..(neighbor_matches.length-1)).each do |i|
-            neighbor_i_hits = params[:fingerprints][params[:neighbors][i][:compound]]
-            gram_matrix[i] = [] unless gram_matrix[i]
-            # upper triangle
-            ((i+1)..(neighbor_matches.length-1)).each do |j|
-              neighbor_j_hits= params[:fingerprints][params[:neighbors][j][:compound]]
-              sim_params = {}
-              if params[:nr_hits]
-                sim_params[:nr_hits] = true
-                sim_params[:compound_features_hits] = neighbor_i_hits
-                sim_params[:training_compound_features_hits] = neighbor_j_hits
-              end
-              sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values], sim_params)")
-              gram_matrix[i][j] = sim
-              gram_matrix[j] = [] unless gram_matrix[j] 
-              gram_matrix[j][i] = gram_matrix[i][j] # lower triangle
-            end
-            gram_matrix[i][i] = 1.0
-          end
-
-
           #LOGGER.debug gram_matrix.to_yaml
           @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
           @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
           LOGGER.debug "Setting R data ..."
           # set data
-          @r.gram_matrix = gram_matrix.flatten
-          @r.n = neighbor_matches.size
+          @r.gram_matrix = sims[0].flatten
+          @r.sims = sims[1]
+          @r.n = acts.size
           @r.y = acts
-          @r.sims = sims
 
           begin
             LOGGER.debug "Preparing R data ..."
@@ -889,6 +857,25 @@ module OpenTox
       end
 
     end
+    
+   # module Substructure
+   #   include Algorithm
+   #   # Substructure matching
+   #   # @param [OpenTox::Compound] compound Compound
+   #   # @param [Array] features Array with Smarts strings
+   #   # @return [Array] Array with matching Smarts
+   #   def self.match(compound,features)
+   #     compound.match(features)
+   #   end
+   #   
+   #   # Substructure matching with number of non-unique hits
+   #   # @param [OpenTox::Compound] compound Compound
+   #   # @param [Array] features Array with Smarts strings
+   #   # @return [Hash] Hash with matching Smarts and number of hits 
+   #   def self.match_hits(compound,features)
+   #     compound.match_hits(features)
+   #   end  
+   # end
 
     module Substructure
       include Algorithm
@@ -896,9 +883,26 @@ module OpenTox
       # @param [OpenTox::Compound] compound Compound
       # @param [Array] features Array with Smarts strings
       # @return [Array] Array with matching Smarts
-      def self.match(compound,features)
-        compound.match(features)
+      def self.match(params)
+        params[:compound].match(params[:features])
       end
+      
+      # Substructure matching with number of non-unique hits
+      # @param [OpenTox::Compound] compound Compound
+      # @param [Array] features Array with Smarts strings
+      # @return [Hash] Hash with matching Smarts and number of hits 
+      def self.match_hits(params)
+        params[:compound].match_hits(params[:features])
+      end
+      
+      # Substructure matching with number of non-unique hits
+      # @param [OpenTox::Compound] compound Compound
+      # @param [Array] features Array with Smarts strings
+      # @param [String] feature dataset uri
+      # @return [Hash] Hash with matching Smarts and number of hits 
+      def self.lookup(params)
+        params[:compound].lookup(params[:features], params[:feature_dataset_uri],params[:pc_type])
+      end  
     end
 
     module Dataset

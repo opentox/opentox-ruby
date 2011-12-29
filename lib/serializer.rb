@@ -477,7 +477,10 @@ module OpenTox
       # Convert to CSV string
       # @return [String] CSV string
       def to_csv
-        @rows.collect{|r| r.join(", ")}.join("\n")
+        rows = @rows.collect
+        result = ""
+        result << rows.shift.collect { |f| f.split('/').last }.join(",") << "\n" # only feature name
+        result << rows.collect{ |r| r.join(", ") }.join("\n")
       end
 
       # Convert to spreadsheet workbook
