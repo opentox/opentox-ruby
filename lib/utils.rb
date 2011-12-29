@@ -26,8 +26,8 @@ module OpenTox
     end
     
     # Load dataset via CSV
-    # @param[String] dataset uri where first feature is "Compound", second is "SMILES"
-    # @return[Array] Ambit result uri, piecewise (1st: base, 2nd: SMILES, 3rd+: features
+    # @param[Array] Ambit result uri, piecewise (1st: base, 2nd: SMILES, 3rd+: features
+    # @return[String] dataset uri 
     def self.load_ds_csv(ambit_result_uri)
 
       master=nil
