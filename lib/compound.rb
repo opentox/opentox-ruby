@@ -198,17 +198,25 @@ module OpenTox
     # @return [Hash] Hash with feature name as key and value as value
 		def lookup(feature_array,feature_dataset_uri,pc_type)
       ds = OpenTox::Dataset.find(feature_dataset_uri)
-      entry = ds[self.uri]
-      result = feature_array.collect {|v| entry[v]}
-      if result.nil?
+      #LOGGER.debug "----- am #{feature_dataset_uri}"
+      #LOGGER.debug "----- am #{pc_type}"
+      entry = ds.data_entries[self.uri]
+      if entry.nil?
         uri = OpenTox::Algorithm.get_pc_descriptors({:compounds => [self.uri], :pc_type => pc_type})
         uri = OpenTox::Algorithm.load_ds_csv(uri)
         ds = OpenTox::Dataset.find(uri)
-        entry = ds[self.uri]
-        result = feature_array.collect {|v| entry[v]}
+        entry = ds.data_entries[self.uri]
+        ds.delete
       end
-      ds.delete
-      return result
+      features = entry.keys
+      features.each { |feature| 
+        new_feature = File.join(feature_dataset_uri, "feature", feature.split("/").last) 
+        entry[new_feature] = entry[feature].flatten.first.to_f # see algorithm/lazar.rb:182, to_f because feature type detection doesn't work w 1 entry
+        entry.delete(feature)
+      }
+      #res = feature_array.collect {|v| entry[v]}
+      #LOGGER.debug "----- am #{entry.to_yaml}"
+      entry
 		end
 
 

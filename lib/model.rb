@@ -382,7 +382,8 @@ module OpenTox
         @compound_features = eval("#{@feature_calculation_algorithm}({
                                   :compound => @compound, 
                                   :features => @features, 
-                                  :feature_dataset_uri => @metadata[OT.featureDataset]
+                                  :feature_dataset_uri => @metadata[OT.featureDataset],
+                                  :pc_type => @pc_type
                                   })") if @feature_calculation_algorithm
         
         # Adding fingerprint of query compound with features and values(p_value*nr_hits)
@@ -415,13 +416,15 @@ module OpenTox
       def add_neighbor(training_fingerprints, training_compound)
         sim = eval("#{@similarity_algorithm}(training_fingerprints, @compound_fingerprints)")
         if sim > @min_sim
-          @activities[training_compound].each do |act|
-            @neighbors << {
-              :compound => training_compound,
-              :similarity => sim,
-              :features => training_fingerprints.keys,
-              :activity => act
-            }
+          if @activities[training_compound]
+            @activities[training_compound].each do |act|
+              @neighbors << {
+                :compound => training_compound,
+                :similarity => sim,
+                :features => training_fingerprints.keys,
+                :activity => act
+              }
+            end
           end
         end
       end

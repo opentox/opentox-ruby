@@ -339,27 +339,27 @@ module OpenTox
       end
 
       # Cosine similarity
-      # @param [Hash] properties_a Properties of first compound
-      # @param [Hash] properties_b Properties of second compound
-      # @return [Float] (Weighted) euclidean similarity
+      # @param [Hash] properties_a key-value properties of first compound
+      # @param [Hash] properties_b key-value properties of second compound
+      # @return [Float] cosine of angle enclosed between vectors induced by keys present in both a and b
       def self.cosine(properties_a,properties_b,weights=nil)
-        
         common_properties = properties_a.keys & properties_b.keys
-
         if common_properties.size > 1
-
           a = []; b = []
           common_properties.each do |p|
             a << properties_a[p]
             b << properties_b[p]
           end
-
           self.cosine_num a.to_gv, b.to_gv
         else
           0.0
         end
       end
 
+      # Cosine similarity
+      # @param [GSL::Vector] a
+      # @param [GSL::Vector] b
+      # @return [Float] cosine of angle enclosed between a and b
       def self.cosine_num(a, b)
         a.dot(b) / (a.norm * b.norm)
       end

@@ -880,25 +880,21 @@ module OpenTox
     module Substructure
       include Algorithm
       # Substructure matching
-      # @param [OpenTox::Compound] compound Compound
-      # @param [Array] features Array with Smarts strings
+      # @param [Hash] required keys: compound, features
       # @return [Array] Array with matching Smarts
       def self.match(params)
         params[:compound].match(params[:features])
       end
       
       # Substructure matching with number of non-unique hits
-      # @param [OpenTox::Compound] compound Compound
-      # @param [Array] features Array with Smarts strings
+      # @param [Hash] required keys: compound, features
       # @return [Hash] Hash with matching Smarts and number of hits 
       def self.match_hits(params)
         params[:compound].match_hits(params[:features])
       end
       
       # Substructure matching with number of non-unique hits
-      # @param [OpenTox::Compound] compound Compound
-      # @param [Array] features Array with Smarts strings
-      # @param [String] feature dataset uri
+      # @param [Hash] required keys: compound, features, feature_dataset_uri, pc_type
       # @return [Hash] Hash with matching Smarts and number of hits 
       def self.lookup(params)
         params[:compound].lookup(params[:features], params[:feature_dataset_uri],params[:pc_type])
