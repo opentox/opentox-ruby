@@ -313,7 +313,7 @@ module OpenTox
       def load_spreadsheet(book, drop_missing=false)
         book.default_sheet = 0
         headers = book.row(1)
-        add_features = headers
+        duplicate_indices = add_features headers
         value_maps = Array.new
         regression_features=Array.new
 
@@ -328,6 +328,7 @@ module OpenTox
             end
           }
         }
+
         2.upto(book.last_row) { |i| 
           drop=false
           row = book.row(i)
@@ -337,7 +338,7 @@ module OpenTox
             drop=true
             drop_missing=true if (row.count("") == row.size-1) 
           end
-          add_values(row, regression_features) unless (drop_missing && drop)
+          add_values(row, regression_features, duplicate_indices) unless (drop_missing && drop)
           if (drop_missing && drop) 
             @format_errors << "Row #{i} not added" 
           end
@@ -353,7 +354,7 @@ module OpenTox
         row = 0
         input = csv.split("\n")
         headers = split_row(input.shift)
-        add_features headers
+        duplicate_indices = add_features(headers)
         value_maps = Array.new
         regression_features=Array.new
 
@@ -368,6 +369,7 @@ module OpenTox
             end
           }
         }
+
         input.each_with_index { |row, i| 
           drop=false
           row = split_row(row)
@@ -377,7 +379,7 @@ module OpenTox
             drop=true
             drop_missing=true if (row.count("") == row.size-1) 
           end
-          add_values(row, regression_features) unless (drop_missing && drop)
+          add_values(row, regression_features, duplicate_indices) unless (drop_missing && drop)
           if (drop_missing && drop) 
             @format_errors << "Row #{i} not added" 
           end
@@ -418,21 +420,32 @@ module OpenTox
 
       end
 
+      # Adds a row of features to a dataset
+      # @param Array A row split up as an array
+      # @return Array Indices for duplicate features
       def add_features(row)
         row=row.collect
         row.shift  # get rid of smiles entry
-        row.each do |feature_name|
+        duplicate_indices = [] # starts with 0 at first f after smiles
+        row.each_with_index do |feature_name, idx|
           feature_uri = File.join(@dataset.uri,"feature",URI.encode(feature_name))
-          @feature_types[feature_uri] = []
-          @features << feature_uri
-          @dataset.add_feature(feature_uri,{DC.title => feature_name})
+          unless @features.include? feature_uri
+            @feature_types[feature_uri] = []
+            @features << feature_uri
+            @dataset.add_feature(feature_uri,{DC.title => feature_name})
+          else
+            duplicate_indices << idx
+            @format_errors << "Duplicate Feature '#{feature_name}' at pos #{idx}"
+          end
         end
+        duplicate_indices
       end
 
       # Adds a row to a dataset
       # @param Array A row split up as an array
       # @param Array Indicator for regression for each field
-      def add_values(row, regression_features)
+      # @param Array Indices for duplicate features
+      def add_values(row, regression_features, duplicate_indices)
 
         smiles = row.shift
         compound = Compound.from_smiles(smiles)
@@ -445,28 +458,32 @@ module OpenTox
 
         row.each_index do |i|
 
-          value = row[i]
-          #LOGGER.warn "Missing values for #{smiles}" if value.size == 0 # String is empty
-          feature = @features[i]
+          unless duplicate_indices.include? i
 
-          type = feature_type(value) # May be NIL
-          type = OT.NominalFeature unless (type.nil? || regression_features[i])
-          @feature_types[feature] << type unless type.nil?
-
-          val = nil
-          case type
-          when OT.NumericFeature
-            val = value.to_f
-          when OT.NominalFeature
-            val = value.to_s
-          end
-
-          if val != nil
-            @dataset.add(compound.uri, feature, val)
-            if type != OT.NumericFeature
-              @dataset.features[feature][OT.acceptValue] = [] unless @dataset.features[feature][OT.acceptValue]
-              @dataset.features[feature][OT.acceptValue] << val.to_s unless @dataset.features[feature][OT.acceptValue].include?(val.to_s)
+            value = row[i]
+            #LOGGER.warn "Missing values for #{smiles}" if value.size == 0 # String is empty
+            feature = @features[i]
+  
+            type = feature_type(value) # May be NIL
+            type = OT.NominalFeature unless (type.nil? || regression_features[i])
+            @feature_types[feature] << type unless type.nil?
+  
+            val = nil
+            case type
+            when OT.NumericFeature
+              val = value.to_f
+            when OT.NominalFeature
+              val = value.to_s
             end
+  
+            if val != nil
+              @dataset.add(compound.uri, feature, val)
+              if type != OT.NumericFeature
+                @dataset.features[feature][OT.acceptValue] = [] unless @dataset.features[feature][OT.acceptValue]
+                @dataset.features[feature][OT.acceptValue] << val.to_s unless @dataset.features[feature][OT.acceptValue].include?(val.to_s)
+              end
+            end
+
           end
 
         end
