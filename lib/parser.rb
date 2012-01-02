@@ -291,7 +291,7 @@ module OpenTox
         @feature_types = {}
 
         @format_errors = []
-        @smiles_errors = []
+        @id_errors = []
         @activity_errors = []
         @duplicates = {}
         @max_class_values = 3
@@ -403,18 +403,18 @@ module OpenTox
           info += "\"#{@dataset.feature_name(feature)}\" detected as #{type.split('#').last}." if type
 
           # TODO: rewrite feature values
-          # TODO if value.to_f == 0 @activity_errors << "#{smiles} Zero values not allowed for regression datasets - entry ignored."
+          # TODO if value.to_f == 0 @activity_errors << "#{id} Zero values not allowed for regression datasets - entry ignored."
         end
 
         @dataset.metadata[OT.Info] = info 
 
         warnings = ''
-        warnings += "<p>Incorrect Smiles structures (ignored):</p>" + @smiles_errors.join("<br/>") unless @smiles_errors.empty?
+        warnings += "<p>Incorrect structures (ignored):</p>" + @id_errors.join("<br/>") unless @id_errors.empty?
         warnings += "<p>Irregular activities (ignored):</p>" + @activity_errors.join("<br/>") unless @activity_errors.empty?
         warnings += "<p>Format errors:</p>" + @format_errors.join("<br/>") unless @format_errors.empty?
         duplicate_warnings = ''
         @duplicates.each {|inchi,lines| duplicate_warnings << "<p>#{lines.join('<br/>')}</p>" if lines.size > 1 }
-        warnings += "<p>Duplicated structures (all structures/activities used for model building, please  make sure, that the results were obtained from <em>independent</em> experiments):</p>" + duplicate_warnings unless duplicate_warnings.empty?
+        warnings += "<p>Duplicate structures (all structures/activities used for model building, please make sure that the results were obtained from <em>independent</em> experiments):</p>" + duplicate_warnings unless duplicate_warnings.empty?
 
         @dataset.metadata[OT.Warnings] = warnings 
 
@@ -425,8 +425,8 @@ module OpenTox
       # @return Array Indices for duplicate features
       def add_features(row)
         row=row.collect
-        row.shift  # get rid of smiles entry
-        duplicate_indices = [] # starts with 0 at first f after smiles
+        row.shift  # get rid of id entry
+        duplicate_indices = [] # starts with 0 at first f after id
         row.each_with_index do |feature_name, idx|
           feature_uri = File.join(@dataset.uri,"feature",URI.encode(feature_name))
           unless @features.include? feature_uri
@@ -447,21 +447,27 @@ module OpenTox
       # @param Array Indices for duplicate features
       def add_values(row, regression_features, duplicate_indices)
 
-        smiles = row.shift
-        compound = Compound.from_smiles(smiles)
+        id = row.shift
+        case id
+        when /InChI/
+          compound = Compound.from_inchi(URI.decode_www_form_component(id))
+        else
+          compound = Compound.from_smiles(id)
+        end
+
         if compound.nil? or compound.inchi.nil? or compound.inchi == ""
-          @smiles_errors << smiles+", "+row.join(", ") 
+          @id_errors << id+", "+row.join(", ") 
           return false
         end
         @duplicates[compound.inchi] = [] unless @duplicates[compound.inchi]
-        @duplicates[compound.inchi] << smiles+", "+row.join(", ")
+        @duplicates[compound.inchi] << id+", "+row.join(", ")
 
         row.each_index do |i|
 
           unless duplicate_indices.include? i
 
             value = row[i]
-            #LOGGER.warn "Missing values for #{smiles}" if value.size == 0 # String is empty
+            #LOGGER.warn "Missing values for #{id}" if value.size == 0 # String is empty
             feature = @features[i]
   
             type = feature_type(value) # May be NIL
@@ -636,7 +642,7 @@ module OpenTox
             @duplicates[inchi] << rec #inchi#+", "+row.join(", ")
             compound = Compound.from_inchi inchi
           rescue
-            @compound_errors << "Could not convert structure to InChI, all entries for this compound (record #{rec} have been ignored! \n#{s}"
+            @compound_errors << "Could not convert structure to InChI, all entries for this compound (record #{rec}) have been ignored! \n#{s}"
             next
           end
           row = {}
@@ -649,7 +655,7 @@ module OpenTox
         table.add_to_dataset @dataset
 
         warnings = ''
-        warnings += "<p>Incorrect Smiles structures (ignored):</p>" + @compound_errors.join("<br/>") unless @compound_errors.empty?
+        warnings += "<p>Incorrect structures (ignored):</p>" + @compound_errors.join("<br/>") unless @compound_errors.empty?
         warnings += "<p>Irregular activities (ignored):</p>" + @activity_errors.join("<br/>") unless @activity_errors.empty?
         duplicate_warnings = ''
         @duplicates.each {|inchi,lines| duplicate_warnings << "<p>#{lines.join('<br/>')}</p>" if lines.size > 1 }

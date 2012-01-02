@@ -457,7 +457,9 @@ module OpenTox
         @rows.first << features
         @rows.first.flatten!
         dataset.data_entries.each do |compound,entries|
-          smiles = Compound.new(compound).to_smiles
+          cmpd = Compound.new(compound)
+          smiles = cmpd.to_smiles
+          #inchi = URI.encode_www_form_component(cmpd.to_inchi)
           row = Array.new(@rows.first.size)
           row[0] = smiles
           entries.each do |feature, values|

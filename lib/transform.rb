@@ -227,7 +227,7 @@ module OpenTox
         # @param [Float] Compression ratio from [0,1], default 0.20
         # @return [GSL::Matrix] Data transformed matrix
 
-        def initialize data_matrix, compression=0.20
+        def initialize data_matrix, compression=0.05
           begin
             @data_matrix = data_matrix.clone
             @compression = compression
@@ -309,6 +309,204 @@ module OpenTox
           end
         end
 
+
+      end
+
+
+
+      # Attaches transformations to an OpenTox::Model
+      # Stores props, sims, performs similarity calculations
+      class ModelTransformer
+        attr_accessor :model, :similarity_algorithm, :acts, :sims
+
+        # @params[OpenTox::Model] model to transform
+        def initialize model
+          @model = model
+          @similarity_algorithm = @model.similarity_algorithm
+        end
+
+        def transform
+          order_fingerprints # creates @fps, @cmpds
+          get_matrices # creates @n_prop, @q_prop, @acts from ordered fps
+
+          @ids = (0..((@n_prop.length)-1)).to_a # surviving compounds; become neighbors
+
+
+          # Preprocessing
+          if (@model.similarity_algorithm == "Similarity.cosine")
+            # truncate nil-columns and -rows
+            LOGGER.debug "O: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}"
+            while @q_prop.size>0
+              idx = @q_prop.index(nil)
+              break if idx.nil?
+              @q_prop.slice!(idx)
+              @n_prop.each { |r| r.slice!(idx) }
+            end
+            LOGGER.debug "R: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}"
+            remove_nils  # removes nil cells (for cosine); alters @n_props, @q_props, cuts down @ids to survivors
+            LOGGER.debug "M: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}"
+
+            # adjust rest
+            fps_tmp = []; @ids.each { |idx| fps_tmp << @fps[idx] }; @fps = fps_tmp
+            cmpds_tmp = []; @ids.each { |idx| cmpds_tmp << @cmpds[idx] }; @cmpds = cmpds_tmp
+            acts_tmp = []; @ids.each { |idx| acts_tmp << @acts[idx] }; @acts = acts_tmp
+
+            # svd
+            nr_cases, nr_features = @n_prop.size, @n_prop[0].size
+            gsl_n_prop = GSL::Matrix.alloc(@n_prop.flatten, nr_cases, nr_features)
+            gsl_q_prop = GSL::Matrix.alloc(@q_prop.flatten, 1, nr_features)
+            (0...nr_features).each { |i|
+               autoscaler = OpenTox::Transform::AutoScale.new(gsl_n_prop.col(i))
+               gsl_n_prop.col(i)[0..nr_cases-1] = autoscaler.vs
+               gsl_q_prop.col(i)[0..0] = autoscaler.transform gsl_q_prop.col(i)
+            }
+            svd = OpenTox::Algorithm::Transform::SVD.new gsl_n_prop
+            gsl_q_prop = svd.transform gsl_q_prop
+            @n_prop = svd.data_transformed_matrix.to_a
+            @q_prop = gsl_q_prop.row(0).to_a
+            LOGGER.debug "S: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}"
+          else
+            convert_nils # convert nil cells (for tanimoto); leave @n_props, @q_props, @ids untouched
+          end
+
+          # Neighbors
+          neighbors
+
+          # Sims
+          gram_matrix = []
+          if !@model.prop_kernel # need gram matrix for standard setting (n. prop.)
+            @n_prop.each_index do |i|
+              gram_matrix[i] = [] unless gram_matrix[i]
+              @n_prop.each_index do |j|
+                if (j>i)
+                  sim = eval("OpenTox::Algorithm::#{@similarity_algorithm}(@n_prop[i], @n_prop[j])")
+                  gram_matrix[i][j] = sim
+                  gram_matrix[j] = [] unless gram_matrix[j]
+                  gram_matrix[j][i] = gram_matrix[i][j]
+                end
+              end
+              gram_matrix[i][i] = 1.0
+            end
+          end
+          @sims = [ gram_matrix, @sims ] 
+        end
+
+        # Find neighbors and store them as object variable, access all compounds for that.
+        def neighbors
+          @model.neighbors = []
+          @ids = [] # surviving compounds; become neighbors
+          @sims = []
+          @n_prop.each_with_index do |fp, idx| # AM: access all compounds
+            add_neighbor fp, idx
+          end
+          n_prop_tmp = []; @ids.each { |idx| n_prop_tmp << @n_prop[idx] }; @n_prop = n_prop_tmp
+          acts_tmp = []; @ids.each { |idx| acts_tmp << @acts[idx] }; @acts = acts_tmp
+          #cmpds_tmp = []; @cmpds.each { |idx| cmpds_tmp << @cmpds[idx] }; @cmpds = cmpds_tmp
+          #if @model.max_perc_neighbors 
+          #  @model.neighbors = @model.neighbors.sort { |a,b| a[:similarity] <=> b[:similarity] }.reverse # order by descending sim (best neighbors first)
+          #  nr_neighbors = (@model.fingerprints.size.to_f * @model.max_perc_neighbors / 100).ceil
+          #  LOGGER.debug "Maximally #{nr_neighbors} neighbors (=#{@model.max_perc_neighbors}% of dataset) out of actually #{@model.neighbors.size} neighbors."
+          #  @model.neighbors = @model.neighbors.take nr_neighbors
+          #end
+        end
+
+
+        # Adds a neighbor to @neighbors if it passes the similarity threshold
+        # adjusts @ids to signal the
+        def add_neighbor(training_props, idx)
+
+          sim = similarity(training_props)
+          if sim > @model.min_sim
+            if @model.activities[@cmpds[idx]]
+              @model.activities[@cmpds[idx]].each do |act|
+                @model.neighbors << {
+                  :compound => @cmpds[idx],
+                  :similarity => sim,
+                  :features => @fps[idx].keys,
+                  :activity => act
+                }
+                @sims << sim
+                @ids << idx
+              end
+            end
+          end
+        end
+
+
+        # Removes nil entries from n_prop and q_prop.
+        # Matrix is a nested two-dimensional array.
+        # Removes iteratively rows or columns with the highest fraction of nil entries, until all nil entries are removed.
+        # Tie break: columns take precedence.
+        # Deficient input such as [[nil],[nil]] will not be completely reduced, as the algorithm terminates if any matrix dimension (x or y) is zero.
+        #
+        # Enables the use of cosine similarity / SVD
+        def remove_nils
+          return @n_prop if (@n_prop.length == 0 || @n_prop[0].length == 0)
+          col_nr_nils = (Matrix.rows(@n_prop)).column_vectors.collect{ |cv| (cv.to_a.count(nil) / cv.size.to_f) }
+          row_nr_nils = (Matrix.rows(@n_prop)).row_vectors.collect{ |rv| (rv.to_a.count(nil) / rv.size.to_f) }
+          m_cols = col_nr_nils.max
+          m_rows = row_nr_nils.max
+          idx_cols = col_nr_nils.index(m_cols)
+          idx_rows = row_nr_nils.index(m_rows)
+          while ((m_cols > 0) || (m_rows > 0)) do
+            if m_cols >= m_rows
+              @n_prop.each { |row| row.slice!(idx_cols) }
+              @q_prop.slice!(idx_cols)
+            else
+              @n_prop.slice!(idx_rows)
+              @ids.slice!(idx_rows)
+            end
+            break if (@n_prop.length == 0) || (@n_prop[0].length == 0)
+            col_nr_nils = Matrix.rows(@n_prop).column_vectors.collect{ |cv| (cv.to_a.count(nil) / cv.size.to_f) }
+            row_nr_nils = Matrix.rows(@n_prop).row_vectors.collect{ |rv| (rv.to_a.count(nil) / rv.size.to_f) }
+            m_cols = col_nr_nils.max
+            m_rows = row_nr_nils.max
+            idx_cols= col_nr_nils.index(m_cols)
+            idx_rows = row_nr_nils.index(m_rows)
+          end
+        end
+
+
+        # Replaces nils by zeroes in n_prop and q_prop
+        #
+        # Enables the use of Tanimoto similarities with arrays (rows of n_prop and q_prop)
+        def convert_nils
+          @n_prop.each { |row| row.collect! { |v| v.nil? ? 0 : v } }
+          @q_prop.collect! { |v| v.nil? ? 0 : v }
+        end
+
+
+        # Executes model similarity_algorithm
+        def similarity(training_props)
+          eval("OpenTox::Algorithm::#{@model.similarity_algorithm}(training_props, @q_prop)")
+        end
+
+
+        # Puts a strict order on fingerprints by conversion to Arrays
+        def order_fingerprints
+          @cmpds = []; @fps = []; @model.fingerprints.each { |fp| @cmpds << fp[0]; @fps << fp[1] }
+        end
+
+
+        # Converts fingerprints to matrix, order of rows by fingerprints. nil values allowed. Same for compound fingerprints.
+        def get_matrices
+          @n_prop = []; @q_prop = []; @acts = []
+          @fps.each { |fp| row = []; @model.features.each { |f| row << fp[f] }; @n_prop << row } # puts nils for non-existent f's
+          @model.features.each { |f| @q_prop << @model.compound_fingerprints[f] }
+          @cmpds.each { |c| 
+            if @model.activities[c]
+              @acts << @model.activities[c].flatten.first
+            else
+              LOGGER.debug ""
+              LOGGER.debug "No activity found for compound '#{c}' in model '#{@model.uri}'"
+              LOGGER.debug ""
+            end
+          }
+        end
+
+        def props
+          @model.prop_kernel ? [ @n_prop, @q_prop ] : nil
+        end
 
       end
 

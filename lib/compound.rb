@@ -202,8 +202,8 @@ module OpenTox
       #LOGGER.debug "----- am #{pc_type}"
       entry = ds.data_entries[self.uri]
       if entry.nil?
-        uri = OpenTox::Algorithm.get_pc_descriptors({:compounds => [self.uri], :pc_type => pc_type})
-        uri = OpenTox::Algorithm.load_ds_csv(uri)
+        uri, smiles_to_inchi = OpenTox::Algorithm.get_pc_descriptors({:compounds => [self.uri], :pc_type => pc_type})
+        uri = OpenTox::Algorithm.load_ds_csv(uri, smiles_to_inchi)
         ds = OpenTox::Dataset.find(uri)
         entry = ds.data_entries[self.uri]
         ds.delete

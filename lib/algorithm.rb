@@ -673,21 +673,22 @@ module OpenTox
               n_prop = params[:props][0].collect
               q_prop = params[:props][1].collect
 
-              nr_cases, nr_features = get_sizes n_prop
-              data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
-              query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
+              props = [ n_prop, q_prop ]
 
+              #nr_cases, nr_features = get_sizes n_prop
+              #data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
+              #query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
 
-              LOGGER.debug "Standardize..."
-              temp = data_matrix.vertcat query_matrix
-              (0..nr_features-1).each { |i|
-                autoscaler = OpenTox::Transform::AutoScale.new(temp.col(i))
-                temp.col(i)[0..nr_cases] = autoscaler.vs
-                }
-              data_matrix  = temp.submatrix( 0..(temp.size1-2), nil ).clone # last row: query
-              query_matrix = temp.submatrix( (temp.size1-1)..(temp.size1-1), nil ).clone # last row: query
+              #LOGGER.debug "Standardize..."
+              #temp = data_matrix.vertcat query_matrix
+              #(0..nr_features-1).each { |i|
+              #  autoscaler = OpenTox::Transform::AutoScale.new(temp.col(i))
+              #  temp.col(i)[0..nr_cases] = autoscaler.vs
+              #  }
+              #data_matrix  = temp.submatrix( 0..(temp.size1-2), nil ).clone # last row: query
+              #query_matrix = temp.submatrix( (temp.size1-1)..(temp.size1-1), nil ).clone # last row: query
 
-              props = [ data_matrix.to_a, query_matrix.to_a.flatten ]
+              #props = [ data_matrix.to_a, query_matrix.to_a.flatten ]
             end
 
             # Transform y

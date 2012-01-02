@@ -102,7 +102,7 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :conf_stdev, :max_perc_neighboris, :pc_type
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :conf_stdev, :max_perc_neighbors, :pc_type, :compound_fingerprints, :feature_calculation_algorithm, :neighbors
 
       def initialize(uri=nil)
 
@@ -264,38 +264,34 @@ module OpenTox
 
         unless database_activity(subjectid) # adds database activity to @prediction_dataset
 
-          neighbors
-          prediction_fingerprints = @fingerprints.merge({@compound.uri => @compound_fingerprints})
+          # Calculation of needed values for query compound
+          @compound_features = eval("#{@feature_calculation_algorithm}({
+                                    :compound => @compound, 
+                                    :features => @features, 
+                                    :feature_dataset_uri => @metadata[OT.featureDataset],
+                                    :pc_type => @pc_type
+                                    })")
           
-          # props
-          props = @prop_kernel ? OpenTox::Algorithm::Neighbors.get_props_fingerprints({:neighbors => @neighbors, :features => @features, :fingerprints => prediction_fingerprints, :compound => @compound}) : nil
-
-          # acts
-          acts = @neighbors.collect { |n| n[:activity] }
-
-          # sims
-          gram_matrix = []
-          @neighbors.each_index do |i|
-            gram_matrix[i] = [] unless gram_matrix[i]
-            @neighbors.each_index do |j|
-              if (j>i)
-                sim = eval("#{@similarity_algorithm}(
-                           @fingerprints[@neighbors[i][:compound]], 
-                           @fingerprints[@neighbors[j][:compound]], 
-                           @p_values)")
-                gram_matrix[i][j] = sim
-                gram_matrix[j] = [] unless gram_matrix[j]
-                gram_matrix[j][i] = gram_matrix[i][j]
-              end
+          # Adding fingerprint of query compound with features and values(p_value*nr_hits)
+          @compound_fingerprints = {}
+          @compound_features.each do |feature, value| # value is nil if "Substructure.match"
+            if @feature_calculation_algorithm == "Substructure.match_hits" 
+              @compound_fingerprints[feature] = @p_values[feature] * value
+            elsif @feature_calculation_algorithm == "Substructure.match"
+              @compound_fingerprints[feature] = @p_values[feature]
+            elsif @feature_calculation_algorithm == "Substructure.lookup"
+              @compound_fingerprints[feature] = value
             end
-            gram_matrix[i][i] = 1.0
           end
-          sims = [ gram_matrix, @neighbors.collect { |n| n[:similarity] } ] 
 
-          # prediction
-          prediction = eval("#{@prediction_algorithm} ( { :props => props,
-                                                          :acts => acts,
-                                                          :sims => sims,
+          # Transform model data to machine learning scheme (tables of data)
+          mtf = OpenTox::Algorithm::Transform::ModelTransformer.new(self)
+          mtf.transform
+
+          # Make a prediction
+          prediction = eval("#{@prediction_algorithm} ( { :props => mtf.props,
+                                                          :acts => mtf.acts,
+                                                          :sims => mtf.sims,
                                                           :value_map => @value_map,
                                                           :conf_stdev => @conf_stdev
                                                          } ) ")
@@ -372,61 +368,6 @@ module OpenTox
 
         @prediction_dataset.save(subjectid)
         @prediction_dataset
-      end
-
-      
-
-      # Find neighbors and store them as object variable, access all compounds for that.
-      def neighbors
-        # Calculation of needed values for query compound
-        @compound_features = eval("#{@feature_calculation_algorithm}({
-                                  :compound => @compound, 
-                                  :features => @features, 
-                                  :feature_dataset_uri => @metadata[OT.featureDataset],
-                                  :pc_type => @pc_type
-                                  })") if @feature_calculation_algorithm
-        
-        # Adding fingerprint of query compound with features and values(p_value*nr_hits)
-        @compound_fingerprints = {}
-        @compound_features.each do |feature, value| # value is nil if "Substructure.match"
-          if @feature_calculation_algorithm == "Substructure.match_hits" 
-            @compound_fingerprints[feature] = @p_values[feature] * value
-          elsif @feature_calculation_algorithm == "Substructure.match"
-            @compound_fingerprints[feature] = @p_values[feature]
-          elsif @feature_calculation_algorithm == "Substructure.lookup"
-            @compound_fingerprints[feature] = value
-          end
-        end
-
-        @neighbors = []
-        @fingerprints.keys.each do |training_compound| # AM: access all compounds
-          add_neighbor @fingerprints[training_compound], training_compound
-        end
-
-        if @max_perc_neighbors 
-          @neighbors = @neighbors.sort { |a,b| a[:similarity] <=> b[:similarity] }.reverse # order by descending sim (best neighbors first)
-          nr_neighbors = (@fingerprints.size.to_f * @max_perc_neighbors / 100).ceil
-          LOGGER.debug "Maximally #{nr_neighbors} neighbors (=#{@max_perc_neighbors}% of dataset) out of actually #{@neighbors.size} neighbors."
-          @neighbors = @neighbors.take nr_neighbors
-        end
-        
-      end
-
-      # Adds a neighbor to @neighbors if it passes the similarity threshold
-      def add_neighbor(training_fingerprints, training_compound)
-        sim = eval("#{@similarity_algorithm}(training_fingerprints, @compound_fingerprints)")
-        if sim > @min_sim
-          if @activities[training_compound]
-            @activities[training_compound].each do |act|
-              @neighbors << {
-                :compound => training_compound,
-                :similarity => sim,
-                :features => training_fingerprints.keys,
-                :activity => act
-              }
-            end
-          end
-        end
       end
 
       # Find database activities and store them in @prediction_dataset

@@ -14,10 +14,10 @@ module OpenTox
       begin
         ds = OpenTox::Dataset.find(params[:dataset_uri])
         compounds = ds.compounds.collect
-        ambit_result_uri = get_pc_descriptors( { :compounds => compounds, :pc_type => params[:pc_type] } )
+        ambit_result_uri, smiles_to_inchi = get_pc_descriptors( { :compounds => compounds, :pc_type => params[:pc_type] } )
         #ambit_result_uri = ["http://apps.ideaconsult.net:8080/ambit2/dataset/987103?" ,"feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Ffeature%2F4276789&", "feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Fmodel%2F16%2Fpredicted"] # for testing
         LOGGER.debug "Ambit result uri for #{params.inspect}: '#{ambit_result_uri.join('')}'"
-        load_ds_csv(ambit_result_uri)
+        load_ds_csv(ambit_result_uri, smiles_to_inchi)
       rescue Exception => e
         LOGGER.debug "#{e.class}: #{e.message}"
         LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
@@ -25,45 +25,6 @@ module OpenTox
 
     end
     
-    # Load dataset via CSV
-    # @param[Array] Ambit result uri, piecewise (1st: base, 2nd: SMILES, 3rd+: features
-    # @return[String] dataset uri 
-    def self.load_ds_csv(ambit_result_uri)
-
-      master=nil
-      (1..(ambit_result_uri.size-1)).collect { |idx|
-        curr_uri = ambit_result_uri[0] + ambit_result_uri[idx]
-        LOGGER.debug "Requesting #{curr_uri}"
-        csv_data = CSV.parse( OpenTox::RestClientWrapper.get(curr_uri, {:accept => "text/csv"}) )
-        if csv_data[0] && csv_data[0].size>1
-          if master.nil?
-            master = csv_data
-            next
-          else
-            nr_cols = (csv_data[0].size)-1
-            LOGGER.debug "Merging #{nr_cols} new columns"
-            master.each {|row| nr_cols.times { row.push(nil) }  } # Adds empty columns to all rows
-            csv_data.each do |row|
-              temp = master.assoc(row[0]) # Finds the appropriate line in master
-              ((-1*nr_cols)..-1).collect.each { |idx|
-                temp[idx] = row[nr_cols+idx+1] if temp # Uupdates columns if line is found
-              }
-            end
-          end
-        end
-      }
-
-      index_uri = master[0].index("Compound")
-      master.map {|i| i.delete_at(index_uri)}
-      master[0].each {|cell| cell.chomp!(" ")}
-      parser = OpenTox::Parser::Spreadsheets.new
-      ds = OpenTox::Dataset.new
-      ds.save
-      parser.dataset = ds
-      ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"))
-      ds.save
-    end
-
     # Calculates PC descriptors via Ambit -- DO NOT OVERLOAD Ambit.
     # @param[Hash] Required keys: :compounds, :pc_type
     # @return[Array] Ambit result uri, piecewise (1st: base, 2nd: SMILES, 3rd+: features
@@ -89,16 +50,19 @@ module OpenTox
 
         begin
           # Create SMI
-          smiles = []
+          smiles_array = []; smiles_to_inchi = {}
           params[:compounds].each do |n|
-            smiles << OpenTox::Compound.new(n).to_smiles
+            cmpd = OpenTox::Compound.new(n)
+            smiles_string = cmpd.to_smiles
+            smiles_to_inchi[smiles_string] = URI.encode_www_form_component(cmpd.to_inchi)
+            smiles_array << smiles_string
           end
           smi_file = Tempfile.open(['pc_ambit', '.csv'])
           pc_descriptors = nil
 
           # Create Ambit dataset
           smi_file.puts( "SMILES\n" )
-          smi_file.puts( smiles.join("\n") )
+          smi_file.puts( smiles_array.join("\n") )
           smi_file.close
           ambit_ds_uri = OpenTox::RestClientWrapper.post(ambit_ds_service_uri, {:file => File.new(smi_file.path)}, {:content_type => "multipart/form-data", :accept => "text/uri-list"} )
         rescue Exception => e
@@ -126,12 +90,53 @@ module OpenTox
           LOGGER.debug "Ambit (#{descs_uris.size}): #{i+1}"
         end
         #LOGGER.debug "Ambit result: #{ambit_result_uri.join('')}"
-        ambit_result_uri
+        [ ambit_result_uri, smiles_to_inchi ]
 
       rescue Exception => e
         LOGGER.debug "#{e.class}: #{e.message}"
         LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
       end
+    end
+
+
+    # Load dataset via CSV
+    # @param[Array] Ambit result uri, piecewise (1st: base, 2nd: SMILES, 3rd+: features
+    # @return[String] dataset uri 
+    def self.load_ds_csv(ambit_result_uri, smiles_to_inchi)
+
+      master=nil
+      (1...ambit_result_uri.size).collect { |idx|
+        curr_uri = ambit_result_uri[0] + ambit_result_uri[idx]
+        LOGGER.debug "Requesting #{curr_uri}"
+        csv_data = CSV.parse( OpenTox::RestClientWrapper.get(curr_uri, {:accept => "text/csv"}) )
+        if csv_data[0] && csv_data[0].size>1
+          if master.nil? # This is the smiles entry
+            (1...csv_data.size).each{ |idx| csv_data[idx][1] = smiles_to_inchi[csv_data[idx][1]] }
+            master = csv_data
+            next
+          else
+            nr_cols = (csv_data[0].size)-1
+            LOGGER.debug "Merging #{nr_cols} new columns"
+            master.each {|row| nr_cols.times { row.push(nil) }  } # Adds empty columns to all rows
+            csv_data.each do |row|
+              temp = master.assoc(row[0]) # Finds the appropriate line in master
+              ((-1*nr_cols)..-1).collect.each { |idx|
+                temp[idx] = row[nr_cols+idx+1] if temp # Uupdates columns if line is found
+              }
+            end
+          end
+        end
+      }
+
+      index_uri = master[0].index("Compound")
+      master.map {|i| i.delete_at(index_uri)}
+      master[0].each {|cell| cell.chomp!(" ")}
+      parser = OpenTox::Parser::Spreadsheets.new
+      ds = OpenTox::Dataset.new
+      ds.save
+      parser.dataset = ds
+      ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"))
+      ds.save
     end
 
 
@@ -141,6 +146,7 @@ module OpenTox
       d = 1.0 - x.to_f
       Math.exp(-(d*d)/(2*sigma*sigma))
     end
+
 
     # For symbolic features
     # @param [Array] Array to test, must indicate non-occurrence with 0.
@@ -152,12 +158,14 @@ module OpenTox
              (nr_zeroes == 0)                # also remove feature present everywhere
     end
 
+
     # Numeric value test
     # @param[Object] value
     # @return [Boolean] Whether value is a number
     def self.numeric?(value)
       true if Float(value) rescue false
     end
+
 
     # For symbolic features
     # @param [Array] Array to test, must indicate non-occurrence with 0.
@@ -166,6 +174,7 @@ module OpenTox
       return (array.to_scale.variance_population == 0.0)
     end
     
+
     # Sum of an array for Arrays.
     # @param [Array] Array with values
     # @return [Integer] Sum of size of values
@@ -175,6 +184,7 @@ module OpenTox
       return sum
     end
 
+
     # Minimum Frequency
     # @param [Integer] per-mil value
     # return [Integer] min-frequency
@@ -183,6 +193,7 @@ module OpenTox
       minfreq = 2 unless minfreq > 2
       Integer (minfreq)
     end
+
 
     # Effect calculation for classification
     # @param [Array] Array of occurrences per class in the form of Enumerables.
@@ -206,6 +217,7 @@ module OpenTox
       max
     end
     
+
     # neighbors
 
     module Neighbors
@@ -213,7 +225,6 @@ module OpenTox
       # Calculate the propositionalization matrix (aka instantiation matrix) via fingerprints.
       # Same for the vector describing the query compound.
       # @param[Hash] Required keys: :neighbors, :compound, :features, :nr_hits, :fingerprints, :p_values
-
       def self.get_props_fingerprints (params)
         matrix = []
         begin 
@@ -299,62 +310,65 @@ module OpenTox
     module Similarity
 
       # Tanimoto similarity
-      # @param [Hash] fingerprints_a Features and values of first compound
-      # @param [Hash] fingerprints_b Features and values of second compound
+      # @param [Hash, Array] fingerprints of first compound
+      # @param [Hash, Array] fingerprints of second compound
       # @return [Float] (Weighted) tanimoto similarity
       def self.tanimoto(fingerprints_a,fingerprints_b,weights=nil,params=nil)
-        common_features = fingerprints_a.keys & fingerprints_b.keys
-        all_features = (fingerprints_a.keys + fingerprints_b.keys).uniq
-        if common_features.size > 0
-          common_p_sum = 0.0
-          common_features.each{|f| common_p_sum += [fingerprints_a[f],fingerprints_b[f]].compact.min}
-          all_p_sum = 0.0
-          all_features.each{|f| all_p_sum += [fingerprints_a[f],fingerprints_b[f]].compact.max}
-          common_p_sum/all_p_sum
-        else
-          0.0
+
+        common_p_sum = 0.0
+        all_p_sum = 0.0
+
+        # fingerprints are hashes
+        if fingerprints_a.class == Hash && fingerprints_b.class == Hash
+          common_features = fingerprints_a.keys & fingerprints_b.keys
+          all_features = (fingerprints_a.keys + fingerprints_b.keys).uniq
+          if common_features.size > 0
+            common_features.each{ |f| common_p_sum += [ fingerprints_a[f], fingerprints_b[f] ].min }
+            all_features.each{ |f| all_p_sum += [ fingerprints_a[f],fingerprints_b[f] ].compact.max } # compact, since one fp may be empty at that pos
+          end
+
+        # fingerprints are arrays
+        elsif fingerprints_a.class == Array && fingerprints_b.class == Array
+          size = [ fingerprints_a.size, fingerprints_b.size ].min
+          LOGGER.warn "fingerprints don't have equal size" if fingerprints_a.size != fingerprints_b.size
+          (0...size).each { |idx|
+            common_p_sum += [ fingerprints_a[idx], fingerprints_b[idx] ].min
+            all_p_sum += [ fingerprints_a[idx], fingerprints_b[idx] ].max
+          }
         end
+
+        (all_p_sum > 0.0) ? (common_p_sum/all_p_sum) : 0.0
+
       end
 
-      # Euclidean similarity
-      # @param [Hash] properties_a Properties of first compound
-      # @param [Hash] properties_b Properties of second compound
-      # @param [optional, Hash] weights Weights for all properties
-      # @return [Float] (Weighted) euclidean similarity
-      def self.euclidean(properties_a,properties_b,weights=nil)
-        common_properties = properties_a.keys & properties_b.keys
-        if common_properties.size > 1
-          dist_sum = 0
-          common_properties.each do |p|
-            if weights
-              dist_sum += ( (properties_a[p] - properties_b[p]) * weights[p] )**2
-            else
-              dist_sum += (properties_a[p] - properties_b[p])**2
-            end
-          end
-          1/(1+Math.sqrt(dist_sum))
-        else
-          0.0
-        end
-      end
 
       # Cosine similarity
       # @param [Hash] properties_a key-value properties of first compound
       # @param [Hash] properties_b key-value properties of second compound
       # @return [Float] cosine of angle enclosed between vectors induced by keys present in both a and b
-      def self.cosine(properties_a,properties_b,weights=nil)
-        common_properties = properties_a.keys & properties_b.keys
-        if common_properties.size > 1
+      def self.cosine(fingerprints_a,fingerprints_b,weights=nil)
+
+        # fingerprints are hashes
+        if fingerprints_a.class == Hash && fingerprints_b.class == Hash
           a = []; b = []
-          common_properties.each do |p|
-            a << properties_a[p]
-            b << properties_b[p]
+          common_features = fingerprints_a.keys & fingerprints_b.keys
+          if common_features.size > 1
+            common_features.each do |p|
+              a << fingerprints_a[p]
+              b << fingerprints_b[p]
+            end
           end
-          self.cosine_num a.to_gv, b.to_gv
-        else
-          0.0
+
+        # fingerprints are arrays
+        elsif fingerprints_a.class == Array && fingerprints_b.class == Array
+          a = fingerprints_a
+          b = fingerprints_b
         end
+
+        (a.size > 0 && b.size > 0) ? self.cosine_num(a.to_gv, b.to_gv) : 0.0
+
       end
+
 
       # Cosine similarity
       # @param [GSL::Vector] a
