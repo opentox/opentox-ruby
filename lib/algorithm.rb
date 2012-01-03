@@ -328,7 +328,11 @@ module OpenTox
           sims = params[:neighbors].collect { |n| n[:similarity] }
           LOGGER.debug "Local MLR (Propositionalization / GSL)."
           prediction = mlr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts} )
-          transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})")
+          if params[:transform].to_s == "classNOP"
+            transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}])")
+          else
+            transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}]), #{params[:transform]["offset"]})")
+          end 
           prediction = transformer.values[0]
           prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
@@ -441,7 +445,11 @@ module OpenTox
           acts = params[:neighbors].collect{ |n| n[:activity].to_f }
           sims = params[:neighbors].collect{ |n| n[:similarity] }
           prediction = props.nil? ? local_svm(acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr")
-          transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})")
+          if params[:transform].to_s == "classNOP"
+            transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}])")
+          else
+            transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}]), #{params[:transform]["offset"]})")
+          end
           prediction = transformer.values[0]
           prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
