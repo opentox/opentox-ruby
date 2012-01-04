@@ -266,20 +266,27 @@ module OpenTox
         LOGGER.debug "Local MLR."
         if params[:neighbors].size>0
 
-          acts = params[:neighbors].collect { |n| n[:activity].to_f }
-          sims = params[:neighbors].collect { |n| n[:similarity] }
+          acts = params[:acts].collect
+          sims = params[:sims].collect
+          n_prop = params[:props][0].collect
+          q_prop = params[:props][1].collect
+          props = [ n_prop, q_prop ]
           maxcols = ( params[:maxcols].nil? ? (sims.size/3.0).ceil : params[:maxcols] )
 
-          props = params[:props] ? get_props_fingerprints(params) : nil
+          # Transform y
+
+          # Predict
           prediction = pcr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
+
+          # Restore
           prediction = nil if (!prediction.nil? && prediction.infinite?)
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
-          confidence = nil if prediction.nil?
+          confidence = 0.0 if prediction.nil?
         end
-        {:prediction => prediction, :confidence => confidence}
 
+        {:prediction => prediction, :confidence => confidence}
       end
 
       # Multi-linear regression (unweighted).
@@ -298,7 +305,7 @@ module OpenTox
           sims = params[:sims].collect
           maxcols = params[:maxcols]
 
-          nr_cases, nr_features = get_sizes n_prop
+          nr_cases, nr_features = n_prop.size, n_prop[0].size
           maxcols = nr_features if maxcols > nr_features
 
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
@@ -320,7 +327,7 @@ module OpenTox
           LOGGER.debug "PCA..."
           pca = OpenTox::Transform::PCA.new(data_matrix,0.05,maxcols)
           data_matrix = pca.data_transformed_matrix
-          nr_cases, nr_features = get_sizes data_matrix.to_a
+          nr_cases, nr_features = data_matrix.to_a.size, data_matrix.to_a[0].size 
           query_matrix = pca.transform(query_matrix)
           LOGGER.debug "Reduced by compression, M: #{nr_cases}x#{nr_features}; R: #{query_matrix.size2}"
 
@@ -366,26 +373,12 @@ module OpenTox
           end
           temp_dm = []; temp_acts = []; temp_sims = []
           data_matrix.to_a.each_with_index { |elem, idx| temp_dm << elem unless outliers.include? idx }
-          nr_cases, nr_features = get_sizes temp_dm
+          nr_cases, nr_features = temp_dm.size, temp_dm[0].size
           data_matrix = GSL::Matrix.alloc(temp_dm.flatten, nr_cases, nr_features)
           acts.each_with_index { |elem, idx| temp_acts << elem unless outliers.include? idx }
           acts = temp_acts # same nr_features
           sims.each_with_index { |elem, idx| temp_sims << elem unless outliers.include? idx }
           sims = temp_sims # same nr_features
-
-
-          ## one-off
-          #outliers = []
-          #outliers << acts.each_with_index.max[1]
-          #outliers << acts.each_with_index.min[1]
-          #temp_dm = []; temp_acts = []; temp_sims = []
-          #data_matrix.to_a.each_with_index { |elem, idx| temp_dm << elem unless outliers.include? idx }
-          #nr_cases, nr_features = get_sizes temp_dm
-          #data_matrix = GSL::Matrix.alloc(temp_dm.flatten, nr_cases, nr_features)
-          #acts.each_with_index { |elem, idx| temp_acts << elem unless outliers.include? idx }
-          #acts = temp_acts # same nr_features
-          #sims.each_with_index { |elem, idx| temp_sims << elem unless outliers.include? idx }
-          #sims = temp_sims # same nr_features
 
 
           @r.eval 'fstr <- "y ~ ."'
@@ -468,7 +461,7 @@ module OpenTox
           acts = params[:acts].collect
           maxcols = params[:maxcols]
 
-          nr_cases, nr_features = get_sizes n_prop
+          nr_cases, nr_features = n_prop.size, n_prop[0].size
           maxcols = nr_features if maxcols > nr_features
 
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
@@ -491,7 +484,7 @@ module OpenTox
           LOGGER.debug "PCA..."
           pca = OpenTox::Transform::PCA.new(data_matrix,0.05,maxcols)
           data_matrix = pca.data_transformed_matrix
-          nr_cases, nr_features = get_sizes data_matrix.to_a
+          nr_cases, nr_features = data_matrix.to_a.size, data_matrix.to_a[0].size
           query_matrix = pca.transform(query_matrix)
           LOGGER.debug "Reduced by compression, M: #{nr_cases}x#{nr_features}; R: #{query_matrix.size2}"
 
@@ -545,7 +538,7 @@ module OpenTox
           end
           temp_dm = []; temp_acts = []
           data_matrix.to_a.each_with_index { |elem, idx| temp_dm << elem unless outliers.include? idx }
-          nr_cases, nr_features = get_sizes temp_dm
+          nr_cases, nr_features = temp_dm.size, temp_dm[0].size
           data_matrix = GSL::Matrix.alloc(temp_dm.flatten, nr_cases, nr_features)
           acts.each_with_index { |elem, idx| temp_acts << elem unless outliers.include? idx }
           acts = temp_acts # same nr_features
@@ -672,23 +665,7 @@ module OpenTox
             if params[:props]
               n_prop = params[:props][0].collect
               q_prop = params[:props][1].collect
-
               props = [ n_prop, q_prop ]
-
-              #nr_cases, nr_features = get_sizes n_prop
-              #data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
-              #query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
-
-              #LOGGER.debug "Standardize..."
-              #temp = data_matrix.vertcat query_matrix
-              #(0..nr_features-1).each { |i|
-              #  autoscaler = OpenTox::Transform::AutoScale.new(temp.col(i))
-              #  temp.col(i)[0..nr_cases] = autoscaler.vs
-              #  }
-              #data_matrix  = temp.submatrix( 0..(temp.size1-2), nil ).clone # last row: query
-              #query_matrix = temp.submatrix( (temp.size1-1)..(temp.size1-1), nil ).clone # last row: query
-
-              #props = [ data_matrix.to_a, query_matrix.to_a.flatten ]
             end
 
             # Transform y
@@ -842,12 +819,7 @@ module OpenTox
               elsif type == "C-bsvc"
                 @r.eval "p<-predict(model,q_prop)"
               end
-              if type == "nu-svr"
-                prediction = @r.p
-              elsif type == "C-bsvc"
-                #prediction = (@r.p.to_f == 1.0 ? true : false)
-                prediction = @r.p
-              end
+              prediction = @r.p
               @r.quit # free R
             rescue Exception => e
               LOGGER.debug "#{e.class}: #{e.message}"
@@ -859,25 +831,6 @@ module OpenTox
 
     end
     
-   # module Substructure
-   #   include Algorithm
-   #   # Substructure matching
-   #   # @param [OpenTox::Compound] compound Compound
-   #   # @param [Array] features Array with Smarts strings
-   #   # @return [Array] Array with matching Smarts
-   #   def self.match(compound,features)
-   #     compound.match(features)
-   #   end
-   #   
-   #   # Substructure matching with number of non-unique hits
-   #   # @param [OpenTox::Compound] compound Compound
-   #   # @param [Array] features Array with Smarts strings
-   #   # @return [Hash] Hash with matching Smarts and number of hits 
-   #   def self.match_hits(compound,features)
-   #     compound.match_hits(features)
-   #   end  
-   # end
-
     module Substructure
       include Algorithm
       # Substructure matching

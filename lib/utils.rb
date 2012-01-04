@@ -262,21 +262,7 @@ module OpenTox
       end
       
       
-      # Get X and Y size of a nested Array (Matrix)
-      # @param [Array] Two-dimensional ruby array (matrix) with X and Y size > 0
-      # @return [Arrray] X and Y size of the matrix
-      def self.get_sizes(matrix)
-        begin
-          nr_cases = matrix.size
-          nr_features = matrix[0].size
-        rescue Exception => e
-          LOGGER.debug "#{e.class}: #{e.message}"
-          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-        end
-        #puts "NRC: #{nr_cases}, NRF: #{nr_features}"
-        [ nr_cases, nr_features ]
-      end
-      
+     
       
       # Get confidence for regression, with standard deviation of neighbor activity if conf_stdev is set.
       # @param[Hash] Required keys: :sims, :acts, :conf_stdev
