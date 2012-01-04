@@ -274,11 +274,14 @@ module OpenTox
           maxcols = ( params[:maxcols].nil? ? (sims.size/3.0).ceil : params[:maxcols] )
 
           # Transform y
+          acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
+          acts = acts_autoscaler.vs.to_a
 
           # Predict
           prediction = pcr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
 
           # Restore
+          prediction = acts_autoscaler.restore( [ prediction ].to_gv )[0]
           prediction = nil if (!prediction.nil? && prediction.infinite?)
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
@@ -311,31 +314,7 @@ module OpenTox
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
           query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
 
-          ### Transform data (discussion: http://goo.gl/U8Klu)
-          # Standardize data (scale and center), adjust query accordingly
-          LOGGER.debug "Standardize..."
-          temp = data_matrix.vertcat query_matrix
-          (0..nr_features-1).each { |i|
-            autoscaler = OpenTox::Transform::AutoScale.new(temp.col(i))
-            temp.col(i)[0..nr_cases] = autoscaler.vs
-            #query_matrix.col(i)[0] = autoscaler.transform(query_matrix.col(i))[0]
-          }
-          data_matrix  = temp.submatrix( 0..(temp.size1-2), nil ).clone # last row: query
-          query_matrix = temp.submatrix( (temp.size1-1)..(temp.size1-1), nil ).clone # last row: query
-
-          # Rotate data (pca), adjust query accordingly
-          LOGGER.debug "PCA..."
-          pca = OpenTox::Transform::PCA.new(data_matrix,0.05,maxcols)
-          data_matrix = pca.data_transformed_matrix
-          nr_cases, nr_features = data_matrix.to_a.size, data_matrix.to_a[0].size 
-          query_matrix = pca.transform(query_matrix)
-          LOGGER.debug "Reduced by compression, M: #{nr_cases}x#{nr_features}; R: #{query_matrix.size2}"
-
-          # Transform y
-          acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
-          acts = acts_autoscaler.vs.to_a
-          ### End of transform
-          
+                   
           ### Model
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
           @r.eval "suppressPackageStartupMessages(library(\"robustbase\"))"
@@ -435,8 +414,7 @@ module OpenTox
           @r.eval 'pred <- predict(fit, q, interval="confidence")'
           ### End of Model
           
-          point_prediction = (@r.pred.to_a.flatten)[0] # [1] is lwr, [2] upr confidence limit.
-          acts_autoscaler.restore( [ point_prediction ].to_gv )[0] # return restored value of type numeric
+          (@r.pred.to_a.flatten)[0] # [1] is lwr, [2] upr confidence limit.
 
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
@@ -466,38 +444,6 @@ module OpenTox
 
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
           query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
-
-          ### Transform data (discussion: http://goo.gl/U8Klu)
-          # Standardize data (scale and center), adjust query accordingly
-          LOGGER.debug "Standardize..."
-          temp = data_matrix.vertcat query_matrix
-          (0..nr_features-1).each { |i|
-            autoscaler = OpenTox::Transform::AutoScale.new(temp.col(i))
-            temp.col(i)[0..nr_cases] = autoscaler.vs
-            #query_matrix.col(i)[0] = autoscaler.transform(query_matrix.col(i))[0]
-          }
-          data_matrix  = temp.submatrix( 0..(temp.size1-2), nil ).clone # last row: query
-          query_matrix = temp.submatrix( (temp.size1-1)..(temp.size1-1), nil ).clone # last row: query
-
-
-          # PCA on data -- changes features; adjust query accordingly
-          LOGGER.debug "PCA..."
-          pca = OpenTox::Transform::PCA.new(data_matrix,0.05,maxcols)
-          data_matrix = pca.data_transformed_matrix
-          nr_cases, nr_features = data_matrix.to_a.size, data_matrix.to_a[0].size
-          query_matrix = pca.transform(query_matrix)
-          LOGGER.debug "Reduced by compression, M: #{nr_cases}x#{nr_features}; R: #{query_matrix.size2}"
-
-          #LOGGER.debug "AM: DM"
-          #LOGGER.debug "\n" + data_matrix.to_a.collect { |row| row.join ", " }.join("\n")
-          #LOGGER.debug "AM: ACTS"
-          #LOGGER.debug acts.join ", "
-
-          # Transform y
-          acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
-          acts = acts_autoscaler.vs.to_a
-          ### End of transform
-          
 
           ### Model
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
@@ -585,13 +531,12 @@ module OpenTox
             @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
             @r.eval 'names(q) = names(df)[2:length(names(df))]'
             @r.eval 'pred <- drop( predict( best[[4]], newdata = q, ncomp=best[[2]] ) )'
-            point_prediction = @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
-            point_prediction = acts_autoscaler.restore( [ point_prediction ].to_gv )[0] # return restored value of type numeric
+            prediction = @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
           else
             LOGGER.debug "No appropriate model found."
-            point_prediction = nil
+            prediction = nil
           end
-          point_prediction
+          prediction
 
 
         rescue Exception => e
