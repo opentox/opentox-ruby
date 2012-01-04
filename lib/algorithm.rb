@@ -261,10 +261,10 @@ module OpenTox
         prediction=nil
 
         LOGGER.debug "Local MLR."
-        if params[:neighbors].size>0
+        if params[:acts].size>0
 
           acts = params[:acts].collect
-          sims = params[:sims].collect
+          sims = params[:sims][1].collect
           n_prop = params[:props][0].collect
           q_prop = params[:props][1].collect
           props = [ n_prop, q_prop ]
@@ -282,7 +282,7 @@ module OpenTox
           prediction = nil if (!prediction.nil? && prediction.infinite?)
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
-          confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
+          confidence = get_confidence({:sims => sims, :acts => acts, :conf_stdev => params[:conf_stdev]})
           confidence = 0.0 if prediction.nil?
         end
 
@@ -314,9 +314,9 @@ module OpenTox
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
           outliers = OpenTox::Algorithm::Similarity.outliers( { :query_matrix => query_matrix, :data_matrix => data_matrix, :acts => acts, :r => @r  } )
           LOGGER.debug "Detected #{outliers.size} outliers: [#{outliers.join(", ")}]"
-          if (outliers.include?(-1))
-            raise "Query is an outlier."
-          end
+          #if (outliers.include?(-1))
+          #  raise "Query is an outlier."
+          #end
 
           temp_dm = []; temp_acts = []; temp_sims = []
           data_matrix.to_a.each_with_index { |elem, idx| temp_dm << elem unless outliers.include? idx }
@@ -350,10 +350,6 @@ module OpenTox
           end
           LOGGER.debug "Indices: [" + @r.intidx.to_a.join(", ") + "]"
           raise "No features left" if (@r.intidx.to_a.inject{|sum,elem| sum + elem}) == 1
-          
-          @r.eval 'nam <- names(df)'
-          LOGGER.debug @r.nam.to_a.join(", ")
-
           @r.eval 'suppressPackageStartupMessages(library("MASS"))'
           @r.eval 'df <- df[,idx]'
           @r.eval 'fit <- rlm( as.formula(fstr), data=df, psi = psi.bisquare, weights=w, wt.method="case")'
@@ -400,9 +396,9 @@ module OpenTox
 
 
           LOGGER.debug "Detected #{outliers.size} outliers: [#{outliers.join(", ")}]"
-          if (outliers.include?(-1))
-            raise "Query is an outlier."
-          end
+          #if (outliers.include?(-1))
+          #  raise "Query is an outlier."
+          #end
           temp_dm = []; temp_acts = []
           data_matrix.to_a.each_with_index { |elem, idx| temp_dm << elem unless outliers.include? idx }
           nr_cases, nr_features = temp_dm.size, temp_dm[0].size

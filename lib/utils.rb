@@ -372,27 +372,30 @@ module OpenTox
       # @return[Array] indices identifying outliers (may occur several times, this is intended)
       def self.outliers(params)
         outlier_array = []
+        data_matrix = params[:data_matrix]
+        query_matrix = params[:query_matrix]
+        acts = params[:acts]
         begin
-          LOGGER.debug "Outliers (p=#{params[:p_outlier] || 0.999})..."
-          params[:r].nil? ? @r = RinRuby.new(false,false) : @r = params[:r]
-          @r.eval "suppressPackageStartupMessages(library(\"robustbase\"))"
-          @r.eval "outlier_threshold = #{params[:p_outlier] || 0.999}"
+          LOGGER.debug "Outliers (p=#{params[:p_outlier] || 0.9999})..."
+          r = ( params[:r] || RinRuby.new(false,false) )
+          r.eval "suppressPackageStartupMessages(library(\"robustbase\"))"
+          r.eval "outlier_threshold = #{params[:p_outlier] || 0.999}"
           nr_cases, nr_features = data_matrix.to_a.size, data_matrix.to_a[0].size
-          @r.odx = data_matrix.to_a.flatten
-          @r.q = query_matrix.to_a.flatten
-          @r.y = acts.to_a.flatten
-          @r.eval "odx = matrix(odx, #{nr_cases}, #{nr_features}, byrow=T)"
-          @r.eval 'odx = rbind(q,odx)' # query is nr 0 (1) in ruby (R)
-          @r.eval 'mah = covMcd(odx)$mah' # run MCD alg
-          @r.eval "mah = pchisq(mah,#{nr_features})"
-          @r.eval 'outlier_array = which(mah>outlier_threshold)'  # multivariate outliers using robust mahalanobis
-          outlier_array = @r.outlier_array.to_a.collect{|v| v-2 }  # translate to ruby index (-1 for q, -1 due to ruby)
-          @r.eval 'fqu = matrix(summary(y))[2]'
-          @r.eval 'tqu = matrix(summary(y))[5]'
-          @r.eval 'outlier_array = which(y>(tqu+1.5*IQR(y)))'     # univariate outliers due to Tukey (http://goo.gl/mwzNH)
-          outlier_array += @r.outlier_array.to_a.collect{|v| v-1 } # translate to ruby index (-1 due to ruby)
-          @r.eval 'outlier_array = which(y<(fqu-1.5*IQR(y)))'
-          outlier_array += @r.outlier_array.to_a.collect{|v| v-1 }
+          r.odx = data_matrix.to_a.flatten
+          r.q = query_matrix.to_a.flatten
+          r.y = acts.to_a.flatten
+          r.eval "odx = matrix(odx, #{nr_cases}, #{nr_features}, byrow=T)"
+          r.eval 'odx = rbind(q,odx)' # query is nr 0 (1) in ruby (R)
+          r.eval 'mah = covMcd(odx)$mah' # run MCD alg
+          r.eval "mah = pchisq(mah,#{nr_features})"
+          r.eval 'outlier_array = which(mah>outlier_threshold)'  # multivariate outliers using robust mahalanobis
+          outlier_array = r.outlier_array.to_a.collect{|v| v-2 }  # translate to ruby index (-1 for q, -1 due to ruby)
+          r.eval 'fqu = matrix(summary(y))[2]'
+          r.eval 'tqu = matrix(summary(y))[5]'
+          r.eval 'outlier_array = which(y>(tqu+1.5*IQR(y)))'     # univariate outliers due to Tukey (http://goo.gl/mwzNH)
+          outlier_array += r.outlier_array.to_a.collect{|v| v-1 } # translate to ruby index (-1 due to ruby)
+          r.eval 'outlier_array = which(y<(fqu-1.5*IQR(y)))'
+          outlier_array += r.outlier_array.to_a.collect{|v| v-1 }
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
           #LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
