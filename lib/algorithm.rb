@@ -147,11 +147,6 @@ module OpenTox
     end
 
 
-
-
-    # Utility methods without dedicated webservices
-
-
     # Structural Graph Clustering by TU Munich
     # Finds clusters similar to a query structure in a given training dataset
     # May be queried for cluster membership of an unknown compound
@@ -252,6 +247,8 @@ module OpenTox
 
     end
 
+
+
     module Neighbors
 
       # Local multi-linear regression (MLR) prediction from neighbors. 
@@ -316,12 +313,11 @@ module OpenTox
 
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
           outliers = OpenTox::Algorithm::Similarity.outliers( { :query_matrix => query_matrix, :data_matrix => data_matrix, :acts => acts, :r => @r  } )
-
-
           LOGGER.debug "Detected #{outliers.size} outliers: [#{outliers.join(", ")}]"
           if (outliers.include?(-1))
             raise "Query is an outlier."
           end
+
           temp_dm = []; temp_acts = []; temp_sims = []
           data_matrix.to_a.each_with_index { |elem, idx| temp_dm << elem unless outliers.include? idx }
           nr_cases, nr_features = temp_dm.size, temp_dm[0].size
@@ -331,7 +327,6 @@ module OpenTox
           sims.each_with_index { |elem, idx| temp_sims << elem unless outliers.include? idx }
           sims = temp_sims # same nr_features
 
-
           @r.eval 'fstr <- "y ~ ."'
           @r.x = data_matrix.to_a.flatten
           @r.y = acts.to_a.flatten
@@ -340,8 +335,6 @@ module OpenTox
 
           @r.eval "x <- matrix(x, #{nr_cases}, #{nr_features}, byrow=T)"
           @r.eval 'df <- data.frame(y,x)'
-          @r.eval 'idx = rep(T,dim(x)[2])'
-
 
           # optimize selection features; adjust query accordingly
           begin
@@ -350,20 +343,14 @@ module OpenTox
             @r.eval "allss = summary( regsubsets( as.formula(fstr), data=df, nvmax=#{[ (nr_cases / 3).floor, nr_features ].min}, method=\"exhaustive\", weights=w) )"
             @r.eval 'idx = as.vector(allss$which[which.max(allss$adjr2),])'
             @r.eval 'idx[1] = T' # enforce intercept
-            #@r.eval 'idx = idx[2:length(idx)]' # remove intercept
             @r.eval 'intidx = as.integer(idx)'
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
           LOGGER.debug "Indices: [" + @r.intidx.to_a.join(", ") + "]"
-
           raise "No features left" if (@r.intidx.to_a.inject{|sum,elem| sum + elem}) == 1
           
-          
-          # build model on best selection
-          
-          ### DEBUG
           @r.eval 'nam <- names(df)'
           LOGGER.debug @r.nam.to_a.join(", ")
 
@@ -372,19 +359,8 @@ module OpenTox
           @r.eval 'fit <- rlm( as.formula(fstr), data=df, psi = psi.bisquare, weights=w, wt.method="case")'
           @r.eval 'q <- q[idx[2:length(idx)]]'
           @r.eval 'q <- data.frame( matrix( q, 1, length(q) ) )'
-
-          ### DEBUG
-          @r.eval 'nam <- names(df)'
-          LOGGER.debug @r.nam.to_a.join(", ")
-          
           @r.eval 'names(q) = names(df)[2:length(names(df))]'
-          
-          ### DEBUG
-          @r.eval 'nam <- names(q)'
-          LOGGER.debug @r.nam.to_a.join(", ")
-          
           @r.eval 'pred <- predict(fit, q, interval="confidence")'
-          ### End of Model
           
           (@r.pred.to_a.flatten)[0] # [1] is lwr, [2] upr confidence limit.
 
@@ -437,52 +413,33 @@ module OpenTox
 
           # optimize selection of training instances -- changes cases; adjust acts accordingly
           @r.eval 'best <- vector(mode="list", length=5)'
-          @r.eval 'best[[1]] = 0' # neighbor size
-          @r.eval 'best[[2]] = 0' # best nr components
-          @r.eval 'best[[3]] = Inf' # RMSE of best
-          @r.eval 'best[[4]] = NULL' # fit of best
-          @r.eval 'best[[5]] = -Inf' # R2 of best
-          start_neighbors_size = [6,(data_matrix.size1)].min
-          step_size = (data_matrix.size1 < 17) ? 1 : 2
-          for current_neighbors_size in (start_neighbors_size..(data_matrix.size1)).step(step_size)
-            @r.x = data_matrix.submatrix(0..(current_neighbors_size-1),nil).to_a.flatten
-            @r.y = acts.take(current_neighbors_size).to_a.flatten
-            @r.eval "x <- matrix(x, #{current_neighbors_size}, #{nr_features}, byrow=T)"
-            @r.eval 'df <- data.frame(y,x)'
-            @r.eval 'fstr <- "y ~ ."'
-            @r.eval "fit <- mvr( formula = as.formula(fstr), data=df, method = \"kernelpls\", validation = \"LOO\", ncomp=#{[ (current_neighbors_size / 3).floor, nr_features ].min})" # was using: ncomp=#{maxcols}
-            @r.eval 'rmseLoo <- matrix( RMSEP( fit, "CV" )$val )'
-            @r.eval 'r2Loo <- matrix( R2( fit, "CV" )$val )'
-            LOGGER.debug "RMSE (internal LOO using #{current_neighbors_size} neighbors): #{@r.rmseLoo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
-            #LOGGER.debug "R2 (internal LOO using #{current_neighbors_size} neighbors): #{@r.r2Loo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
-            @r.eval 'ncompLoo <- which( rmseLoo<=quantile(rmseLoo,.1) )[1]' # get min RMSE (10% quantile)
-            # "Schleppzeiger": values for best position, R-index: 1-nr neighbors, 2-nr components, 3-RMSE, 4-model, 5-R2]
-            @r.eval "if ( rmseLoo[ncompLoo] < best[[3]]) { 
-              best[[1]] = #{current_neighbors_size}
-              best[[2]] = ncompLoo
-              best[[3]] = rmseLoo[ncompLoo]
-              best[[4]] = fit
-              best[[5]] = r2Loo[ncompLoo]
-            }"
-          end
-
+          @r.x = data_matrix.to_a.flatten
+          @r.y = acts.to_a.flatten
+          @r.eval "x <- matrix(x, #{nr_cases}, #{nr_features}, byrow=T)"
+          @r.eval 'df <- data.frame(y,x)'
+          @r.eval 'fstr <- "y ~ ."'
+          @r.eval "fit <- mvr( formula = as.formula(fstr), data=df, method = \"kernelpls\", validation = \"LOO\", ncomp=#{[ (nr_cases / 3).floor, nr_features ].min})" # was using: ncomp=#{maxcols}
+          @r.eval 'rmseLoo <- matrix( RMSEP( fit, "CV" )$val )'
+          @r.eval 'r2Loo <- matrix( R2( fit, "CV" )$val )'
+          LOGGER.debug "RMSE (internal LOO): #{@r.rmseLoo.to_a.flatten.collect { |v| sprintf("%.2f", v) }.join(", ") }"
+          @r.eval 'ncompLoo <- which( rmseLoo<=quantile(rmseLoo,.1) )[1]' # get min RMSE (10% quantile)
+          @r.eval " 
+            best[[1]] = #{nr_cases}
+            best[[2]] = ncompLoo
+            best[[3]] = rmseLoo[ncompLoo]
+            best[[4]] = fit
+            best[[5]] = r2Loo[ncompLoo]
+          "
 
           # build model on best selection
           @r.eval 'best_values = c(best[[1]], best[[2]], best[[3]], best[[5]])' # Ruby-index: 0-nr neighbors, 1-nr components, 2-RMSE, 3-R2
                                                                                 # Must use plain value ruby array, otherwise rinruby fails
-          if (@r.best_values[1] > 1) 
-            LOGGER.debug "Model based on #{@r.best_values[0].to_i} neighbors and #{@r.best_values[1].to_i} components, RMSE #{sprintf("%.2f", @r.best_values[2])} R2 #{sprintf("%.2f", @r.best_values[3])}."
-            @r.q = query_matrix.to_a.flatten
-            @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
-            @r.eval 'names(q) = names(df)[2:length(names(df))]'
-            @r.eval 'pred <- drop( predict( best[[4]], newdata = q, ncomp=best[[2]] ) )'
-            prediction = @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
-          else
-            LOGGER.debug "No appropriate model found."
-            prediction = nil
-          end
-          prediction
-
+          LOGGER.debug "Model based on #{@r.best_values[0].to_i} neighbors and #{@r.best_values[1].to_i} components, RMSE #{sprintf("%.2f", @r.best_values[2])} R2 #{sprintf("%.2f", @r.best_values[3])}."
+          @r.q = query_matrix.to_a.flatten
+          @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
+          @r.eval 'names(q) = names(df)[2:length(names(df))]'
+          @r.eval 'pred <- drop( predict( best[[4]], newdata = q, ncomp=best[[2]] ) )'
+          @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
 
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
@@ -490,8 +447,6 @@ module OpenTox
         end
 
       end
-
-
 
 
 
