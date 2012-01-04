@@ -326,11 +326,8 @@ module OpenTox
         end
 
         def transform
-          order_fingerprints # creates @fps, @cmpds
           get_matrices # creates @n_prop, @q_prop, @acts from ordered fps
-
           @ids = (0..((@n_prop.length)-1)).to_a # surviving compounds; become neighbors
-
 
           # Preprocessing
           if (@model.similarity_algorithm == "Similarity.cosine")
@@ -342,7 +339,7 @@ module OpenTox
               @q_prop.slice!(idx)
               @n_prop.each { |r| r.slice!(idx) }
             end
-            LOGGER.debug "R: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}"
+            LOGGER.debug "Q: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}"
             remove_nils  # removes nil cells (for cosine); alters @n_props, @q_props, cuts down @ids to survivors
             LOGGER.debug "M: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}"
 
@@ -371,6 +368,10 @@ module OpenTox
 
           # Neighbors
           neighbors
+          LOGGER.debug "F: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}"
+          LOGGER.debug "Sims: #{@sims.size}, Acts: #{@acts.size}"
+
+
 
           # Sims
           gram_matrix = []
@@ -401,7 +402,6 @@ module OpenTox
           end
           n_prop_tmp = []; @ids.each { |idx| n_prop_tmp << @n_prop[idx] }; @n_prop = n_prop_tmp
           acts_tmp = []; @ids.each { |idx| acts_tmp << @acts[idx] }; @acts = acts_tmp
-          #cmpds_tmp = []; @cmpds.each { |idx| cmpds_tmp << @cmpds[idx] }; @cmpds = cmpds_tmp
           #if @model.max_perc_neighbors 
           #  @model.neighbors = @model.neighbors.sort { |a,b| a[:similarity] <=> b[:similarity] }.reverse # order by descending sim (best neighbors first)
           #  nr_neighbors = (@model.fingerprints.size.to_f * @model.max_perc_neighbors / 100).ceil
@@ -438,7 +438,6 @@ module OpenTox
         # Removes iteratively rows or columns with the highest fraction of nil entries, until all nil entries are removed.
         # Tie break: columns take precedence.
         # Deficient input such as [[nil],[nil]] will not be completely reduced, as the algorithm terminates if any matrix dimension (x or y) is zero.
-        #
         # Enables the use of cosine similarity / SVD
         def remove_nils
           return @n_prop if (@n_prop.length == 0 || @n_prop[0].length == 0)
@@ -468,7 +467,6 @@ module OpenTox
 
 
         # Replaces nils by zeroes in n_prop and q_prop
-        #
         # Enables the use of Tanimoto similarities with arrays (rows of n_prop and q_prop)
         def convert_nils
           @n_prop.each { |row| row.collect! { |v| v.nil? ? 0 : v } }
@@ -482,26 +480,30 @@ module OpenTox
         end
 
 
-        # Puts a strict order on fingerprints by conversion to Arrays
-        def order_fingerprints
-          @cmpds = []; @fps = []; @model.fingerprints.each { |fp| @cmpds << fp[0]; @fps << fp[1] }
-        end
-
-
-        # Converts fingerprints to matrix, order of rows by fingerprints. nil values allowed. Same for compound fingerprints.
+        # Converts fingerprints to matrix, order of rows by fingerprints. nil values allowed.
+        # Same for compound fingerprints.
         def get_matrices
-          @n_prop = []; @q_prop = []; @acts = []
-          @fps.each { |fp| row = []; @model.features.each { |f| row << fp[f] }; @n_prop << row } # puts nils for non-existent f's
-          @model.features.each { |f| @q_prop << @model.compound_fingerprints[f] }
-          @cmpds.each { |c| 
-            if @model.activities[c]
-              @acts << @model.activities[c].flatten.first
+
+          @cmpds = []; @fps = []; @acts = []; @n_prop = []; @q_prop = []
+          
+          @model.fingerprints.each { |fp|
+            cmpd = fp[0]; fp = fp[1]
+            if @model.activities[cmpd] # row good
+              acts = @model.activities[cmpd]; @acts = @acts + acts
+              LOGGER.debug "#{acts.size} activities for '#{cmpd}'" if acts.size > 1
+              row = []; @model.features.each { |f| row << fp[f] } # nils for non-existent f's
+              acts.size.times { # multiple additions for multiple activities
+                @n_prop << row 
+                @cmpds << cmpd
+                @fps << fp
+              } 
             else
-              LOGGER.debug ""
-              LOGGER.debug "No activity found for compound '#{c}' in model '#{@model.uri}'"
-              LOGGER.debug ""
+              LOGGER.warn "No activity found for compound '#{c}' in model '#{@model.uri}'"
             end
           }
+
+          @model.features.each { |f| @q_prop << @model.compound_fingerprints[f] } # query structure
+
         end
 
         def props
