@@ -314,38 +314,10 @@ module OpenTox
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
           query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
 
-                   
-          ### Model
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
-          @r.eval "suppressPackageStartupMessages(library(\"robustbase\"))"
-          @r.eval "outlier_threshold = 0.999"
+          outliers = OpenTox::Algorithm::Similarity.outliers( { :query_matrix => query_matrix, :data_matrix => data_matrix, :acts => acts, :r => @r  } )
 
-          # outlier removal -- changes cases; adjust acts and sims accordingly (stop if query is outlier)
-          outliers = []
-          begin
-            LOGGER.debug "Outliers..."
-            @r.q = query_matrix.to_a.flatten
-            @r.odx = data_matrix.to_a.flatten
-            @r.y = acts.to_a.flatten
-            @r.eval "odx <- matrix(odx, #{nr_cases}, #{nr_features}, byrow=T)"
-            @r.eval "odx <- rbind(q,odx)" # query is nr 0 (1) in ruby (R)
-            @r.eval 'mah <- covMcd(odx)$mah' # run mcd alg
-            @r.eval "mah <- pchisq(mah,#{nr_features})"
-            LOGGER.debug("p-values: " + @r.mah.collect{|v| sprintf("%.2f", v)}.join(", "))
-            @r.eval 'outliers <- which(mah>outlier_threshold)'
-            outliers = @r.outliers.to_a.collect{|v| v-2 } # translate to ruby index (-1 for q, -1 due to ruby)
 
-            @r.eval 'fqu = matrix(summary(y))[2]'
-            @r.eval 'tqu = matrix(summary(y))[5]'
-            @r.eval 'outliers <- which(y>(tqu+1.5*IQR(y)))' # univariate outliers due to Tukey (http://goo.gl/mwzNH)
-            outliers << @r.outliers.to_a.collect{|v| v-1 } # translate to ruby index (-1 due to ruby)
-            @r.eval 'outliers <- which(y<(fqu-1.5*IQR(y)))'
-            outliers << @r.outliers.to_a.collect{|v| v-1 }
-            outliers.flatten!
-          rescue Exception => e
-            LOGGER.debug "#{e.class}: #{e.message}"
-            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-          end
           LOGGER.debug "Detected #{outliers.size} outliers: [#{outliers.join(", ")}]"
           if (outliers.include?(-1))
             raise "Query is an outlier."
@@ -448,36 +420,9 @@ module OpenTox
           ### Model
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
           @r.eval 'suppressPackageStartupMessages(library("pls"))'
-          @r.eval 'suppressPackageStartupMessages(library("robustbase"))'
-          @r.eval 'outlier_threshold = 0.999'
+          outliers = OpenTox::Algorithm::Similarity.outliers( { :query_matrix => query_matrix, :data_matrix => data_matrix, :acts => acts, :r => @r  } )
 
 
-          # outlier removal -- changes cases; adjust acts accordingly (stop if query is outlier)
-          outliers = []
-          begin
-            LOGGER.debug "Outliers..."
-            @r.q = query_matrix.to_a.flatten
-            @r.odx = data_matrix.to_a.flatten
-            @r.y = acts.to_a.flatten
-            @r.eval "odx <- matrix(odx, #{nr_cases}, #{nr_features}, byrow=T)"
-            @r.eval 'odx <- rbind(q,odx)' # query is nr 0 (1) in ruby (R)
-            @r.eval 'mah <- covMcd(odx)$mah' # run mcd alg
-            @r.eval "mah <- pchisq(mah,#{nr_features})"
-            LOGGER.debug("p-values: " + @r.mah.collect{|v| sprintf("%.2f", v)}.join(", "))
-            @r.eval 'outliers <- which(mah>outlier_threshold)'
-            outliers = @r.outliers.to_a.collect{|v| v-2 } # translate to ruby index (-1 for q, -1 due to ruby)
-
-            @r.eval 'fqu = matrix(summary(y))[2]'
-            @r.eval 'tqu = matrix(summary(y))[5]'
-            @r.eval 'outliers <- which(y>(tqu+1.5*IQR(y)))' # univariate outliers due to Tukey (http://goo.gl/mwzNH)
-            outliers << @r.outliers.to_a.collect{|v| v-1 } # translate to ruby index (-1 due to ruby)
-            @r.eval 'outliers <- which(y<(fqu-1.5*IQR(y)))'
-            outliers << @r.outliers.to_a.collect{|v| v-1 }
-            outliers.flatten!
-          rescue Exception => e
-            LOGGER.debug "#{e.class}: #{e.message}"
-            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-          end
           LOGGER.debug "Detected #{outliers.size} outliers: [#{outliers.join(", ")}]"
           if (outliers.include?(-1))
             raise "Query is an outlier."
