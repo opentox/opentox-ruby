@@ -5,6 +5,8 @@ module OpenTox
 
   module Algorithm
 
+    include OpenTox
+
     # Calculate physico-chemical descriptors.
     # @param[Hash] Required keys: :dataset_uri, :pc_type
     # @return[String] dataset uri
@@ -84,7 +86,7 @@ module OpenTox
         ambit_result_uri << ambit_ds_uri + "?"
         ambit_result_uri << ("feature_uris[]=" + URI.encode_www_form_component(ambit_smiles_uri) + "&")
         descs_uris.each_with_index do |uri, i|
-          algorithm = OpenTox::Algorithm::Generic.new(uri)
+          algorithm = Algorithm::Generic.new(uri)
           result_uri = algorithm.run({:dataset_uri => ambit_ds_uri})
           ambit_result_uri << result_uri.split("?")[1] + "&"
           LOGGER.debug "Ambit (#{descs_uris.size}): #{i+1}"

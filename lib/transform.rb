@@ -1,9 +1,9 @@
 module OpenTox
     module Transform
+    # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
     
       # LogAutoScaler for GSL vectors.
       # Take log and scale.
-      # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
       class LogAutoScale
         attr_accessor :vs, :offset, :autoscaler
 
@@ -47,7 +47,6 @@ module OpenTox
 
       # Auto-Scaler for GSL vectors.
       # Center on mean and divide by standard deviation.
-      # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
       class AutoScale 
         attr_accessor :vs, :mean, :stdev
 
@@ -102,7 +101,6 @@ module OpenTox
 
 
       # Principal Components Analysis.
-      # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
       class PCA
         attr_accessor :data_matrix, :data_transformed_matrix, :eigenvector_matrix, :eigenvalue_sums, :autoscaler
 
@@ -217,7 +215,6 @@ module OpenTox
 
 
       # Singular Value Decomposition
-      # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
       class SVD
         attr_accessor :data_matrix, :compression, :data_transformed_matrix, :uk, :vk, :eigk, :eigk_inv
 
@@ -489,7 +486,7 @@ module OpenTox
           @model.fingerprints.each { |fp|
             cmpd = fp[0]; fp = fp[1]
             if @model.activities[cmpd] # row good
-              acts = @model.activities[cmpd]; @acts = @acts + acts
+              acts = @model.activities[cmpd]; @acts += acts
               LOGGER.debug "#{acts.size} activities for '#{cmpd}'" if acts.size > 1
               row = []; @model.features.each { |f| row << fp[f] } # nils for non-existent f's
               acts.size.times { # multiple additions for multiple activities

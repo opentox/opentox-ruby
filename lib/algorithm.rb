@@ -15,7 +15,7 @@ module OpenTox
 
     include OpenTox
 
-    # Execute algorithm with parameters, please consult the OpenTox API and the webservice documentation for acceptable parameters
+    # Execute algorithm with parameters, consult OpenTox API and webservice documentation for acceptable parameters
     # @param [optional,Hash] params Algorithm parameters
     # @param [optional,OpenTox::Task] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @return [String] URI of new resource (dataset, model, ...)
@@ -23,7 +23,7 @@ module OpenTox
       LOGGER.info "Running algorithm '"+@uri.to_s+"' with params: "+params.inspect
       RestClientWrapper.post(@uri, params, {:accept => 'text/uri-list'}, waiting_task).to_s
     end
-    
+
     # Get OWL-DL representation in RDF/XML format
     # @return [application/rdf+xml] RDF/XML representation
     def to_rdfxml
@@ -35,7 +35,7 @@ module OpenTox
     # Generic Algorithm class, should work with all OpenTox webservices
     class Generic 
       include Algorithm
-      
+
       # Find Generic Opentox Algorithm via URI, and loads metadata, could raise NotFound/NotAuthorized error
       # @param [String] uri Algorithm URI
       # @return [OpenTox::Algorithm::Generic] Algorithm instance
@@ -46,14 +46,14 @@ module OpenTox
         raise "cannot load algorithm metadata" if alg.metadata==nil or alg.metadata.size==0
         alg
       end
-      
+
     end
 
     # Fminer algorithms (https://github.com/amaunz/fminer2)
     class Fminer
       include Algorithm
       attr_accessor :prediction_feature, :training_dataset, :minfreq, :compounds, :db_class_sizes, :all_activities, :smi
-      
+
       def check_params(params,per_mil,subjectid=nil)
         raise OpenTox::NotFoundError.new "Please submit a dataset_uri." unless params[:dataset_uri] and  !params[:dataset_uri].nil?
         raise OpenTox::NotFoundError.new "Please submit a prediction_feature." unless params[:prediction_feature] and  !params[:prediction_feature].nil?
@@ -83,7 +83,7 @@ module OpenTox
             LOGGER.warn "Cannot find smiles for #{compound.to_s}."
             next
           end
-          
+
           value_map=params[:value_map] unless params[:value_map].nil?
           entry.each do |feature,values|
             if feature == @prediction_feature.uri
@@ -117,23 +117,23 @@ module OpenTox
 
     end
 
-      # Backbone Refinement Class mining (http://bbrc.maunz.de/)
-      class BBRC < Fminer
-        # Initialize bbrc algorithm
-        def initialize(subjectid=nil)
-          super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/bbrc")
-          load_metadata(subjectid)
-        end
+    # Backbone Refinement Class mining (http://bbrc.maunz.de/)
+    class BBRC < Fminer
+      # Initialize bbrc algorithm
+      def initialize(subjectid=nil)
+        super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/bbrc")
+        load_metadata(subjectid)
       end
+    end
 
-      # LAtent STructure Pattern Mining (http://last-pm.maunz.de)
-      class LAST < Fminer
-        # Initialize last algorithm
-        def initialize(subjectid=nil)
-          super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/last")
-          load_metadata(subjectid)
-        end
+    # LAtent STructure Pattern Mining (http://last-pm.maunz.de)
+    class LAST < Fminer
+      # Initialize last algorithm
+      def initialize(subjectid=nil)
+        super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/last")
+        load_metadata(subjectid)
       end
+    end
 
 
     # Create lazar prediction model
@@ -162,7 +162,7 @@ module OpenTox
           raise "Invalid URI."
         end
         @training_dataset_uri = training_dataset_uri
-        if !OpenTox::Algorithm.numeric? training_threshold || training_threshold <0 || training_threshold >1
+        if !self.numeric? training_threshold || training_threshold <0 || training_threshold >1
           raise "Training threshold out of bounds."
         end
         @training_threshold = training_threshold.to_f
@@ -195,7 +195,7 @@ module OpenTox
       # @params[Float]  Similarity threshold for query to clusters (optional)
       def get_clusters query_compound_uri, query_threshold = 0.5
 
-        if !OpenTox::Algorithm.numeric? query_threshold || query_threshold <0 || query_threshold >1
+        if !self.numeric? query_threshold || query_threshold <0 || query_threshold >1
           raise "Query threshold out of bounds."
         end
         @query_threshold = query_threshold.to_f
@@ -221,7 +221,7 @@ module OpenTox
           metadata[DC.title][pattern]=""
           feature_clusterid_map[feature_uri] = metadata[DC.title].to_i
         }
-        
+
         # Integrity check
         unless cluster_query_dataset.compounds.size == 1
           raise "Number of predicted compounds is != 1."
@@ -231,11 +231,11 @@ module OpenTox
         query_compound_uri = cluster_query_dataset.compounds[0]
         @target_clusters_array = Array.new
         cluster_query_dataset.features.keys.each { |cluster_membership_feature|
-        
+
           # Getting dataset URI for cluster
           target_cluster = feature_clusterid_map[cluster_membership_feature]
           dataset = @clusterid_dataset_map[target_cluster]
-        
+
           # Finally look up presence
           data_entry = cluster_query_dataset.data_entries[query_compound_uri]
           present = data_entry[cluster_membership_feature][0]
@@ -275,7 +275,11 @@ module OpenTox
           acts = acts_autoscaler.vs.to_a
 
           # Predict
-          prediction = pcr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
+          if Algorithm::zero_variance? acts
+            prediction = acts[0]
+          else
+            prediction = pcr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
+          end
 
           # Restore
           prediction = acts_autoscaler.restore( [ prediction ].to_gv )[0]
@@ -312,7 +316,7 @@ module OpenTox
           query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
 
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
-          outliers = OpenTox::Algorithm::Similarity.outliers( { :query_matrix => query_matrix, :data_matrix => data_matrix, :acts => acts, :r => @r  } )
+          outliers = Similarity.outliers( { :query_matrix => query_matrix, :data_matrix => data_matrix, :acts => acts, :r => @r  } )
           LOGGER.debug "Detected #{outliers.size} outliers: [#{outliers.join(", ")}]"
           #if (outliers.include?(-1))
           #  raise "Query is an outlier."
@@ -357,7 +361,7 @@ module OpenTox
           @r.eval 'q <- data.frame( matrix( q, 1, length(q) ) )'
           @r.eval 'names(q) = names(df)[2:length(names(df))]'
           @r.eval 'pred <- predict(fit, q, interval="confidence")'
-          
+
           (@r.pred.to_a.flatten)[0] # [1] is lwr, [2] upr confidence limit.
 
         rescue Exception => e
@@ -392,7 +396,7 @@ module OpenTox
           ### Model
           @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
           @r.eval 'suppressPackageStartupMessages(library("pls"))'
-          outliers = OpenTox::Algorithm::Similarity.outliers( { :query_matrix => query_matrix, :data_matrix => data_matrix, :acts => acts, :r => @r  } )
+          outliers = Similarity.outliers( { :query_matrix => query_matrix, :data_matrix => data_matrix, :acts => acts, :r => @r  } )
 
 
           LOGGER.debug "Detected #{outliers.size} outliers: [#{outliers.join(", ")}]"
@@ -425,17 +429,17 @@ module OpenTox
             best[[3]] = rmseLoo[ncompLoo]
             best[[4]] = fit
             best[[5]] = r2Loo[ncompLoo]
-          "
+            "
 
-          # build model on best selection
-          @r.eval 'best_values = c(best[[1]], best[[2]], best[[3]], best[[5]])' # Ruby-index: 0-nr neighbors, 1-nr components, 2-RMSE, 3-R2
-                                                                                # Must use plain value ruby array, otherwise rinruby fails
-          LOGGER.debug "Model based on #{@r.best_values[0].to_i} neighbors and #{@r.best_values[1].to_i} components, RMSE #{sprintf("%.2f", @r.best_values[2])} R2 #{sprintf("%.2f", @r.best_values[3])}."
-          @r.q = query_matrix.to_a.flatten
-          @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
-          @r.eval 'names(q) = names(df)[2:length(names(df))]'
-          @r.eval 'pred <- drop( predict( best[[4]], newdata = q, ncomp=best[[2]] ) )'
-          @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
+            # build model on best selection
+            @r.eval 'best_values = c(best[[1]], best[[2]], best[[3]], best[[5]])' # Ruby-index: 0-nr neighbors, 1-nr components, 2-RMSE, 3-R2
+            # Must use plain value ruby array, otherwise rinruby fails
+            LOGGER.debug "Model based on #{@r.best_values[0].to_i} neighbors and #{@r.best_values[1].to_i} components, RMSE #{sprintf("%.2f", @r.best_values[2])} R2 #{sprintf("%.2f", @r.best_values[3])}."
+            @r.q = query_matrix.to_a.flatten
+            @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
+            @r.eval 'names(q) = names(df)[2:length(names(df))]'
+            @r.eval 'pred <- drop( predict( best[[4]], newdata = q, ncomp=best[[2]] ) )'
+            @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
 
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
@@ -531,7 +535,7 @@ module OpenTox
           LOGGER.debug "#{e.class}: #{e.message}"
           LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
-        
+
       end
 
       # Local support vector classification from neighbors 
@@ -551,7 +555,7 @@ module OpenTox
           confidence = 0.0 if prediction.nil?
         end
         {:prediction => prediction, :confidence => confidence}
-        
+
       end
 
 
@@ -566,7 +570,7 @@ module OpenTox
         LOGGER.debug "Local SVM (Weighted Tanimoto Kernel)."
 
         gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
-        
+
         prediction = nil
         if Algorithm::zero_variance? acts
           prediction = acts[0]
@@ -587,7 +591,7 @@ module OpenTox
             @r.eval "y<-as.vector(y)"
             @r.eval "gram_matrix<-as.kernelMatrix(matrix(gram_matrix,n,n))"
             @r.eval "sims<-as.vector(sims)"
-            
+
             # model + support vectors
             LOGGER.debug "Creating SVM model ..."
             @r.eval "model<-ksvm(gram_matrix, y, kernel=matrix, type=\"#{type}\", nu=0.5)"
@@ -625,53 +629,53 @@ module OpenTox
       # @return [Numeric] A prediction value.
       def self.local_svm_prop(props, acts, type)
 
-          LOGGER.debug "Local SVM (Propositionalization / Kernlab Kernel)."
-          n_prop = props[0] # is a matrix, i.e. two nested Arrays.
-          q_prop = props[1] # is an Array.
+        LOGGER.debug "Local SVM (Propositionalization / Kernlab Kernel)."
+        n_prop = props[0] # is a matrix, i.e. two nested Arrays.
+        q_prop = props[1] # is an Array.
 
-          prediction = nil
-          if Algorithm::zero_variance? acts
-            prediction = acts[0]
-          else
-            #LOGGER.debug gram_matrix.to_yaml
-            @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
-            @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
-            LOGGER.debug "Setting R data ..."
-            # set data
-            @r.n_prop = n_prop.flatten
-            @r.n_prop_x_size = n_prop.size
-            @r.n_prop_y_size = n_prop[0].size
-            @r.y = acts
-            @r.q_prop = q_prop
+        prediction = nil
+        if Algorithm::zero_variance? acts
+          prediction = acts[0]
+        else
+          #LOGGER.debug gram_matrix.to_yaml
+          @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
+          @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
+          LOGGER.debug "Setting R data ..."
+          # set data
+          @r.n_prop = n_prop.flatten
+          @r.n_prop_x_size = n_prop.size
+          @r.n_prop_y_size = n_prop[0].size
+          @r.y = acts
+          @r.q_prop = q_prop
 
-            begin
-              LOGGER.debug "Preparing R data ..."
-              # prepare data
-              @r.eval "y<-matrix(y)"
-              @r.eval "prop_matrix<-matrix(n_prop, n_prop_x_size, n_prop_y_size, byrow=TRUE)"
-              @r.eval "q_prop<-matrix(q_prop, 1, n_prop_y_size, byrow=TRUE)"
-              
-              # model + support vectors
-              LOGGER.debug "Creating SVM model ..."
-              @r.eval "model<-ksvm(prop_matrix, y, type=\"#{type}\", nu=0.5)"
-              LOGGER.debug "Predicting ..."
-              if type == "nu-svr" 
-                @r.eval "p<-predict(model,q_prop)[1,1]"
-              elsif type == "C-bsvc"
-                @r.eval "p<-predict(model,q_prop)"
-              end
-              prediction = @r.p
-              @r.quit # free R
-            rescue Exception => e
-              LOGGER.debug "#{e.class}: #{e.message}"
-              LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          begin
+            LOGGER.debug "Preparing R data ..."
+            # prepare data
+            @r.eval "y<-matrix(y)"
+            @r.eval "prop_matrix<-matrix(n_prop, n_prop_x_size, n_prop_y_size, byrow=TRUE)"
+            @r.eval "q_prop<-matrix(q_prop, 1, n_prop_y_size, byrow=TRUE)"
+
+            # model + support vectors
+            LOGGER.debug "Creating SVM model ..."
+            @r.eval "model<-ksvm(prop_matrix, y, type=\"#{type}\", nu=0.5)"
+            LOGGER.debug "Predicting ..."
+            if type == "nu-svr" 
+              @r.eval "p<-predict(model,q_prop)[1,1]"
+            elsif type == "C-bsvc"
+              @r.eval "p<-predict(model,q_prop)"
             end
+            prediction = @r.p
+            @r.quit # free R
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
-          prediction
+        end
+        prediction
       end
 
     end
-    
+
     module Substructure
       include Algorithm
       # Substructure matching
@@ -680,14 +684,14 @@ module OpenTox
       def self.match(params)
         params[:compound].match(params[:features])
       end
-      
+
       # Substructure matching with number of non-unique hits
       # @param [Hash] required keys: compound, features
       # @return [Hash] Hash with matching Smarts and number of hits 
       def self.match_hits(params)
         params[:compound].match_hits(params[:features])
       end
-      
+
       # Substructure matching with number of non-unique hits
       # @param [Hash] required keys: compound, features, feature_dataset_uri, pc_type
       # @return [Hash] Hash with matching Smarts and number of hits 
