@@ -302,6 +302,8 @@ module OpenTox
         # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
         # Statsample operations build on GSL and offer an R-like access to data
         LOGGER.debug "MLR..."
+        prediction = nil
+        @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
         begin
           n_prop = params[:n_prop].collect
           q_prop = params[:q_prop].collect
@@ -315,7 +317,6 @@ module OpenTox
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
           query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
 
-          @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
           outliers = Similarity.outliers( { :query_matrix => query_matrix, :data_matrix => data_matrix, :acts => acts, :r => @r  } )
           LOGGER.debug "Detected #{outliers.size} outliers: [#{outliers.join(", ")}]"
           #if (outliers.include?(-1))
@@ -361,14 +362,13 @@ module OpenTox
           @r.eval 'q <- data.frame( matrix( q, 1, length(q) ) )'
           @r.eval 'names(q) = names(df)[2:length(names(df))]'
           @r.eval 'pred <- predict(fit, q, interval="confidence")'
-
-          (@r.pred.to_a.flatten)[0] # [1] is lwr, [2] upr confidence limit.
-
+          prediction = (@r.pred.to_a.flatten)[0] # [1] is lwr, [2] upr confidence limit.
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
           #LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
-
+        @r.quit
+        prediction
       end
 
 
@@ -381,6 +381,8 @@ module OpenTox
         # Uses Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
         # Statsample operations build on GSL and offer an R-like access to data
         LOGGER.debug "PCR..."
+        prediction = nil
+        @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
         begin
           n_prop = params[:n_prop].collect
           q_prop = params[:q_prop].collect
@@ -394,11 +396,8 @@ module OpenTox
           query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
 
           ### Model
-          @r = RinRuby.new(false,false)   # global R instance leads to Socket errors after a large number of requests
           @r.eval 'suppressPackageStartupMessages(library("pls"))'
           outliers = Similarity.outliers( { :query_matrix => query_matrix, :data_matrix => data_matrix, :acts => acts, :r => @r  } )
-
-
           LOGGER.debug "Detected #{outliers.size} outliers: [#{outliers.join(", ")}]"
           #if (outliers.include?(-1))
           #  raise "Query is an outlier."
@@ -431,21 +430,22 @@ module OpenTox
             best[[5]] = r2Loo[ncompLoo]
             "
 
-            # build model on best selection
-            @r.eval 'best_values = c(best[[1]], best[[2]], best[[3]], best[[5]])' # Ruby-index: 0-nr neighbors, 1-nr components, 2-RMSE, 3-R2
-            # Must use plain value ruby array, otherwise rinruby fails
-            LOGGER.debug "Model based on #{@r.best_values[0].to_i} neighbors and #{@r.best_values[1].to_i} components, RMSE #{sprintf("%.2f", @r.best_values[2])} R2 #{sprintf("%.2f", @r.best_values[3])}."
-            @r.q = query_matrix.to_a.flatten
-            @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
-            @r.eval 'names(q) = names(df)[2:length(names(df))]'
-            @r.eval 'pred <- drop( predict( best[[4]], newdata = q, ncomp=best[[2]] ) )'
-            @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
+          # build model on best selection
+          @r.eval 'best_values = c(best[[1]], best[[2]], best[[3]], best[[5]])' # Ruby-index: 0-nr neighbors, 1-nr components, 2-RMSE, 3-R2
+          # Must use plain value ruby array, otherwise rinruby fails
+          LOGGER.debug "Model based on #{@r.best_values[0].to_i} neighbors and #{@r.best_values[1].to_i} components, RMSE #{sprintf("%.2f", @r.best_values[2])} R2 #{sprintf("%.2f", @r.best_values[3])}."
+          @r.q = query_matrix.to_a.flatten
+          @r.eval "q <- data.frame( matrix( q, 1 ,#{nr_features} ) )"
+          @r.eval 'names(q) = names(df)[2:length(names(df))]'
+          @r.eval 'pred <- drop( predict( best[[4]], newdata = q, ncomp=best[[2]] ) )'
+          prediction = @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
 
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
           #LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
-
+        @r.quit
+        prediction
       end
 
 
@@ -522,7 +522,7 @@ module OpenTox
 
             # Restore
             prediction = acts_autoscaler.restore( [ prediction ].to_gv )[0]
-            prediction = nil if prediction.infinite? 
+            prediction = nil if (!prediction.nil? && prediction.infinite?)
             LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
             params[:conf_stdev] = false if params[:conf_stdev].nil?
             confidence = get_confidence({:sims => params[:sims][1], :acts => params[:acts], :conf_stdev => params[:conf_stdev]})
@@ -610,12 +610,11 @@ module OpenTox
               #prediction = (@r.p.to_f == 1.0 ? true : false)
               prediction = @r.p
             end
-            @r.quit # free R
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
-
+          @r.quit # free R
         end
         prediction
       end
@@ -665,11 +664,11 @@ module OpenTox
               @r.eval "p<-predict(model,q_prop)"
             end
             prediction = @r.p
-            @r.quit # free R
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
+          @r.quit # free R
         end
         prediction
       end
