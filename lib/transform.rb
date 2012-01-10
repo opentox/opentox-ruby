@@ -224,7 +224,7 @@ module OpenTox
         # Creates a transformed dataset as GSL::Matrix.
         #
         # @param [GSL::Matrix] Data matrix
-        # @param [Float] Compression ratio from [0,1], default 0.20
+        # @param [Float] Compression ratio from [0,1], default 0.05
         # @return [GSL::Matrix] Data transformed matrix
 
         def initialize data_matrix, compression=0.05
@@ -375,7 +375,7 @@ module OpenTox
 
           # Sims
           gram_matrix = []
-          if !@model.prop_kernel # need gram matrix for standard setting (n. prop.)
+          if !@model.parameter("propositionalized") # need gram matrix for standard setting (n. prop.)
             @n_prop.each_index do |i|
               gram_matrix[i] = [] unless gram_matrix[i]
               @n_prop.each_index do |j|
@@ -416,7 +416,7 @@ module OpenTox
         def add_neighbor(training_props, idx)
 
           sim = similarity(training_props)
-          if sim > @model.min_sim
+          if sim > @model.parameter("min_sim")
             if @model.activities[@cmpds[idx]]
               @model.activities[@cmpds[idx]].each do |act|
                 @model.neighbors << {
@@ -507,7 +507,7 @@ module OpenTox
         end
 
         def props
-          @model.prop_kernel ? [ @n_prop, @q_prop ] : nil
+          @model.parameter("propositionalized") ? [ @n_prop, @q_prop ] : nil
         end
 
       end

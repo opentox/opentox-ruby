@@ -251,9 +251,9 @@ module OpenTox
 
     module Neighbors
 
-      # Local multi-linear regression (MLR) prediction from neighbors. 
+      # Local multi-linear regression (MLR) prediction from neighbors.
       # Uses propositionalized setting.
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required.
+      # @param [Hash] params Keys `:acts, :sims, :props` are required, `:maxcols` optional.
       # @return [Numeric] A prediction value.
       def self.local_mlr_prop(params)
 
@@ -290,7 +290,7 @@ module OpenTox
       end
 
       # Multi-linear regression (unweighted).
-      # Objective Feature Selection, Scaling of Axes, Principal Components Analysis.
+      # Robust, multivariate (X) and univariate (y) outlier detection.
       # @param [Hash] params Keys `:n_prop, :q_prop, :sims, :acts, :maxcols` are required.
       # @return [Numeric] A prediction value.
       def self.mlr(params)
@@ -368,8 +368,8 @@ module OpenTox
       end
 
 
-      # Principal Components Regression (unweighted).
-      # Objective Feature Selection, Scaling of Axes.
+      # Partial least squares regression.
+      # Robust, multivariate (X) and univariate (y) outlier detection.
       # @param [Hash] params Keys `:n_prop, :q_prop, :sims, :acts, :maxcols` are required.
       # @return [Numeric] A prediction value.
       def self.pcr(params)
@@ -447,7 +447,7 @@ module OpenTox
 
 
       # Classification with majority vote from neighbors weighted by similarity
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required
+      # @param [Hash] params Keys `:acts, :sims, :value_map` are required
       # @return [Numeric] A prediction value.
       def self.weighted_majority_vote(params)
 
@@ -491,7 +491,7 @@ module OpenTox
 
 
       # Local support vector regression from neighbors 
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required
+      # @param [Hash] params Keys `:props, :acts, :sims` are required
       # @return [Numeric] A prediction value.
       def self.local_svm_regression(params)
 
@@ -535,7 +535,7 @@ module OpenTox
       end
 
       # Local support vector classification from neighbors 
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map` are required
+      # @param [Hash] params Keys `:props, :acts, :sims` are required
       # @return [Numeric] A prediction value.
       def self.local_svm_classification(params)
 
@@ -558,8 +558,8 @@ module OpenTox
       # Local support vector prediction from neighbors. 
       # Uses pre-defined Kernel Matrix.
       # Not to be called directly (use local_svm_regression or local_svm_classification).
-      # @param [Array] acts, activities for neighbors.
       # @param [Array] sims, similarities for neighbors.
+      # @param [Array] acts, activities for neighbors.
       # @param [String] type, one of "nu-svr" (regression) or "C-bsvc" (classification).
       # @return [Numeric] A prediction value.
       def self.local_svm(sims, acts, type)

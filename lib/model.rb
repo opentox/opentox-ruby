@@ -102,8 +102,8 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :conf_stdev, :max_perc_neighbors, :pc_type, :compound_fingerprints, :feature_calculation_algorithm, :neighbors
 
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :subjectid, :value_map, :conf_stdev, :max_perc_neighbors, :compound_fingerprints, :feature_calculation_algorithm, :neighbors
       def initialize(uri=nil)
 
         if uri
@@ -125,9 +125,6 @@ module OpenTox
         @similarity_algorithm = "Similarity.tanimoto"
         @prediction_algorithm = "Neighbors.weighted_majority_vote"
         
-        @pc_type = nil
-        @min_sim = 0.3
-        @prop_kernel = false
         @conf_stdev = false
         @max_perc_neighbors = nil
 
@@ -173,19 +170,16 @@ module OpenTox
         lazar.feature_calculation_algorithm = hash["feature_calculation_algorithm"] if hash["feature_calculation_algorithm"]
         lazar.similarity_algorithm = hash["similarity_algorithm"] if hash["similarity_algorithm"]
         lazar.prediction_algorithm = hash["prediction_algorithm"] if hash["prediction_algorithm"]
-        lazar.min_sim = hash["min_sim"] if hash["min_sim"]
         lazar.subjectid = hash["subjectid"] if hash["subjectid"]
-        lazar.prop_kernel = hash["prop_kernel"] if hash["prop_kernel"]
         lazar.value_map = hash["value_map"] if hash["value_map"]
         lazar.conf_stdev = hash["conf_stdev"] if hash["conf_stdev"]
         lazar.max_perc_neighbors = hash["max_perc_neighbors"] if hash["max_perc_neighbors"]
-        lazar.pc_type = hash["pc_type"] if hash["pc_type"]
 
         lazar
       end
 
       def to_json
-        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :min_sim => @min_sim, :subjectid => @subjectid, :prop_kernel => @prop_kernel, :value_map => @value_map,  :conf_stdev => @conf_stdev, :max_perc_neighbors => @max_perc_neighbors, :pc_type => pc_type})
+        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :subjectid => @subjectid, :value_map => @value_map,  :conf_stdev => @conf_stdev, :max_perc_neighbors => @max_perc_neighbors})
       end
 
       def run( params, accept_header=nil, waiting_task=nil )
@@ -269,7 +263,7 @@ module OpenTox
                                     :compound => @compound, 
                                     :features => @features, 
                                     :feature_dataset_uri => @metadata[OT.featureDataset],
-                                    :pc_type => @pc_type
+                                    :pc_type => self.parameter(\"pc_type\")
                                     })")
           
           # Adding fingerprint of query compound with features and values(p_value*nr_hits)
