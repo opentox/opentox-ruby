@@ -200,9 +200,16 @@ module OpenTox
     # @return [Hash] Hash with feature name as key and value as value
 		def lookup(feature_array,feature_dataset_uri,pc_type)
       ds = OpenTox::Dataset.find(feature_dataset_uri)
-      #LOGGER.debug "----- am #{feature_dataset_uri}"
-      #LOGGER.debug "----- am #{pc_type}"
-      entry = ds.data_entries[self.uri]
+
+      #entry = ds.data_entries[self.uri]
+      entry = nil 
+      ds.data_entries.each { |c_uri, values| 
+        if c_uri.split('/compound/').last == self.to_inchi
+          entry = ds.data_entries[self.uri]
+          break
+        end
+      }
+
       if entry.nil?
         uri, smiles_to_inchi = OpenTox::Algorithm.get_pc_descriptors({:compounds => [self.uri], :pc_type => pc_type})
         uri = OpenTox::Algorithm.load_ds_csv(uri, smiles_to_inchi)
@@ -210,6 +217,7 @@ module OpenTox
         entry = ds.data_entries[self.uri]
         ds.delete
       end
+
       features = entry.keys
       features.each { |feature| 
         new_feature = File.join(feature_dataset_uri, "feature", feature.split("/").last) 

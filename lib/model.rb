@@ -223,8 +223,11 @@ module OpenTox
             predict(compound_uri,false,subjectid)
             count += 1
             waiting_task.progress( count/d.compounds.size.to_f*100.0 ) if waiting_task
-          rescue => ex
+          rescue => e
             LOGGER.warn "prediction for compound "+compound_uri.to_s+" failed: "+ex.message+" subjectid: #{subjectid}"
+            #LOGGER.debug "#{e.class}: #{e.message}"
+            #LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+
           end
         end
         #@prediction_dataset.save(subjectid)

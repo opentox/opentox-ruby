@@ -495,7 +495,7 @@ module OpenTox
                 @fps << fp
               } 
             else
-              LOGGER.warn "No activity found for compound '#{c}' in model '#{@model.uri}'"
+              LOGGER.warn "No activity found for compound '#{cmpd}' in model '#{@model.uri}'"
             end
           }
 
