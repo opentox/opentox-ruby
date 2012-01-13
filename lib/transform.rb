@@ -256,7 +256,9 @@ module OpenTox
             @eigk_inv = @eigk.inv
 
             # Transform data
-            @data_transformed_matrix = @data_matrix * @vk * @eigk_inv # = @uk for all SVs
+            @data_transformed_matrix = @uk # = u for all SVs
+            # NOTE: @data_transformed_matrix is also equal to
+            # @data_matrix * @vk * @eigk_inv
 
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
