@@ -210,6 +210,8 @@ module OpenTox
         end
       }
 
+      LOGGER.debug "#{entry.size} entries in feature ds for query." unless entry.nil?
+
       if entry.nil?
         uri, smiles_to_inchi = OpenTox::Algorithm.get_pc_descriptors({:compounds => [self.uri], :pc_type => pc_type})
         uri = OpenTox::Algorithm.load_ds_csv(uri, smiles_to_inchi)
@@ -222,7 +224,7 @@ module OpenTox
       features.each { |feature| 
         new_feature = File.join(feature_dataset_uri, "feature", feature.split("/").last) 
         entry[new_feature] = entry[feature].flatten.first.to_f # see algorithm/lazar.rb:182, to_f because feature type detection doesn't work w 1 entry
-        entry.delete(feature)
+        entry.delete(feature) unless feature == new_feature # e.g. when loading from ambit
       }
       #res = feature_array.collect {|v| entry[v]}
       #LOGGER.debug "----- am #{entry.to_yaml}"
