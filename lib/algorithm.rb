@@ -594,22 +594,47 @@ module OpenTox
 
             # model + support vectors
             LOGGER.debug "Creating SVM model ..."
-            @r.eval "model<-ksvm(gram_matrix, y, kernel=matrix, type=\"#{type}\", nu=0.5)"
+
+            @r.eval <<-EOR
+            
+              if ('#{type}' == 'nu-svr') { 
+                Cs = 2^seq(-6,6,by=1.5)
+                nus = seq(.05,.95,by=.15)
+                selected = list ( perf = Inf, model = NULL )
+                for (C in Cs) { 
+                  for (nu in nus) { 
+                    model = ksvm(gram_matrix, y, type='#{type}', C=C, nu=nu, kpar='automatic', cross=10)
+                    if (cross(model) < selected$perf) {
+                      selected$perf = cross(model)
+                      selected$model = model
+                    }
+                  }
+                } 
+              }
+              
+              else if ('#{type}' == 'C-bsvc') {  
+                Cs = 2^seq(-6,6,by=1.0)
+                selected = list ( perf = -Inf, model = NULL )
+                for (C in Cs) { 
+                  model = ksvm(gram_matrix, y, type='#{type}', C=C, kpar='automatic', cross=length(y))
+                  if (cross(model) > selected$perf) {
+                    selected$perf = cross(model)
+                    selected$model = model
+                  }
+                }
+              }
+            EOR
+
             @r.eval "sv<-as.vector(SVindex(model))"
             @r.eval "sims<-sims[sv]"
             @r.eval "sims<-as.kernelMatrix(matrix(sims,1))"
             LOGGER.debug "Predicting ..."
             if type == "nu-svr" 
-              @r.eval "p<-predict(model,sims)[1,1]"
+              @r.eval "p<-predict(selected$model,sims)[1,1]"
             elsif type == "C-bsvc"
-              @r.eval "p<-predict(model,sims)"
+              @r.eval "p<-predict(selected$model,sims)"
             end
-            if type == "nu-svr"
-              prediction = @r.p
-            elsif type == "C-bsvc"
-              #prediction = (@r.p.to_f == 1.0 ? true : false)
-              prediction = @r.p
-            end
+            prediction = @r.p
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
@@ -656,12 +681,42 @@ module OpenTox
 
             # model + support vectors
             LOGGER.debug "Creating SVM model ..."
-            @r.eval "model<-ksvm(prop_matrix, y, type=\"#{type}\", nu=0.5)"
+            @r.eval <<-EOR
+            
+              if ('#{type}' == 'nu-svr') { 
+                Cs = 2^seq(-6,4.5,by=1.5)
+                nus = seq(.05,.95,by=.15)
+                selected = list ( perf = Inf, model = NULL )
+                for (C in Cs) { 
+                  for (nu in nus) { 
+                    model = ksvm(prop_matrix, y, type='#{type}', C=C, nu=nu, kpar='automatic', cross=10)
+                    if (cross(model) < selected$perf) {
+                      selected$perf = cross(model)
+                      selected$model = model
+                    }
+                  }
+                } 
+              }
+              
+              else if ('#{type}' == 'C-bsvc') {  
+                Cs = 2^seq(-6,6,by=1.0)
+                selected = list ( perf = -Inf, model = NULL )
+                for (C in Cs) { 
+                  model = ksvm(prop_matrix, y, type='#{type}', C=C, kpar='automatic', cross=length(y))
+                  if (cross(model) > selected$perf) {
+                    selected$perf = cross(model)
+                    selected$model = model
+                  }
+                }
+              }
+            EOR
+
+            #@r.eval "model<-ksvm(prop_matrix, y, type=\"#{type}\", nu=0.5)"
             LOGGER.debug "Predicting ..."
             if type == "nu-svr" 
-              @r.eval "p<-predict(model,q_prop)[1,1]"
+              @r.eval "p<-predict(selected$model,q_prop)[1,1]"
             elsif type == "C-bsvc"
-              @r.eval "p<-predict(model,q_prop)"
+              @r.eval "p<-predict(selected$model,q_prop)"
             end
             prediction = @r.p
           rescue Exception => e

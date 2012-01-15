@@ -347,7 +347,7 @@ module OpenTox
             cmpds_tmp = []; @ids.each { |idx| cmpds_tmp << @cmpds[idx] }; @cmpds = cmpds_tmp
             acts_tmp = []; @ids.each { |idx| acts_tmp << @acts[idx] }; @acts = acts_tmp
 
-            # svd
+            # scale and svd
             nr_cases, nr_features = @n_prop.size, @n_prop[0].size
             gsl_n_prop = GSL::Matrix.alloc(@n_prop.flatten, nr_cases, nr_features)
             gsl_q_prop = GSL::Matrix.alloc(@q_prop.flatten, 1, nr_features)
@@ -356,7 +356,7 @@ module OpenTox
                gsl_n_prop.col(i)[0..nr_cases-1] = autoscaler.vs
                gsl_q_prop.col(i)[0..0] = autoscaler.transform gsl_q_prop.col(i)
             }
-            svd = OpenTox::Algorithm::Transform::SVD.new gsl_n_prop
+            svd = OpenTox::Algorithm::Transform::SVD.new(gsl_n_prop, 0.0)
             gsl_q_prop = svd.transform gsl_q_prop
             @n_prop = svd.data_transformed_matrix.to_a
             @q_prop = gsl_q_prop.row(0).to_a

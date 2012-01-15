@@ -286,12 +286,12 @@ module OpenTox
           mtf.transform
 
           # Make a prediction
-          prediction = eval("#{@prediction_algorithm} ( { :props => mtf.props,
+          prediction = eval("#{@prediction_algorithm}( { :props => mtf.props,
                                                           :acts => mtf.acts,
                                                           :sims => mtf.sims,
                                                           :value_map => @value_map,
                                                           :conf_stdev => @conf_stdev
-                                                         } ) ")
+                                                        } ) ")
 
           value_feature_uri = File.join( @uri, "predicted", "value")
           confidence_feature_uri = File.join( @uri, "predicted", "confidence")
