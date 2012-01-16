@@ -439,7 +439,7 @@ module OpenTox
         # Deficient input such as [[nil],[nil]] will not be completely reduced, as the algorithm terminates if any matrix dimension (x or y) is zero.
         # Enables the use of cosine similarity / SVD
         def remove_nils
-          return @n_prop if (@n_prop.length == 0 || @n_prop[0].length == 0)
+         return @n_prop if (@n_prop.length == 0 || @n_prop[0].length == 0)
           col_nr_nils = (Matrix.rows(@n_prop)).column_vectors.collect{ |cv| (cv.to_a.count(nil) / cv.size.to_f) }
           row_nr_nils = (Matrix.rows(@n_prop)).row_vectors.collect{ |rv| (rv.to_a.count(nil) / rv.size.to_f) }
           m_cols = col_nr_nils.max
@@ -492,9 +492,9 @@ module OpenTox
               LOGGER.debug "#{acts.size} activities for '#{cmpd}'" if acts.size > 1
               row = []; @model.features.each { |f| row << fp[f] } # nils for non-existent f's
               acts.size.times { # multiple additions for multiple activities
-                @n_prop << row 
+                @n_prop << row.collect
                 @cmpds << cmpd
-                @fps << fp
+                @fps << Marshal.load(Marshal.dump(fp))
               } 
             else
               LOGGER.warn "No activity found for compound '#{cmpd}' in model '#{@model.uri}'"

@@ -596,30 +596,29 @@ module OpenTox
             LOGGER.debug "Creating SVM model ..."
 
             @r.eval <<-EOR
-            
               if ('#{type}' == 'nu-svr') { 
-                Cs = 2^seq(-6,6,by=1.5)
+                Cs = 2^seq(-6,3,by=1.5)
                 nus = seq(.05,.95,by=.15)
                 selected = list ( perf = Inf, model = NULL )
                 for (C in Cs) { 
                   for (nu in nus) { 
-                    model = ksvm(gram_matrix, y, type='#{type}', C=C, nu=nu, kpar='automatic', cross=10)
+                    model = ksvm(gram_matrix, y, type='#{type}', C=C, nu=nu, kpar='automatic', cross=5)
                     if (cross(model) < selected$perf) {
                       selected$perf = cross(model)
                       selected$model = model
                     }
                   }
                 } 
-              }
-              
-              else if ('#{type}' == 'C-bsvc') {  
-                Cs = 2^seq(-6,6,by=1.0)
-                selected = list ( perf = -Inf, model = NULL )
-                for (C in Cs) { 
-                  model = ksvm(gram_matrix, y, type='#{type}', C=C, kpar='automatic', cross=length(y))
-                  if (cross(model) > selected$perf) {
-                    selected$perf = cross(model)
-                    selected$model = model
+              } else {
+                if ('#{type}' == 'C-bsvc') {  
+                  Cs = 2^seq(-6,3,by=1.0)
+                  selected = list ( perf = -Inf, model = NULL )
+                  for (C in Cs) { 
+                    model = ksvm(gram_matrix, y, type='#{type}', C=C, kpar='automatic', cross=length(y))
+                    if (cross(model) > selected$perf) {
+                      selected$perf = cross(model)
+                      selected$model = model
+                    }
                   }
                 }
               }
@@ -682,30 +681,29 @@ module OpenTox
             # model + support vectors
             LOGGER.debug "Creating SVM model ..."
             @r.eval <<-EOR
-            
               if ('#{type}' == 'nu-svr') { 
-                Cs = 2^seq(-6,4.5,by=1.5)
+                Cs = 2^seq(-6,3,by=1.5)
                 nus = seq(.05,.95,by=.15)
                 selected = list ( perf = Inf, model = NULL )
                 for (C in Cs) { 
                   for (nu in nus) { 
-                    model = ksvm(prop_matrix, y, type='#{type}', C=C, nu=nu, kpar='automatic', cross=10)
+                    model = ksvm(prop_matrix, y, type='#{type}', C=C, nu=nu, kpar='automatic', cross=5)
                     if (cross(model) < selected$perf) {
                       selected$perf = cross(model)
                       selected$model = model
                     }
                   }
                 } 
-              }
-              
-              else if ('#{type}' == 'C-bsvc') {  
-                Cs = 2^seq(-6,6,by=1.0)
-                selected = list ( perf = -Inf, model = NULL )
-                for (C in Cs) { 
-                  model = ksvm(prop_matrix, y, type='#{type}', C=C, kpar='automatic', cross=length(y))
-                  if (cross(model) > selected$perf) {
-                    selected$perf = cross(model)
-                    selected$model = model
+              } else {
+                if ('#{type}' == 'C-bsvc') {  
+                  Cs = 2^seq(-6,3,6,by=1.0)
+                  selected = list ( perf = -Inf, model = NULL )
+                  for (C in Cs) { 
+                    model = ksvm(prop_matrix, y, type='#{type}', C=C, kpar='automatic', cross=length(y))
+                    if (cross(model) > selected$perf) {
+                      selected$perf = cross(model)
+                      selected$model = model
+                    }
                   }
                 }
               }

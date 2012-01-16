@@ -363,6 +363,10 @@ module OpenTox
       # @param [GSL::Vector] b
       # @return [Float] cosine of angle enclosed between a and b
       def self.cosine_num(a, b)
+        if a.size>12 && b.size>12
+          a = a[0..11]
+          b = b[0..11]
+        end
         a.dot(b) / (a.norm * b.norm)
       end
 
