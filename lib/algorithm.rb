@@ -624,7 +624,7 @@ module OpenTox
               }
             EOR
 
-            @r.eval "sv<-as.vector(SVindex(model))"
+            @r.eval "sv<-as.vector(SVindex(selected$model))"
             @r.eval "sims<-sims[sv]"
             @r.eval "sims<-as.kernelMatrix(matrix(sims,1))"
             LOGGER.debug "Predicting ..."
@@ -696,7 +696,7 @@ module OpenTox
                 } 
               } else {
                 if ('#{type}' == 'C-bsvc') {  
-                  Cs = 2^seq(-6,3,6,by=1.0)
+                  Cs = 2^seq(-6,3,by=1.0)
                   selected = list ( perf = -Inf, model = NULL )
                   for (C in Cs) { 
                     model = ksvm(prop_matrix, y, type='#{type}', C=C, kpar='automatic', cross=length(y))
