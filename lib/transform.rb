@@ -368,22 +368,11 @@ module OpenTox
           @ids = [] # surviving compounds become neighbors
           @sims = [] # calculated by neighbor routine
           neighbors
-
-          # reclaim original data (if svd was performed)
-          if svd
-            @n_prop = gsl_n_prop_orig.to_a 
-            @q_prop = gsl_q_prop_orig.row(0).to_a
-          end
-
-          n_prop_tmp = []; @ids.each { |idx| n_prop_tmp << @n_prop[idx] }; @n_prop = n_prop_tmp
+          n_prop_tmp = []; @ids.each { |idx| n_prop_tmp << @n_prop[idx] }; @n_prop = n_prop_tmp # select neighbors from matrix
           acts_tmp = []; @ids.each { |idx| acts_tmp << @acts[idx] }; @acts = acts_tmp
 
-          LOGGER.debug "F: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}"
-          LOGGER.debug "Sims: #{@sims.size}, Acts: #{@acts.size}"
 
-
-
-          # Sims
+          # Sims between neighbors, if necessary
           gram_matrix = []
           if !@model.parameter("propositionalized") # need gram matrix for standard setting (n. prop.)
             @n_prop.each_index do |i|
@@ -399,8 +388,23 @@ module OpenTox
               gram_matrix[i][i] = 1.0
             end
           end
+
+          # reclaim original data (if svd was performed)
+          if svd
+            @n_prop = gsl_n_prop_orig.to_a 
+            n_prop_tmp = []; @ids.each { |idx| n_prop_tmp << @n_prop[idx] }; @n_prop = n_prop_tmp
+            @q_prop = gsl_q_prop_orig.row(0).to_a
+          end
+
+          LOGGER.debug "F: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}"
+          LOGGER.debug "Sims: #{@sims.size}, Acts: #{@acts.size}"
+
           @sims = [ gram_matrix, @sims ] 
+
         end
+
+
+          
 
         # Find neighbors and store them as object variable, access all compounds for that.
         def neighbors
