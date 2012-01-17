@@ -349,24 +349,35 @@ module OpenTox
 
             # scale and svd
             nr_cases, nr_features = @n_prop.size, @n_prop[0].size
-            gsl_n_prop = GSL::Matrix.alloc(@n_prop.flatten, nr_cases, nr_features)
-            gsl_q_prop = GSL::Matrix.alloc(@q_prop.flatten, 1, nr_features)
+            gsl_n_prop = GSL::Matrix.alloc(@n_prop.flatten, nr_cases, nr_features); gsl_n_prop_orig = gsl_n_prop.clone # make backup
+            gsl_q_prop = GSL::Matrix.alloc(@q_prop.flatten, 1, nr_features); gsl_q_prop_orig = gsl_q_prop.clone # make backup
             (0...nr_features).each { |i|
                autoscaler = OpenTox::Transform::AutoScale.new(gsl_n_prop.col(i))
                gsl_n_prop.col(i)[0..nr_cases-1] = autoscaler.vs
                gsl_q_prop.col(i)[0..0] = autoscaler.transform gsl_q_prop.col(i)
             }
             svd = OpenTox::Algorithm::Transform::SVD.new(gsl_n_prop, 0.0)
-            gsl_q_prop = svd.transform gsl_q_prop
             @n_prop = svd.data_transformed_matrix.to_a
-            @q_prop = gsl_q_prop.row(0).to_a
+            @q_prop = svd.transform(gsl_q_prop).row(0).to_a
             LOGGER.debug "S: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}"
           else
             convert_nils # convert nil cells (for tanimoto); leave @n_props, @q_props, @ids untouched
           end
 
-          # Neighbors
+          # neighbor calculation
+          @ids = [] # surviving compounds become neighbors
+          @sims = [] # calculated by neighbor routine
           neighbors
+
+          # reclaim original data (if svd was performed)
+          if svd
+            @n_prop = gsl_n_prop_orig.to_a 
+            @q_prop = gsl_q_prop_orig.row(0).to_a
+          end
+
+          n_prop_tmp = []; @ids.each { |idx| n_prop_tmp << @n_prop[idx] }; @n_prop = n_prop_tmp
+          acts_tmp = []; @ids.each { |idx| acts_tmp << @acts[idx] }; @acts = acts_tmp
+
           LOGGER.debug "F: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}"
           LOGGER.debug "Sims: #{@sims.size}, Acts: #{@acts.size}"
 
@@ -394,13 +405,9 @@ module OpenTox
         # Find neighbors and store them as object variable, access all compounds for that.
         def neighbors
           @model.neighbors = []
-          @ids = [] # surviving compounds; become neighbors
-          @sims = []
           @n_prop.each_with_index do |fp, idx| # AM: access all compounds
             add_neighbor fp, idx
           end
-          n_prop_tmp = []; @ids.each { |idx| n_prop_tmp << @n_prop[idx] }; @n_prop = n_prop_tmp
-          acts_tmp = []; @ids.each { |idx| acts_tmp << @acts[idx] }; @acts = acts_tmp
           #if @model.max_perc_neighbors 
           #  @model.neighbors = @model.neighbors.sort { |a,b| a[:similarity] <=> b[:similarity] }.reverse # order by descending sim (best neighbors first)
           #  nr_neighbors = (@model.fingerprints.size.to_f * @model.max_perc_neighbors / 100).ceil
