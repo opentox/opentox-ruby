@@ -514,14 +514,15 @@ module OpenTox
             end
 
             # Transform y
-            acts_autoscaler = OpenTox::Transform::LogAutoScale.new(params[:acts].to_gv)
-            acts = acts_autoscaler.vs.to_a
+            acts = params[:acts].collect
+            #acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
+            #acts = acts_autoscaler.vs.to_a
 
             # Predict
             prediction = params[:props] ? local_svm_prop( props, acts, "nu-svr") : local_svm( params[:sims], acts, "nu-svr")
 
             # Restore
-            prediction = acts_autoscaler.restore( [ prediction ].to_gv )[0]
+            #prediction = acts_autoscaler.restore( [ prediction ].to_gv )[0] unless prediction.nil?
             prediction = nil if (!prediction.nil? && prediction.infinite?)
             LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
             params[:conf_stdev] = false if params[:conf_stdev].nil?
@@ -584,6 +585,7 @@ module OpenTox
           @r.sims = sims[1]
           @r.n = acts.size
           @r.y = acts
+          @r.cens = 0.0
 
           begin
             LOGGER.debug "Preparing R data ..."
@@ -609,6 +611,7 @@ module OpenTox
                     }
                   }
                 } 
+                if ( (1.0-(selected$perf / var(y))) < 0.1 ) cens = 1.0
               } else {
                 if ('#{type}' == 'C-bsvc') {  
                   Cs = 2^seq(-6,3,by=1.0)
@@ -633,7 +636,11 @@ module OpenTox
             elsif type == "C-bsvc"
               @r.eval "p<-predict(selected$model,sims)"
             end
+            #prediction = nil if @r.cens == 1
+            mycens = @r.cens
+            LOGGER.debug "Censoring: #{mycens}"
             prediction = @r.p
+            prediction = nil if mycens > 0
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
@@ -670,6 +677,7 @@ module OpenTox
           @r.n_prop_y_size = n_prop[0].size
           @r.y = acts
           @r.q_prop = q_prop
+          @r.cens = 0.0
 
           begin
             LOGGER.debug "Preparing R data ..."
@@ -694,6 +702,7 @@ module OpenTox
                     }
                   }
                 } 
+                if ( (1.0-(selected$perf / var(y))) < 0.1 ) cens = 1.0
               } else {
                 if ('#{type}' == 'C-bsvc') {  
                   Cs = 2^seq(-6,3,by=1.0)
@@ -716,7 +725,11 @@ module OpenTox
             elsif type == "C-bsvc"
               @r.eval "p<-predict(selected$model,q_prop)"
             end
+            #prediction = nil if @r.cens == 1
+            mycens = @r.cens
+            LOGGER.debug "Censoring: #{mycens}"
             prediction = @r.p
+            prediction = nil if mycens > 0
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
