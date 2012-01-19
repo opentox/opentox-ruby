@@ -133,6 +133,10 @@ module OpenTox
       index_uri = master[0].index("Compound")
       master.map {|i| i.delete_at(index_uri)}
       master[0].each {|cell| cell.chomp!(" ")}
+
+      #LOGGER.debug "-------- AM: Writing to dumpfile"
+      #File.open("/tmp/test.csv", 'w') {|f| f.write( master.collect {|r| r.join(",")}.join("\n") ) }
+     
       parser = OpenTox::Parser::Spreadsheets.new
       ds = OpenTox::Dataset.new
       ds.save
