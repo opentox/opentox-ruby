@@ -313,7 +313,7 @@ module OpenTox
       def load_spreadsheet(book, drop_missing=false)
         book.default_sheet = 0
         headers = book.row(1)
-        duplicate_feature_indices = add_features headers
+        add_features headers
         value_maps = Array.new
         regression_features=Array.new
 
@@ -338,7 +338,7 @@ module OpenTox
             drop=true
             drop_missing=true if (row.count("") == row.size-1) 
           end
-          add_values(row, regression_features, duplicate_feature_indices) unless (drop_missing && drop)
+          add_values(row, regression_features) unless (drop_missing && drop)
           if (drop_missing && drop) 
             @format_errors << "Row #{i} not added" 
           end
@@ -354,7 +354,7 @@ module OpenTox
         row = 0
         input = csv.split("\n")
         headers = split_row(input.shift)
-        duplicate_feature_indices = add_features(headers)
+        add_features(headers)
         value_maps = Array.new
         regression_features=Array.new
 
@@ -379,7 +379,7 @@ module OpenTox
             drop=true
             drop_missing=true if (row.count("") == row.size-1) 
           end
-          add_values(row, regression_features, duplicate_feature_indices) unless (drop_missing && drop)
+          add_values(row, regression_features) unless (drop_missing && drop)
           if (drop_missing && drop) 
             @format_errors << "Row #{i} not added" 
           end
@@ -426,7 +426,7 @@ module OpenTox
       def add_features(row)
         row=row.collect
         row.shift  # get rid of id entry
-        duplicate_feature_indices = [] # starts with 0 at first f after id
+        @duplicate_feature_indices = [] # starts with 0 at first f after id
         row.each_with_index do |feature_name, idx|
           feature_uri = File.join(@dataset.uri,"feature",URI.encode(feature_name))
           unless @features.include? feature_uri
@@ -434,18 +434,17 @@ module OpenTox
             @features << feature_uri
             @dataset.add_feature(feature_uri,{DC.title => feature_name})
           else
-            duplicate_feature_indices << idx
+            @duplicate_feature_indices << idx
             @format_errors << "Duplicate Feature '#{feature_name}' at pos #{idx}"
           end
         end
-        duplicate_feature_indices
       end
 
       # Adds a row to a dataset
       # @param Array A row split up as an array
       # @param Array Indicator for regression for each field
       # @param Array Indices for duplicate features
-      def add_values(row, regression_features, duplicate_feature_indices)
+      def add_values(row, regression_features)
 
         id = row.shift
         case id
@@ -462,17 +461,18 @@ module OpenTox
         @duplicates[compound.inchi] = [] unless @duplicates[compound.inchi]
         @duplicates[compound.inchi] << id+", "+row.join(", ")
 
+        feature_idx = 0
         row.each_index do |i|
 
-          unless duplicate_feature_indices.include? i
+          unless @duplicate_feature_indices.include? i
 
             value = row[i]
             #LOGGER.warn "Missing values for #{id}" if value.size == 0 # String is empty
-            feature = @features[i]
+            feature = @features[feature_idx]
   
             type = feature_type(value) # May be NIL
             type = OT.NominalFeature unless (type.nil? || regression_features[i])
-            @feature_types[feature] << type unless type.nil?
+            @feature_types[feature] << type if type
   
             val = nil
             case type
@@ -481,6 +481,8 @@ module OpenTox
             when OT.NominalFeature
               val = value.to_s
             end
+
+            feature_idx += 1
   
             if val != nil
               @dataset.add(compound.uri, feature, val)

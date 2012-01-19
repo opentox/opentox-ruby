@@ -18,7 +18,7 @@ module OpenTox
         compounds = ds.compounds.collect
         ambit_result_uri, smiles_to_inchi = get_pc_descriptors( { :compounds => compounds, :pc_type => params[:pc_type] } )
         #ambit_result_uri = ["http://apps.ideaconsult.net:8080/ambit2/dataset/987103?" ,"feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Ffeature%2F4276789&", "feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Fmodel%2F16%2Fpredicted"] # for testing
-        LOGGER.debug "Ambit result uri for #{params.inspect}: '#{ambit_result_uri.join('')}'"
+        LOGGER.debug "Ambit result uri for #{params.inspect}: '#{ambit_result_uri.to_yaml}'"
         load_ds_csv(ambit_result_uri, smiles_to_inchi)
       rescue Exception => e
         LOGGER.debug "#{e.class}: #{e.message}"
