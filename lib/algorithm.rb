@@ -417,7 +417,7 @@ module OpenTox
 
 
       # Local support vector regression from neighbors 
-      # @param [Hash] params Keys `:props, :acts, :sims` are required
+      # @param [Hash] params Keys `:props, :acts, :sims, :min_train_performance` are required
       # @return [Numeric] A prediction value.
       def self.local_svm_regression(params)
 
@@ -441,7 +441,7 @@ module OpenTox
             #acts = acts_autoscaler.vs.to_a
 
             # Predict
-            prediction = params[:props] ? local_svm_prop( props, acts, "nu-svr") : local_svm( params[:sims], acts, "nu-svr")
+            prediction = params[:props] ? local_svm_prop( props, acts, "nu-svr", params[:min_train_performance]) : local_svm( params[:sims], acts, "nu-svr", params[:min_train_performance])
 
             # Restore
             #prediction = acts_autoscaler.restore( [ prediction ].to_gv )[0] unless prediction.nil?
@@ -462,7 +462,7 @@ module OpenTox
       end
 
       # Local support vector classification from neighbors 
-      # @param [Hash] params Keys `:props, :acts, :sims` are required
+      # @param [Hash] params Keys `:props, :acts, :sims, :min_train_performance` are required
       # @return [Numeric] A prediction value.
       def self.local_svm_classification(params)
 
@@ -471,7 +471,7 @@ module OpenTox
 
         LOGGER.debug "Local SVM Classification."
         if params[:acts].size>0
-          prediction = params[:props] ? local_svm_prop( params[:props], params[:acts], "C-bsvc") : local_svm( params[:sims], params[:acts], "C-bsvc") 
+          prediction = params[:props] ? local_svm_prop( params[:props], params[:acts], "C-bsvc", params[:min_train_performance]) : local_svm( params[:sims], params[:acts], "C-bsvc", params[:min_train_performance]) 
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
           confidence = get_confidence({:sims => params[:sims][1], :acts => params[:acts], :conf_stdev => params[:conf_stdev]})
@@ -488,8 +488,9 @@ module OpenTox
       # @param [Array] sims, similarities for neighbors.
       # @param [Array] acts, activities for neighbors.
       # @param [String] type, one of "nu-svr" (regression) or "C-bsvc" (classification).
+      # @param [Float] min_train_performance, parameter to control censoring
       # @return [Numeric] A prediction value.
-      def self.local_svm(sims, acts, type)
+      def self.local_svm(sims, acts, type, min_train_performance)
         LOGGER.debug "Local SVM (Weighted Tanimoto Kernel)."
 
         gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
@@ -508,6 +509,7 @@ module OpenTox
           @r.n = acts.size
           @r.y = acts
           @r.cens = 0.0
+          @r.mtp = min_train_performance 
 
           begin
             LOGGER.debug "Preparing R data ..."
@@ -533,7 +535,7 @@ module OpenTox
                     }
                   }
                 } 
-                if ( (1.0-(selected$perf / var(y))) < 0.1 ) cens = 1.0
+                if ( (1.0-(selected$perf / var(y))) < mtp ) cens = 1.0
               } else {
                 if ('#{type}' == 'C-bsvc') {  
                   Cs = 2^seq(-6,3,by=1.0)
@@ -578,8 +580,9 @@ module OpenTox
       # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
       # @param [Array] acts, activities for neighbors.
       # @param [String] type, one of "nu-svr" (regression) or "C-bsvc" (classification).
+      # @param [Float] min_train_performance, parameter to control censoring
       # @return [Numeric] A prediction value.
-      def self.local_svm_prop(props, acts, type)
+      def self.local_svm_prop(props, acts, type, min_train_performance)
 
         LOGGER.debug "Local SVM (Propositionalization / Kernlab Kernel)."
         n_prop = props[0] # is a matrix, i.e. two nested Arrays.
@@ -600,6 +603,7 @@ module OpenTox
           @r.y = acts
           @r.q_prop = q_prop
           @r.cens = 0.0
+          @r.mtp = min_train_performance
 
           begin
             LOGGER.debug "Preparing R data ..."
@@ -624,7 +628,7 @@ module OpenTox
                     }
                   }
                 } 
-                if ( (1.0-(selected$perf / var(y))) < 0.1 ) cens = 1.0
+                if ( (1.0-(selected$perf / var(y))) < mtp ) cens = 1.0
               } else {
                 if ('#{type}' == 'C-bsvc') {  
                   Cs = 2^seq(-6,3,by=1.0)

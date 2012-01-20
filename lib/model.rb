@@ -290,7 +290,8 @@ module OpenTox
                                                           :acts => mtf.acts,
                                                           :sims => mtf.sims,
                                                           :value_map => @value_map,
-                                                          :conf_stdev => @conf_stdev
+                                                          :conf_stdev => @conf_stdev,
+                                                          :min_train_performance => self.parameter(\"min_train_performance\")
                                                         } ) ")
 
           value_feature_uri = File.join( @uri, "predicted", "value")
