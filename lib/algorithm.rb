@@ -270,10 +270,6 @@ module OpenTox
           props = [ n_prop, q_prop ]
           maxcols = ( params[:maxcols].nil? ? (sims.size/3.0).ceil : params[:maxcols] )
 
-          # Transform y
-          acts_autoscaler = OpenTox::Transform::LogAutoScale.new(acts.to_gv)
-          acts = acts_autoscaler.vs.to_a
-
           # Predict
           if Algorithm::zero_variance? acts
             prediction = acts[0]
@@ -281,8 +277,6 @@ module OpenTox
             prediction = pcr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts, :maxcols => maxcols} )
           end
 
-          # Restore
-          prediction = acts_autoscaler.restore( [ prediction ].to_gv )[0]
           prediction = nil if (!prediction.nil? && prediction.infinite?)
           LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
           params[:conf_stdev] = false if params[:conf_stdev].nil?
@@ -317,13 +311,18 @@ module OpenTox
           data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
           query_matrix = GSL::Matrix.alloc(q_prop.flatten, 1, nr_features) # same nr_features
 
+          # PCA on data -- changes features; adjust query accordingly
+          LOGGER.debug "PCA..."
+          pca = OpenTox::Transform::PCA.new(data_matrix,0.05,maxcols)
+          data_matrix = pca.data_transformed_matrix
+          nr_cases, nr_features = data_matrix.to_a.size, data_matrix.to_a[0].size
+          query_matrix = pca.transform(query_matrix)
+          LOGGER.debug "Reduced by compression, M: #{nr_cases}x#{nr_features}; R: #{query_matrix.size2}"
+
           ### Model
           @r.eval 'suppressPackageStartupMessages(library("pls"))'
           outliers = Similarity.outliers( { :query_matrix => query_matrix, :data_matrix => data_matrix, :acts => acts, :r => @r  } )
           LOGGER.debug "Detected #{outliers.size} outliers: [#{outliers.join(", ")}]"
-          #if (outliers.include?(-1))
-          #  raise "Query is an outlier."
-          #end
           temp_dm = []; temp_acts = []
           data_matrix.to_a.each_with_index { |elem, idx| temp_dm << elem unless outliers.include? idx }
           nr_cases, nr_features = temp_dm.size, temp_dm[0].size
@@ -361,6 +360,9 @@ module OpenTox
           @r.eval 'names(q) = names(df)[2:length(names(df))]'
           @r.eval 'pred <- drop( predict( best[[4]], newdata = q, ncomp=best[[2]] ) )'
           prediction = @r.pred.to_a.flatten[0] # [1] lwr, [2] upr confidence limit NOT IMPLEMENTED.
+          prediction = nil if (outliers.include?(-1))
+          prediction = nil if @r.best_values[3] < 0.1
+          prediction
 
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
