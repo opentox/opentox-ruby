@@ -525,8 +525,8 @@ module OpenTox
 
             @r.eval <<-EOR
               if ('#{type}' == 'nu-svr') { 
-                Cs = 2^seq(-6,3,by=1.5)
-                nus = seq(.05,.95,by=.15)
+                Cs = 2^seq(-6,8,by=1)
+                nus = seq(.05,.95,by=.1)
                 selected = list ( perf = Inf, model = NULL )
                 for (C in Cs) { 
                   for (nu in nus) { 
@@ -540,7 +540,7 @@ module OpenTox
                 if ( (1.0-(selected$perf / var(y))) < mtp ) cens = 1.0
               } else {
                 if ('#{type}' == 'C-bsvc') {  
-                  Cs = 2^seq(-6,3,by=1.0)
+                  Cs = 2^seq(-6,8,by=1)
                   selected = list ( perf = -Inf, model = NULL )
                   for (C in Cs) { 
                     model = ksvm(gram_matrix, y, type='#{type}', C=C, kpar='automatic', cross=length(y))
@@ -618,8 +618,8 @@ module OpenTox
             LOGGER.debug "Creating SVM model ..."
             @r.eval <<-EOR
               if ('#{type}' == 'nu-svr') { 
-                Cs = 2^seq(-6,3,by=1.5)
-                nus = seq(.05,.95,by=.15)
+                Cs = 2^seq(-6,8,by=1)
+                nus = seq(.05,.95,by=.1)
                 selected = list ( perf = Inf, model = NULL )
                 for (C in Cs) { 
                   for (nu in nus) { 
@@ -633,7 +633,7 @@ module OpenTox
                 if ( (1.0-(selected$perf / var(y))) < mtp ) cens = 1.0
               } else {
                 if ('#{type}' == 'C-bsvc') {  
-                  Cs = 2^seq(-6,3,by=1.0)
+                  Cs = 2^seq(-6,8,by=1)
                   selected = list ( perf = -Inf, model = NULL )
                   for (C in Cs) { 
                     model = ksvm(prop_matrix, y, type='#{type}', C=C, kpar='automatic', cross=length(y))
