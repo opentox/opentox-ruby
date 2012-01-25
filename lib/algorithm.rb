@@ -90,7 +90,7 @@ module OpenTox
                   LOGGER.warn "No #{feature} activity for #{compound.to_s}."
                 else
                   if @prediction_feature.feature_type == "classification"
-                    activity= value_map.invert[value].to_i # activities are mapped to 1..n
+                    activity= value_map.invert[value.to_s].to_i # activities are mapped to 1..n
                     @db_class_sizes[activity-1].nil? ? @db_class_sizes[activity-1]=1 : @db_class_sizes[activity-1]+=1 # AM effect
                   elsif @prediction_feature.feature_type == "regression"
                     activity= value.to_f 
