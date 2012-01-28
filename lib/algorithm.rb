@@ -598,23 +598,24 @@ module OpenTox
           #LOGGER.debug gram_matrix.to_yaml
           @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
           @r.eval "set.seed(1)"
-          @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
-          @r.eval "suppressPackageStartupMessages(library('caret'))"
-          LOGGER.debug "Setting R data ..."
-          # set data
-          @r.n_prop = n_prop.flatten
-          @r.n_prop_x_size = n_prop.size
-          @r.n_prop_y_size = n_prop[0].size
-          @r.y = acts
-          @r.q_prop = q_prop
-
+          @r.eval "suppressPackageStartupMessages(library('caret'))" # requires R packages "caret" and "kernlab"
+          @r.eval "suppressPackageStartupMessages(library('doMC'))" # requires R packages "multicore"
+          @r.eval "registerDoMC()" # switch on parallel processing
           begin
-            LOGGER.debug "Preparing R data ..."
-            # prepare data
-            @r.eval "y<-matrix(y)"
-            @r.eval "prop_matrix<-matrix(n_prop, n_prop_x_size, n_prop_y_size, byrow=TRUE)"
-            @r.eval "q_prop<-matrix(q_prop, 1, n_prop_y_size, byrow=TRUE)"
 
+            # set data
+            LOGGER.debug "Setting R data ..."
+            @r.n_prop = n_prop.flatten
+            @r.n_prop_x_size = n_prop.size
+            @r.n_prop_y_size = n_prop[0].size
+            @r.y = acts
+            @r.q_prop = q_prop
+            @r.eval "y = matrix(y)"
+            @r.eval "prop_matrix = matrix(n_prop, n_prop_x_size, n_prop_y_size, byrow=T)"
+            @r.eval "q_prop = matrix(q_prop, 1, n_prop_y_size, byrow=T)"
+
+            # prepare data
+            LOGGER.debug "Preparing R data ..."
             @r.eval <<-EOR
               rem = nearZeroVar(prop_matrix)
               if (length(rem) > 0) {
@@ -629,53 +630,21 @@ module OpenTox
             EOR
 
             # model + support vectors
-            LOGGER.debug "Creating SVM model ..."
+            LOGGER.debug "Creating R SVM model ..."
             @r.eval <<-EOR
-              model = train(prop_matrix,y,method="svmradial",tuneLength=8,trControl=trainControl(method="LGOCV",number=40),preProcess=c("center", "scale"))
-              #perf = model$results[which.min(model$results$RMSE),]$Rsquared
-              perf = max(model$results$Rsquared)
-
-              #if ('#{type}' == 'nu-svr') { 
-              #  Cs = 2^seq(-6,8,by=1)
-              #  nus = seq(.05,.95,by=.1)
-              #  selected = list ( perf = Inf, model = NULL )
-              #  for (C in Cs) { 
-              #    for (nu in nus) { 
-              #      model = ksvm(prop_matrix, y, type='#{type}', C=C, nu=nu, kpar='automatic', cross=length(y))
-              #      if (cross(model) < selected$perf) {
-              #        selected$perf = cross(model)
-              #        selected$model = model
-              #      }
-              #    }
-              #  } 
-              #  if ( (1.0-(selected$perf / var(y))) < mtp ) cens = 1.0
-              #} else {
-              #  if ('#{type}' == 'C-bsvc') {  
-              #    Cs = 2^seq(-6,8,by=1)
-              #    selected = list ( perf = -Inf, model = NULL )
-              #    for (C in Cs) { 
-              #      model = ksvm(prop_matrix, y, type='#{type}', C=C, kpar='automatic', cross=length(y))
-              #      if (cross(model) > selected$perf) {
-              #        selected$perf = cross(model)
-              #        selected$model = model
-              #      }
-              #    }
-              #  }
-              #}
-              
+              model = train(prop_matrix,y,method="svmradial",tuneLength=8,trControl=trainControl(method="LGOCV",number=10),preProcess=c("center", "scale"))
+              perf = model$results[which.min(model$results$RMSE),]$Rsquared
             EOR
 
-            #@r.eval "model<-ksvm(prop_matrix, y, type=\"#{type}\", nu=0.5)"
+            # prediction
             LOGGER.debug "Predicting ..."
-            #if type == "nu-svr" 
-            #  @r.eval "p<-predict(selected$model,q_prop)[1,1]"
-            #elsif type == "C-bsvc"
-              @r.eval "p<-predict(model,q_prop)"
-            #end
-            #prediction = nil if @r.cens == 1
+            @r.eval "p = predict(model,q_prop)"
             prediction = @r.p
+
+            # censoring
             prediction = nil if ( @r.perf.nan? || @r.perf < min_train_performance )
-            LOGGER.debug "Perf: #{@r.perf}"
+
+            LOGGER.debug "Performance: #{sprintf("%.2f", @r.perf)}"
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
             LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
