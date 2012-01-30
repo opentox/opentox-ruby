@@ -380,7 +380,8 @@ module OpenTox
       features2 = dataset2.features.keys unless features2
       compounds1 = dataset1.compounds unless compounds1
       compounds2 = dataset2.compounds unless compounds2
-      data_combined = OpenTox::Dataset.create
+      data_combined = OpenTox::Dataset.create(CONFIG[:services]["opentox-dataset"],subjectid)
+      LOGGER.debug("merging datasets #{dataset1.uri} and #{dataset2.uri} to #{data_combined.uri}")
       [[dataset1, features1, compounds1], [dataset2, features2, compounds2]].each do |dataset,features,compounds|
         compounds.each{|c| data_combined.add_compound(c)}
         features.each do |f|
@@ -397,7 +398,7 @@ module OpenTox
       metadata = {} unless metadata
       metadata[OT.hasSource] = "Merge from #{dataset1.uri} and #{dataset2.uri}" unless metadata[OT.hasSource]
       data_combined.add_metadata(metadata)
-      data_combined.save
+      data_combined.save(subjectid)
       data_combined
     end
     
