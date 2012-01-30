@@ -177,7 +177,7 @@ module OpenTox
     # @param [Array] Array to test, must indicate non-occurrence with 0.
     # @return [Boolean] Whether the feature has variance zero.
     def self.zero_variance?(array)
-      return (array.to_scale.variance_population == 0.0)
+      return array.uniq.size == 1
     end
     
 
@@ -227,75 +227,18 @@ module OpenTox
     # neighbors
 
     module Neighbors
-
-      # Calculate the propositionalization matrix (aka instantiation matrix) via fingerprints.
-      # Same for the vector describing the query compound.
-      # @param[Hash] Required keys: :neighbors, :compound, :features, :nr_hits, :fingerprints, :p_values
-      def self.get_props_fingerprints (params)
-        matrix = []
-        begin 
-
-          # neighbors
-          params[:neighbors].each do |n|
-            n = n[:compound]
-            row = []
-            row_good = true
-            params[:features].each do |f|
-              #if (!params[:fingerprints][n].nil?) && (params[:fingerprints][n].include?(f))
-              #  row << params[:p_values][f] * params[:fingerprints][n][f]
-              #else
-              #  LOGGER.debug "Warning: Neighbor with missing values skipped." if row_good
-              #  row_good = false
-              #end
-              if ! params[:fingerprints][n].nil? 
-                row << (params[:fingerprints][n].include?(f) ? params[:fingerprints][n][f] : 0.0)
-              else
-                row << 0.0
-              end
-            end
-            matrix << row if row_good
-          end
-
-          row = []
-          params[:features].each do |f|
-            row << (params[:fingerprints][params[:compound].uri].include?(f) ? params[:fingerprints][params[:compound].uri][f] : 0.0)
-          end
-        rescue Exception => e
-          LOGGER.debug "#{e.class}: #{e.message}"
-          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-        end
-        [ matrix, row ]
-      end
       
-      
-     
-      
-      # Get confidence for regression, with standard deviation of neighbor activity if conf_stdev is set.
-      # @param[Hash] Required keys: :sims, :acts, :conf_stdev
+      # Get confidence.
+      # @param[Hash] Required keys: :sims, :acts
       # @return[Float] Confidence
       def self.get_confidence(params)
-        if params[:conf_stdev]
-          sim_median = params[:sims].to_scale.median
-          if sim_median.nil?
-            confidence = nil
-          else
-            standard_deviation = params[:acts].to_scale.standard_deviation_sample
-            confidence = (sim_median*Math.exp(-1*standard_deviation)).abs
-            if confidence.nan?
-              confidence = nil
-            end
-          end
-        else
-          conf = params[:sims].inject{|sum,x| sum + x }
-          confidence = conf/params[:sims].size
-        end
+        conf = params[:sims].inject{|sum,x| sum + x }
+        confidence = conf/params[:sims].size
         LOGGER.debug "Confidence is: '" + confidence.to_s + "'."
         return confidence
       end
 
     end
-
-
 
 
     # Similarity calculations
