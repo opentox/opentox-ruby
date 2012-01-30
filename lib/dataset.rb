@@ -363,7 +363,44 @@ module OpenTox
       dataset.save(subjectid)
       dataset
     end
-
+    
+    # merges two dataset into a new dataset (by default uses all compounds and features)
+    # precondition: both datasets are fully loaded
+    # @param [OpenTox::Dataset] dataset1 to merge
+    # @param [OpenTox::Dataset] dataset2 to merge
+    # @param [Hash] metadata
+    # @param [optional,String] subjectid
+    # @param [optional,Array] features1, if specified only this features of dataset1 are used
+    # @param [optional,Array] features2, if specified only this features of dataset2 are used
+    # @param [optional,Array] compounds1, if specified only this compounds of dataset1 are used
+    # @param [optional,Array] compounds2, if specified only this compounds of dataset2 are used
+    # example: if you want no features from dataset2, give empty array as features2
+    def self.merge( dataset1, dataset2, metadata, subjectid=nil, features1=nil, features2=nil, compounds1=nil, compounds2=nil )
+      features1 = dataset1.features.keys unless features1
+      features2 = dataset2.features.keys unless features2
+      compounds1 = dataset1.compounds unless compounds1
+      compounds2 = dataset2.compounds unless compounds2
+      data_combined = OpenTox::Dataset.create
+      [[dataset1, features1, compounds1], [dataset2, features2, compounds2]].each do |dataset,features,compounds|
+        compounds.each{|c| data_combined.add_compound(c)}
+        features.each do |f|
+          m = dataset.features[f]
+          m[OT.hasSource] = dataset.uri unless m[OT.hasSource]
+          data_combined.add_feature(f,m)
+          compounds.each do |c|
+            dataset.data_entries[c][f].each do |v|
+              data_combined.add(c,f,v)
+            end if dataset.data_entries[c] and dataset.data_entries[c][f]
+          end
+        end
+      end
+      metadata = {} unless metadata
+      metadata[OT.hasSource] = "Merge from #{dataset1.uri} and #{dataset2.uri}" unless metadata[OT.hasSource]
+      data_combined.add_metadata(metadata)
+      data_combined.save
+      data_combined
+    end
+    
     # Save dataset at the dataset service 
     # - creates a new dataset if uri is not set
     # - overwrites dataset if uri exists
