@@ -71,16 +71,23 @@ module OpenTox
     # embedds feature values of two datasets into 2D and plots it
     # fast_plot = true -> PCA, fast_plot = false -> SMACOF (iterative optimisation method) 
     #        
-    def feature_value_plot(files, dataset_uri1, dataset_uri2, dataset_name1, dataset_name2, fast_plot=true, subjectid=nil, waiting_task=nil)
+    def feature_value_plot(files, dataset_uri1, dataset_uri2, dataset_name1, dataset_name2,
+        features=nil, fast_plot=true, subjectid=nil, waiting_task=nil)
       LOGGER.debug("r-util> create feature value plot")
       d1 = OpenTox::Dataset.find(dataset_uri1,subjectid)
       d2 = OpenTox::Dataset.find(dataset_uri2,subjectid)
+      if features
+        [d1, d2].each{|d| features.each{|f| raise "feature not included" unless d.features.keys.include?(f)}} 
+      else
+        raise "different\n#{d1.features.keys.sort.to_yaml}\n#{d2.features.keys.sort.to_yaml}" if 
+          (d1.features.keys.sort != d2.features.keys.sort)
+        features = d1.features.keys
+      end
       raise "at least two features needed" if d1.features.keys.size<2
-      raise "different\n#{d1.features.keys.sort.to_yaml}\n#{d2.features.keys.sort.to_yaml}" if (d1.features.keys.sort != d2.features.keys.sort)
       waiting_task.progress(25) if waiting_task
       
-      df1 = dataset_to_dataframe(d1,0,subjectid)
-      df2 = dataset_to_dataframe(d2,0,subjectid)
+      df1 = dataset_to_dataframe(d1,0,subjectid,features)
+      df2 = dataset_to_dataframe(d2,0,subjectid,features)
       waiting_task.progress(50) if waiting_task
       
       @r.eval "df <- rbind(#{df1},#{df2})"
@@ -91,9 +98,9 @@ module OpenTox
       waiting_task.progress(75) if waiting_task
       
       if fast_plot
-        info = "main='PCA-Embedding of #{d1.features.keys.size} features',xlab='PC1',ylab='PC2'"
+        info = "main='PCA-Embedding of #{features.size} features',xlab='PC1',ylab='PC2'"
       else
-        info = "main='SMACOF-Embedding of #{d1.features.keys.size} features',xlab='x',ylab='y'"
+        info = "main='SMACOF-Embedding of #{features.size} features',xlab='x',ylab='y'"
       end
       LOGGER.debug("r-util> - plot data")
       plot_to_files(files) do |file|
@@ -161,15 +168,9 @@ module OpenTox
       raise "not a loaded ot-dataset" unless dataset.is_a?(OpenTox::Dataset) and dataset.compounds.size>0 and dataset.features.size>0
       LOGGER.debug("r-util> apply stratified split to #{dataset.uri}")
       
-      df = dataset_to_dataframe( dataset, missing_values, subjectid )
+      df = dataset_to_dataframe( dataset, missing_values, subjectid, split_features )
       @r.eval "set.seed(#{seed})"
-      if split_features
-        cols = split_features.collect{|f| "#{df}[#{@@feats[df].keys.sort.index(f)+1}]"}.join(",")
-        @r.eval "#{df}.feat <- cbind(#{cols})"
-      else
-        @r.eval "#{df}.feat <- #{df}"
-      end
-      @r.eval "split <- stratified_split(#{df}.feat, ratio=#{pct})"
+      @r.eval "split <- stratified_split(#{df}, ratio=#{pct})"
       split = @r.pull 'split'
       split = split.collect{|s| 1-s.to_i} # reverse 1s and 0s, as 1 means selected, but 0 will be first set
       split_to_datasets( df, split, subjectid )
@@ -179,7 +180,7 @@ module OpenTox
     # takes duplicates into account
     # replaces missing values with param <missing_value>
     # returns dataframe-variable-name in R
-    def dataset_to_dataframe( dataset, missing_value="NA", subjectid=nil )
+    def dataset_to_dataframe( dataset, missing_value="NA", subjectid=nil, features=nil )
       LOGGER.debug "r-util> convert dataset to dataframe #{dataset.uri}"
       
       # count duplicates
@@ -195,13 +196,20 @@ module OpenTox
           end
         end
       end  
+      
+      # use either all, or the provided features, sorting is important as col-index := features
+      if features
+        features.sort!
+      else
+        features = dataset.features.keys.sort
+      end
 
       # values into 2D array, then to dataframe
       d_values = []
       dataset.compounds.each do |c|
         num_compounds[c].times do |i|
           c_values = []
-          dataset.features.keys.sort.each do |f|
+          features.each do |f|
             if dataset.data_entries[c]
               val = dataset.data_entries[c][f]
               v = val==nil ? "" : val[i].to_s
@@ -220,7 +228,7 @@ module OpenTox
       
       # set dataframe column types accordingly
       f_count = 1 #R starts at 1
-      dataset.features.keys.sort.each do |f|
+      features.each do |f|
         feat = OpenTox::Feature.find(f,subjectid)
         nominal = feat.metadata[RDF.type].to_a.flatten.include?(OT.NominalFeature)
         if nominal
@@ -239,7 +247,10 @@ module OpenTox
           @@comps[df_name] << c
         end
       end
-      @@feats[df_name] = dataset.features
+      @@feats[df_name] = {}
+      features.each do |f|
+        @@feats[df_name][f] = dataset.features[f]
+      end
       df_name
     end
     
