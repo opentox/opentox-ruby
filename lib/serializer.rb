@@ -459,9 +459,10 @@ module OpenTox
         dataset.data_entries.each do |compound,entries|
           cmpd = Compound.new(compound)
           smiles = cmpd.to_smiles
-          #inchi = URI.encode_www_form_component(cmpd.to_inchi)
+          inchi = URI.encode_www_form_component(cmpd.to_inchi)
           row = Array.new(@rows.first.size)
-          row[0] = smiles
+          #row[0] = smiles
+          row[0] = inchi
           entries.each do |feature, values|
             i = features.index(feature)+1
             values.each do |value|
