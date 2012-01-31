@@ -19,7 +19,7 @@ module OpenTox
       @r = RinRuby.new(true,false) unless defined?(@r) and @r
       @r.eval ".libPaths('#{PACKAGE_DIR}')"
       @r_packages = @r.pull "installed.packages()[,1]"
-      ["sampling","gam","vegan","TunePareto", "smacof"].each{|l| install_packages(l)} #"caret"
+      ["sampling","gam","vegan"].each{|l| install_package(l)} #"caret", "smacof", "TunePareto"
       @r.eval "source('#{File.join(Gem.loaded_specs['opentox-ruby'].full_gem_path,'lib/stratification.R')}')"
     end
     
@@ -31,8 +31,12 @@ module OpenTox
       end
     end
     
-    def install_packages( package )
-      unless @r_packages.include?(package) 
+    def package_installed?( package )
+      @r_packages.include?(package) 
+    end
+    
+    def install_package( package )
+      unless package_installed?(package)
         LOGGER.debug "r-util> installing r-package #{package} to #{PACKAGE_DIR}"
         @r.eval "install.packages('#{package}', repos='http://cran.r-project.org', dependencies=T, lib='#{PACKAGE_DIR}')"
       end
@@ -73,6 +77,8 @@ module OpenTox
     #        
     def feature_value_plot(files, dataset_uri1, dataset_uri2, dataset_name1, dataset_name2,
         features=nil, fast_plot=true, subjectid=nil, waiting_task=nil)
+        
+      raise "r-package smacof missing" if fast_plot==false and !package_installed?("smacof")
       LOGGER.debug("r-util> create feature value plot")
       d1 = OpenTox::Dataset.find(dataset_uri1,subjectid)
       d2 = OpenTox::Dataset.find(dataset_uri2,subjectid)
