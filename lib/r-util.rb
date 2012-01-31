@@ -38,7 +38,7 @@ module OpenTox
     def install_package( package )
       unless package_installed?(package)
         LOGGER.debug "r-util> installing r-package #{package} to #{PACKAGE_DIR}"
-        @r.eval "install.packages('#{package}', repos='http://cran.r-project.org', dependencies=T, lib='#{PACKAGE_DIR}')"
+        @r.eval "install.packages('#{package}', repos='http://cran.r-project.org', lib='#{PACKAGE_DIR}')"
       end
     end
     
