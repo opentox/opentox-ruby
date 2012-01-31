@@ -274,7 +274,7 @@ module OpenTox
         nominal = feat.metadata[RDF.type].to_a.flatten.include?(OT.NominalFeature)
         @@comps[df].size.times do |r|
           if compound_indices==nil or compound_indices.include?(r)
-            dataset.add(@@comps[df][r],@@feats[df].keys.sort[c],nominal ? values[r][c] : values[r][c].to_f)
+            dataset.add(@@comps[df][r],@@feats[df].keys.sort[c],nominal ? values[r][c] : values[r][c].to_f) if values[r][c]!="NA"
           end 
         end
       end
