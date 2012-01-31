@@ -103,7 +103,7 @@ module OpenTox
       include Model
 
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :subjectid, :value_map, :conf_stdev, :max_perc_neighbors, :compound_fingerprints, :feature_calculation_algorithm, :neighbors
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :subjectid, :value_map, :compound_fingerprints, :feature_calculation_algorithm, :neighbors
       def initialize(uri=nil)
 
         if uri
@@ -125,9 +125,6 @@ module OpenTox
         @similarity_algorithm = "Similarity.tanimoto"
         @prediction_algorithm = "Neighbors.weighted_majority_vote"
         
-        @conf_stdev = false
-        @max_perc_neighbors = nil
-
       end
 
       # Get URIs of all lazar models
@@ -172,14 +169,12 @@ module OpenTox
         lazar.prediction_algorithm = hash["prediction_algorithm"] if hash["prediction_algorithm"]
         lazar.subjectid = hash["subjectid"] if hash["subjectid"]
         lazar.value_map = hash["value_map"] if hash["value_map"]
-        lazar.conf_stdev = hash["conf_stdev"] if hash["conf_stdev"]
-        lazar.max_perc_neighbors = hash["max_perc_neighbors"] if hash["max_perc_neighbors"]
 
         lazar
       end
 
       def to_json
-        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :subjectid => @subjectid, :value_map => @value_map,  :conf_stdev => @conf_stdev, :max_perc_neighbors => @max_perc_neighbors})
+        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :subjectid => @subjectid, :value_map => @value_map})
       end
 
       def run( params, accept_header=nil, waiting_task=nil )
@@ -290,7 +285,6 @@ module OpenTox
                                                           :acts => mtf.acts,
                                                           :sims => mtf.sims,
                                                           :value_map => @value_map,
-                                                          :conf_stdev => @conf_stdev,
                                                           :min_train_performance => self.parameter(\"min_train_performance\")
                                                         } ) ")
 

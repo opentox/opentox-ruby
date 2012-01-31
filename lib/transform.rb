@@ -412,12 +412,6 @@ module OpenTox
           @n_prop.each_with_index do |fp, idx| # AM: access all compounds
             add_neighbor fp, idx
           end
-          #if @model.max_perc_neighbors 
-          #  @model.neighbors = @model.neighbors.sort { |a,b| a[:similarity] <=> b[:similarity] }.reverse # order by descending sim (best neighbors first)
-          #  nr_neighbors = (@model.fingerprints.size.to_f * @model.max_perc_neighbors / 100).ceil
-          #  LOGGER.debug "Maximally #{nr_neighbors} neighbors (=#{@model.max_perc_neighbors}% of dataset) out of actually #{@model.neighbors.size} neighbors."
-          #  @model.neighbors = @model.neighbors.take nr_neighbors
-          #end
         end
 
 
