@@ -12,7 +12,6 @@ module OpenTox
   
   class RUtil
     
-    @@comps = {}
     @@feats = {}
       
     def initialize
@@ -29,6 +28,10 @@ module OpenTox
         @r = nil
       rescue
       end
+    end
+    
+    def r
+      @r
     end
     
     def package_installed?( package )
@@ -65,10 +68,9 @@ module OpenTox
     #
     def boxplot(files, data, title="")
       LOGGER.debug("r-util> create boxplot")
-      assign_dataframe("boxdata",data.collect{|e| e[1]}.transpose)
-      @r.assign("nam",data.collect{|e| e[0].to_s})
+      assign_dataframe("boxdata",data.collect{|e| e[1]}.transpose,nil,data.collect{|e| e[0].to_s})
       plot_to_files(files) do |file|
-        @r.eval "boxplot(boxdata,names=nam,main='#{title}',col=rep(2:#{data.size+1}))"
+        @r.eval "boxplot(boxdata,main='#{title}',col=rep(2:#{data.size+1}))"
       end
     end
 
@@ -209,6 +211,12 @@ module OpenTox
       else
         features = dataset.features.keys.sort
       end
+      compounds = []
+      dataset.compounds.each do |c|
+        num_compounds[c].times do |i|
+          compounds << c
+        end
+      end
 
       # values into 2D array, then to dataframe
       d_values = []
@@ -230,7 +238,7 @@ module OpenTox
         end
       end  
       df_name = "df_#{dataset.uri.split("/")[-1].split("?")[0]}"
-      assign_dataframe(df_name,d_values)
+      assign_dataframe(df_name,d_values,compounds,features)
       
       # set dataframe column types accordingly
       f_count = 1 #R starts at 1
@@ -247,12 +255,6 @@ module OpenTox
       #@r.eval "head(#{df_name})"
       
       # store compounds, and features (including metainformation)
-      @@comps[df_name] = []
-      dataset.compounds.each do |c|
-        num_compounds[c].times do |i|
-          @@comps[df_name] << c
-        end
-      end
       @@feats[df_name] = {}
       features.each do |f|
         @@feats[df_name][f] = dataset.features[f]
@@ -268,19 +270,19 @@ module OpenTox
     
     private
     def dataframe_to_dataset_indices( df, subjectid=nil, compound_indices=nil )
-      raise unless @r.pull("nrow(#{df})")==@@comps[df].size
-      raise unless @r.pull("ncol(#{df})")==@@feats[df].size
-      values = pull_dataframe(df)
+      raise unless @@feats[df].size>0
+      values, compounds, features = pull_dataframe(df)
+      features.each{|f| raise unless @@feats[df][f]}
       dataset = OpenTox::Dataset.create(CONFIG[:services]["opentox-dataset"],subjectid)
       LOGGER.debug "r-util> convert dataframe to dataset #{dataset.uri}"
-      @@comps[df].size.times{|r| dataset.add_compound(@@comps[df][r]) if compound_indices==nil or compound_indices.include?(r)}
-      @@feats[df].each{|k,v| dataset.add_feature(k,v)}
-      @@feats[df].size.times do |c|
-        feat = OpenTox::Feature.find(@@feats[df].keys.sort[c],subjectid)
+      compounds.size.times{|i| dataset.add_compound(compounds[i]) if compound_indices==nil or compound_indices.include?(i)}
+      features.each{|f| dataset.add_feature(f,@@feats[df][f])}
+      features.size.times do |c|
+        feat = OpenTox::Feature.find(features[c],subjectid)
         nominal = feat.metadata[RDF.type].to_a.flatten.include?(OT.NominalFeature)
-        @@comps[df].size.times do |r|
+        compounds.size.times do |r|
           if compound_indices==nil or compound_indices.include?(r)
-            dataset.add(@@comps[df][r],@@feats[df].keys.sort[c],nominal ? values[r][c] : values[r][c].to_f) if values[r][c]!="NA"
+            dataset.add(compounds[r],features[c],nominal ? values[r][c] : values[r][c].to_f) if values[r][c]!="NA"
           end 
         end
       end
@@ -302,24 +304,33 @@ module OpenTox
     
     def pull_dataframe(df)
       tmp = File.join(Dir.tmpdir,Time.new.to_f.to_s+"_"+rand(10000).to_s+".csv")
-      @r.eval "write.table(#{df},file='#{tmp}',sep=';')"
-      res = []
+      @r.eval "write.table(#{df},file='#{tmp}',sep='#')"
+      res = []; compounds = []; features = []
       first = true
       file = File.new(tmp, 'r')
       file.each_line("\n") do |row|
-        res << row.chomp.split(";")[1..-1].collect{|e| e.gsub("\"","")} unless first
-        first = false
+        if first
+           features = row.chomp.split("#").collect{|e| e.gsub("\"","")}
+           first = false
+        else
+           vals = row.chomp.split("#").collect{|e| e.gsub("\"","")}
+           compounds << vals[0]
+           res << vals[1..-1]
+        end
       end
       begin File.delete(tmp); rescue; end
-      res
+      return res, compounds, features
     end
     
-    def assign_dataframe(df,input)
+    def assign_dataframe(df,input,rownames,colnames)
       tmp = File.join(Dir.tmpdir,Time.new.to_f.to_s+"_"+rand(10000).to_s+".csv")
       file = File.new(tmp, 'w')
-      input.each{|i| file.puts(i.collect{|e| "\"#{e}\""}.join(";")+"\n")}  
+      input.each{|i| file.puts(i.collect{|e| "\"#{e}\""}.join("#")+"\n")}  
       file.flush
-      @r.eval "#{df} <- read.table(file='#{tmp}',sep=';')"
+      @r.rownames = rownames if rownames
+      @r.colnames = colnames
+      @r.eval "#{df} <- read.table(file='#{tmp}',sep='#',"+
+        "#{rownames ? "row.names=rownames" : ""},col.names=colnames,check.names=F)"
       begin File.delete(tmp); rescue; end
     end
     
