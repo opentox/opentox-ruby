@@ -106,7 +106,7 @@ module OpenTox
     # @param[Array] Ambit result uri, piecewise (1st: base, 2nd: SMILES, 3rd+: features
     # @return[String] dataset uri 
     def self.load_ds_csv(ambit_result_uri, smiles_to_inchi)
-
+      
       master=nil
       (1...ambit_result_uri.size).collect { |idx|
         curr_uri = ambit_result_uri[0] + ambit_result_uri[idx]
@@ -118,13 +118,16 @@ module OpenTox
             master = csv_data
             next
           else
+            index_uri = csv_data[0].index("SMILES")
+            csv_data.map {|i| i.delete_at(index_uri)} if index_uri #Removes additional SMILES information
+            
             nr_cols = (csv_data[0].size)-1
             LOGGER.debug "Merging #{nr_cols} new columns"
             master.each {|row| nr_cols.times { row.push(nil) }  } # Adds empty columns to all rows
             csv_data.each do |row|
               temp = master.assoc(row[0]) # Finds the appropriate line in master
               ((-1*nr_cols)..-1).collect.each { |idx|
-                temp[idx] = row[nr_cols+idx+1] if temp # Uupdates columns if line is found
+                temp[idx] = row[nr_cols+idx+1] if temp # Updates columns if line is found
               }
             end
           end
@@ -134,7 +137,11 @@ module OpenTox
       index_uri = master[0].index("Compound")
       master.map {|i| i.delete_at(index_uri)}
       master[0].each {|cell| cell.chomp!(" ")}
-
+      master[0][0] = "Compound" #"SMILES" 
+      index_smi = master[0].index("SMILES")
+      master.map {|i| i.delete_at(index_smi)} if index_smi
+      #master[0][0] = "SMILES" 
+       
       #LOGGER.debug "-------- AM: Writing to dumpfile"
       #File.open("/tmp/test.csv", 'w') {|f| f.write( master.collect {|r| r.join(",")}.join("\n") ) }
      
