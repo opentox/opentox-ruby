@@ -446,43 +446,54 @@ module OpenTox
     module FeatureSelection
       include Algorithm
       # Recursive Feature Elimination using caret
-      # @param [Hash] required_keys: ds_csv_file, fds_csv_file, dataset and feature dataset CSV file.
+      # @param [Hash] required keys: ds_csv_file, prediction_feature, fds_csv_file (dataset CSV file, prediction feature column name, and feature dataset CSV file), optional: del_missing (delete rows with missing values).
       # @return [String] feature dataset CSV file composed of selected features.
       def self.rfe(params)
         @r=RinRuby.new(false,false)
-        @r.ds_csv_file=params[:ds_csv_file]
-        @r.fds_csv_file=params[:fds_csv_file]
-        r_result_file=fds_csv_file.sub("rfe_", "rfe_R_")
-        @r.f_fds_r=r_result_file
+        @r.ds_csv_file = params[:ds_csv_file].to_s
+        @r.prediction_feature = params[:prediction_feature].to_s
+        @r.fds_csv_file = params[:fds_csv_file].to_s
+        @r.del_missing = params[:del_missing] == true ? 1 : 0
+        r_result_file = params[:fds_csv_file].sub("rfe_", "rfe_R_")
+        @r.f_fds_r = r_result_file.to_s
         
         # need packs 'randomForest', 'RANN'
         @r.eval <<-EOR
-          library('caret')
-          library('doMC')
+          suppressPackageStartupMessages(library('caret'))
+          suppressPackageStartupMessages(library('randomForest'))
+          suppressPackageStartupMessages(library('RANN'))
+          suppressPackageStartupMessages(library('doMC'))
           registerDoMC()
           
           acts = read.csv(ds_csv_file, check.names=F)
           feats = read.csv(fds_csv_file, check.names=F)
           ds = merge(acts, feats, by="SMILES") # involves duplicate resolving
           
-          features=ds[,3:dim(ds)[2]]
-          y=ds[,2] 
+          features = ds[,(dim(acts)[2]+1):(dim(ds)[2])]
+          y = ds[,which(names(ds) == prediction_feature)] 
           
           # assumes a data matrix 'features' and a vector 'y' of target values
           row.names(features)=NULL
           
-          # needed if rows should be removed
-          #na_ids=apply(features,1,function(x)any(is.na(x)))
-          
-          # if NA's random use imputation (only then!)
-          pp = preProcess(features, method=c("scale", "center", "knnImpute"))
+          pp = NULL
+          if (del_missing) {
+            # needed if rows should be removed
+            na_ids = apply(features,1,function(x)any(is.na(x)))
+            features = features[!na_ids,]
+            y = y[!na_ids]
+            pp = preProcess(features, method=c("scale", "center"))
+          } else {
+            # Use imputation if NA's random (only then!)
+            pp = preProcess(features, method=c("scale", "center", "knnImpute"))
+          }
           features = predict(pp, features)
           
           # determine subsets
-          subsets=dim(features)[2]*c(0.05, 0.1, 0.2, 0.3, 0.4, 0.5)
-          subsets = c(2,3,4,5,subsets)
-          subsets = subsets[subsets>1] 
+          subsets = dim(features)[2]*c(0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
+          subsets = c(2,3,4,5,7,10,subsets)
           subsets = unique(sort(round(subsets))) 
+          subsets = subsets[subsets<=dim(features)[2]]
+          subsets = subsets[subsets>1] 
           
           # Recursive feature elimination
           rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, number=50), sizes=subsets)
@@ -490,6 +501,7 @@ module OpenTox
           # read existing dataset and select most useful features
           csv=ds[,c("SMILES", rfProfile$optVariables)]
           write.csv(x=csv,file=f_fds_r, row.names=F, quote=F, na='')
+          save.image(file="/tmp/test.R")
         EOR
         r_result_file
       end
