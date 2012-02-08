@@ -371,9 +371,15 @@ module OpenTox
       # Convert to RDF/XML
       # @return [text/plain] Object OWL-DL in RDF/XML format
       def to_rdfxml
-        Tempfile.open("owl-serializer"){|f| f.write(self.to_ntriples); @path = f.path}
+        tmpf = Tempfile.open("owl-serializer")
+        tmpf.write(self.to_ntriples)
+        tmpf.flush
+        @path = tmpf.path
         # TODO: add base uri for ist services
-        `rapper -i ntriples -f 'xmlns:ot="#{OT.uri}"' -f 'xmlns:ota="#{OTA.uri}"' -f 'xmlns:dc="#{DC.uri}"' -f 'xmlns:rdf="#{RDF.uri}"' -f 'xmlns:owl="#{OWL.uri}"' -o rdfxml #{@path} 2>/dev/null`
+        res=`rapper -i ntriples -f 'xmlns:ot="#{OT.uri}"' -f 'xmlns:ota="#{OTA.uri}"' -f 'xmlns:dc="#{DC.uri}"' -f 'xmlns:rdf="#{RDF.uri}"' -f 'xmlns:owl="#{OWL.uri}"' -o rdfxml #{@path} 2>/dev/null`
+        tmpf.close
+        tmpf.delete
+        res
       end
 
       # Convert to JSON as specified in http://n2.talis.com/wiki/RDF_JSON_Specification

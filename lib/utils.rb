@@ -66,6 +66,7 @@ module OpenTox
           smi_file.puts( "SMILES\n" )
           smi_file.puts( smiles_array.join("\n") )
           smi_file.close
+          smi_file.delete
           ambit_ds_uri = OpenTox::RestClientWrapper.post(ambit_ds_service_uri, {:file => File.new(smi_file.path)}, {:content_type => "multipart/form-data", :accept => "text/uri-list"} )
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
