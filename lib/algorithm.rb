@@ -501,7 +501,6 @@ module OpenTox
           # read existing dataset and select most useful features
           csv=ds[,c("SMILES", rfProfile$optVariables)]
           write.csv(x=csv,file=f_fds_r, row.names=F, quote=F, na='')
-          save.image(file="/tmp/test.R")
         EOR
         r_result_file
       end
