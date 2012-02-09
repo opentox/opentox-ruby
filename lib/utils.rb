@@ -67,12 +67,11 @@ module OpenTox
           smi_file.puts( smiles_array.join("\n") )
           smi_file.flush
           ambit_ds_uri = OpenTox::RestClientWrapper.post(ambit_ds_service_uri, {:file => File.new(smi_file.path)}, {:content_type => "multipart/form-data", :accept => "text/uri-list"} )
-          smi_file.close!
         rescue Exception => e
           LOGGER.debug "#{e.class}: #{e.message}"
           LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         ensure
-          smi_file.unlink
+          smi_file.close! if smi_file
         end
         ambit_smiles_uri = OpenTox::RestClientWrapper.get(ambit_ds_uri + "/features", {:accept=> "text/uri-list"} ).chomp
 
