@@ -57,7 +57,7 @@ module OpenTox
         `rapper -i rdfxml -o ntriples #{file.path} 2>/dev/null`.each_line do |line|
           triple = line.to_triple
           if triple[0] == @uri
-            if triple[1] == RDF.type || triple[1]==OT.predictedVariables # allow multiple types
+            if triple[1] == RDF.type || triple[1]==OT.predictedVariables || triple[1]==OT.independentVariables # allow multiple types
               @metadata[triple[1]] = [] unless @metadata[triple[1]]
               @metadata[triple[1]] << triple[2].split('^^').first
             else
