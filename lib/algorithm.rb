@@ -500,7 +500,7 @@ module OpenTox
           rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, number=50), sizes=subsets)
           
           # read existing dataset and select most useful features
-          csv=ds[,c("SMILES", rfProfile$optVariables)]
+          csv=feats[,c("SMILES", rfProfile$optVariables)]
           write.csv(x=csv,file=f_fds_r, row.names=F, quote=F, na='')
         EOR
         r_result_file
