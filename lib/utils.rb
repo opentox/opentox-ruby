@@ -65,7 +65,7 @@ module OpenTox
           # Create Ambit dataset
           smi_file.puts( "SMILES\n" )
           smi_file.puts( smiles_array.join("\n") )
-          LOGGER.debug "#-------------- AM:#{ambit_ds_service_uri}, #{smi_file.path}"
+          smi_file.flush
           ambit_ds_uri = OpenTox::RestClientWrapper.post(ambit_ds_service_uri, {:file => File.new(smi_file.path)}, {:content_type => "multipart/form-data", :accept => "text/uri-list"} )
           smi_file.close!
         rescue Exception => e
