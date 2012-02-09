@@ -459,6 +459,7 @@ module OpenTox
         
         # need packs 'randomForest', 'RANN'
         @r.eval <<-EOR
+          set.seed(1)
           suppressPackageStartupMessages(library('caret'))
           suppressPackageStartupMessages(library('randomForest'))
           suppressPackageStartupMessages(library('RANN'))
@@ -467,7 +468,7 @@ module OpenTox
           
           acts = read.csv(ds_csv_file, check.names=F)
           feats = read.csv(fds_csv_file, check.names=F)
-          ds = merge(acts, feats, by="SMILES") # involves duplicate resolving
+          ds = merge(acts, feats, by="SMILES") # duplicates features for duplicate SMILES :-)
           
           features = ds[,(dim(acts)[2]+1):(dim(ds)[2])]
           y = ds[,which(names(ds) == prediction_feature)] 
