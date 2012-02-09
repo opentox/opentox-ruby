@@ -371,9 +371,15 @@ module OpenTox
       # Convert to RDF/XML
       # @return [text/plain] Object OWL-DL in RDF/XML format
       def to_rdfxml
-        Tempfile.open("owl-serializer"){|f| f.write(self.to_ntriples); @path = f.path}
+        tmpf = Tempfile.open("owl-serializer")
+        tmpf.write(self.to_ntriples)
+        tmpf.flush
+        @path = tmpf.path
         # TODO: add base uri for ist services
-        `rapper -i ntriples -f 'xmlns:ot="#{OT.uri}"' -f 'xmlns:ota="#{OTA.uri}"' -f 'xmlns:dc="#{DC.uri}"' -f 'xmlns:rdf="#{RDF.uri}"' -f 'xmlns:owl="#{OWL.uri}"' -o rdfxml #{@path} 2>/dev/null`
+        res=`rapper -i ntriples -f 'xmlns:ot="#{OT.uri}"' -f 'xmlns:ota="#{OTA.uri}"' -f 'xmlns:dc="#{DC.uri}"' -f 'xmlns:rdf="#{RDF.uri}"' -f 'xmlns:owl="#{OWL.uri}"' -o rdfxml #{@path} 2>/dev/null`
+        tmpf.close
+        tmpf.delete
+        res
       end
 
       # Convert to JSON as specified in http://n2.talis.com/wiki/RDF_JSON_Specification
@@ -457,27 +463,38 @@ module OpenTox
         @rows.first << features
         @rows.first.flatten!
         dataset.data_entries.each do |compound,entries|
-          smiles = Compound.new(compound).to_smiles
+          cmpd = Compound.new(compound)
+          smiles = cmpd.to_smiles
+          inchi = URI.encode_www_form_component(cmpd.to_inchi)
+          row_container = Array.new
           row = Array.new(@rows.first.size)
-          row[0] = smiles
+          row_container << row
+          #row[0] = smiles
+          row[0] = inchi
           entries.each do |feature, values|
             i = features.index(feature)+1
             values.each do |value|
-              if row[i] 
-                row[i] = "#{row[i]} #{value}" # multiple values
+              if row_container[0][i] 
+                LOGGER.debug "Feature '#{feature}' (nr '#{i}'): '#{value}'"
+                row_container << row_container.last.collect
+                row_container.last[i] = value
+                LOGGER.debug "RC: #{row_container.to_yaml}"
               else
-                row[i] = value 
+                row_container.each { |r| r[i] = value }
               end
             end
           end
-          @rows << row
+          row_container.each { |r| @rows << r }
         end
       end
 
       # Convert to CSV string
       # @return [String] CSV string
       def to_csv
-        @rows.collect{|r| r.join(", ")}.join("\n")
+        rows = @rows.collect
+        result = ""
+        result << rows.shift.collect { |f| f.split('/').last }.join(",") << "\n" # only feature name
+        result << rows.collect{ |r| r.join(",") }.join("\n")
       end
 
       # Convert to spreadsheet workbook

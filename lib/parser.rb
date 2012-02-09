@@ -290,10 +290,11 @@ module OpenTox
         @features = []
         @feature_types = {}
 
-        @format_errors = ""
-        @smiles_errors = []
+        @format_errors = []
+        @id_errors = []
         @activity_errors = []
         @duplicates = {}
+        @max_class_values = 3
       end
 
       def detect_new_values(row, value_maps)
@@ -309,9 +310,10 @@ module OpenTox
       # Load Spreadsheet book (created with roo gem http://roo.rubyforge.org/, excel format specification: http://toxcreate.org/help)
       # @param [Excel] book Excel workbook object (created with roo gem)
       # @return [OpenTox::Dataset] Dataset object with Excel data
-      def load_spreadsheet(book)
+      def load_spreadsheet(book, drop_missing=false)
         book.default_sheet = 0
-        add_features book.row(1)
+        headers = book.row(1)
+        add_features headers
         value_maps = Array.new
         regression_features=Array.new
 
@@ -319,15 +321,27 @@ module OpenTox
           row = book.row(i)
           value_maps = detect_new_values(row, value_maps)
           value_maps.each_with_index { |vm,j|
-            if vm.size > 5 # 5 is the maximum nr of classes supported by Fminer.
+            if vm.size > @max_class_values # 5 is the maximum nr of classes supported by Fminer.
               regression_features[j]=true 
             else
               regression_features[j]=false
             end
           }
         }
+
         2.upto(book.last_row) { |i| 
-          add_values book.row(i), regression_features
+          drop=false
+          row = book.row(i)
+          raise "Entry has size #{row.size}, different from headers (#{headers.size})" if row.size != headers.size
+          if row.include?("")
+            @format_errors << "Row #{i} has #{row.count("")} missing values" 
+            drop=true
+            drop_missing=true if (row.count("") == row.size-1) 
+          end
+          add_values(row, regression_features) unless (drop_missing && drop)
+          if (drop_missing && drop) 
+            @format_errors << "Row #{i} not added" 
+          end
         }
         warnings
         @dataset
@@ -336,10 +350,11 @@ module OpenTox
       # Load CSV string (format specification: http://toxcreate.org/help)
       # @param [String] csv CSV representation of the dataset
       # @return [OpenTox::Dataset] Dataset object with CSV data
-      def load_csv(csv)
+      def load_csv(csv, drop_missing=false)
         row = 0
         input = csv.split("\n")
-        add_features split_row(input.shift)
+        headers = split_row(input.shift)
+        add_features(headers)
         value_maps = Array.new
         regression_features=Array.new
 
@@ -347,15 +362,27 @@ module OpenTox
           row = split_row(row)
           value_maps = detect_new_values(row, value_maps)
           value_maps.each_with_index { |vm,j|
-            if vm.size > 5 # 5 is the maximum nr of classes supported by Fminer.
+            if vm.size > @max_class_values # max @max_class_values classes.
               regression_features[j]=true 
             else
               regression_features[j]=false
             end
           }
         }
-        input.each { |row| 
-          add_values split_row(row), regression_features
+
+        input.each_with_index { |row, i| 
+          drop=false
+          row = split_row(row)
+          raise "Entry has size #{row.size}, different from headers (#{headers.size})" if row.size != headers.size
+          if row.include?("")
+            @format_errors << "Row #{i} has #{row.count("")} missing values" 
+            drop=true
+            drop_missing=true if (row.count("") == row.size-1) 
+          end
+          add_values(row, regression_features) unless (drop_missing && drop)
+          if (drop_missing && drop) 
+            @format_errors << "Row #{i} not added" 
+          end
         }
         warnings
         @dataset
@@ -373,82 +400,107 @@ module OpenTox
             type = types.first
           end
           @dataset.add_feature_metadata(feature,{RDF.type => [type]})
-          info += "\"#{@dataset.feature_name(feature)}\" detected as #{type.split('#').last}."
+          info += "\"#{@dataset.feature_name(feature)}\" detected as #{type.split('#').last}." if type
 
           # TODO: rewrite feature values
-          # TODO if value.to_f == 0 @activity_errors << "#{smiles} Zero values not allowed for regression datasets - entry ignored."
+          # TODO if value.to_f == 0 @activity_errors << "#{id} Zero values not allowed for regression datasets - entry ignored."
         end
 
         @dataset.metadata[OT.Info] = info 
 
         warnings = ''
-        warnings += "<p>Incorrect Smiles structures (ignored):</p>" + @smiles_errors.join("<br/>") unless @smiles_errors.empty?
+        warnings += "<p>Incorrect structures (ignored):</p>" + @id_errors.join("<br/>") unless @id_errors.empty?
         warnings += "<p>Irregular activities (ignored):</p>" + @activity_errors.join("<br/>") unless @activity_errors.empty?
+        warnings += "<p>Format errors:</p>" + @format_errors.join("<br/>") unless @format_errors.empty?
         duplicate_warnings = ''
         @duplicates.each {|inchi,lines| duplicate_warnings << "<p>#{lines.join('<br/>')}</p>" if lines.size > 1 }
-        warnings += "<p>Duplicated structures (all structures/activities used for model building, please  make sure, that the results were obtained from <em>independent</em> experiments):</p>" + duplicate_warnings unless duplicate_warnings.empty?
+        warnings += "<p>Duplicate structures (all structures/activities used for model building, please make sure that the results were obtained from <em>independent</em> experiments):</p>" + duplicate_warnings unless duplicate_warnings.empty?
 
         @dataset.metadata[OT.Warnings] = warnings 
 
       end
 
+      # Adds a row of features to a dataset
+      # @param Array A row split up as an array
+      # @return Array Indices for duplicate features
       def add_features(row)
-        row.shift  # get rid of smiles entry
-        row.each do |feature_name|
+        row=row.collect
+        row.shift  # get rid of id entry
+        @duplicate_feature_indices = [] # starts with 0 at first f after id
+        row.each_with_index do |feature_name, idx|
           feature_uri = File.join(@dataset.uri,"feature",URI.encode(feature_name))
-          @feature_types[feature_uri] = []
-          @features << feature_uri
-          @dataset.add_feature(feature_uri,{DC.title => feature_name})
+          unless @features.include? feature_uri
+            @feature_types[feature_uri] = []
+            @features << feature_uri
+            @dataset.add_feature(feature_uri,{DC.title => feature_name})
+          else
+            @duplicate_feature_indices << idx
+            @format_errors << "Duplicate Feature '#{feature_name}' at pos #{idx}"
+          end
         end
       end
 
       # Adds a row to a dataset
       # @param Array A row split up as an array
       # @param Array Indicator for regression for each field
+      # @param Array Indices for duplicate features
       def add_values(row, regression_features)
 
-        smiles = row.shift
-        compound = Compound.from_smiles(smiles)
+        id = row.shift
+        case id
+        when /InChI/
+          compound = Compound.from_inchi(URI.decode_www_form_component(id))
+        else
+          compound = Compound.from_smiles(id)
+        end
+
         if compound.nil? or compound.inchi.nil? or compound.inchi == ""
-          @smiles_errors << smiles+", "+row.join(", ") 
+          @id_errors << id+", "+row.join(", ") 
           return false
         end
         @duplicates[compound.inchi] = [] unless @duplicates[compound.inchi]
-        @duplicates[compound.inchi] << smiles+", "+row.join(", ")
+        @duplicates[compound.inchi] << id+", "+row.join(", ")
 
+        feature_idx = 0
         row.each_index do |i|
-          value = row[i]
-          feature = @features[i]
 
-          type = nil
-          if (regression_features[i])
-            type = feature_type(value)
-            if type != OT.NumericFeature
-              raise "Error! Expected numeric values."
-            end
-          else
-            type = OT.NominalFeature
-          end
-          @feature_types[feature] << type 
+          unless @duplicate_feature_indices.include? i
 
-          case type
-          when OT.NumericFeature
-            val = value.to_f
-          when OT.NominalFeature
-            val = value.to_s
-          end
-          if val!=nil
-            @dataset.add(compound.uri, feature, val)
-            if type!=OT.NumericFeature
-              @dataset.features[feature][OT.acceptValue] = [] unless @dataset.features[feature][OT.acceptValue]
-              @dataset.features[feature][OT.acceptValue] << val.to_s unless @dataset.features[feature][OT.acceptValue].include?(val.to_s)
+            value = row[i]
+            #LOGGER.warn "Missing values for #{id}" if value.size == 0 # String is empty
+            feature = @features[feature_idx]
+  
+            type = feature_type(value) # May be NIL
+            type = OT.NominalFeature unless (type.nil? || regression_features[i])
+            @feature_types[feature] << type if type
+  
+            val = nil
+            case type
+            when OT.NumericFeature
+              val = value.to_f
+            when OT.NominalFeature
+              val = value.to_s
             end
+
+            feature_idx += 1
+  
+            if val != nil
+              @dataset.add(compound.uri, feature, val)
+              if type != OT.NumericFeature
+                @dataset.features[feature][OT.acceptValue] = [] unless @dataset.features[feature][OT.acceptValue]
+                @dataset.features[feature][OT.acceptValue] << val.to_s unless @dataset.features[feature][OT.acceptValue].include?(val.to_s)
+              end
+            end
+
           end
+
         end
       end
 
       def feature_type(value)
-        if OpenTox::Algorithm::numeric? value
+        if value == ""
+          return nil
+        elsif OpenTox::Algorithm::numeric? value
           return OT.NumericFeature
         else
           return OT.NominalFeature
@@ -456,7 +508,7 @@ module OpenTox
       end
 
       def split_row(row)
-        row.chomp.gsub(/["']/,'').split(/\s*[,;\t]\s*/) # remove quotes
+        row.chomp.gsub(/["']/,'').split(/\s*[,;\t]\s*/,-1) # -1: do not skip empty cells
       end
 
     end
@@ -485,14 +537,14 @@ module OpenTox
       def clean_features
         ignored_features = []
         features.each do |feature|
-          if feature_values(feature).size > 5
+          if feature_values(feature).size > @max_class_values
             if feature_types(feature).size == 1 and feature_types(feature).first == OT.NumericFeature
               # REGRESSION
             elsif feature_types(feature).include? OT.NumericFeature
               @data.each{|c,row| row[feature] = nil unless OpenTox::Algorithm::numeric?(row[feature]) } # delete nominal features
               @activity_errors << "Nominal feature values of #{feature} ignored (using numeric features for regression models)."
             else
-              @activity_errors << "Feature #{feature} ignored (more than 5 nominal feature values and no numeric values)."
+              @activity_errors << "Feature #{feature} ignored (more than #{@max_class_values} nominal feature values and no numeric values)."
               ignored_features << feature
               next
             end
@@ -543,12 +595,15 @@ module OpenTox
       private
 
       def feature_type(value)
-        if OpenTox::Algorithm::numeric? value
+        if value.nil?
+          return nil
+        elsif OpenTox::Algorithm::numeric? value
           return OT.NumericFeature
         else
           return OT.NominalFeature
         end
       end
+
     end
 
     # quick hack to enable sdf import via csv
@@ -589,7 +644,7 @@ module OpenTox
             @duplicates[inchi] << rec #inchi#+", "+row.join(", ")
             compound = Compound.from_inchi inchi
           rescue
-            @compound_errors << "Could not convert structure to InChI, all entries for this compound (record #{rec} have been ignored! \n#{s}"
+            @compound_errors << "Could not convert structure to InChI, all entries for this compound (record #{rec}) have been ignored! \n#{s}"
             next
           end
           row = {}
@@ -602,7 +657,7 @@ module OpenTox
         table.add_to_dataset @dataset
 
         warnings = ''
-        warnings += "<p>Incorrect Smiles structures (ignored):</p>" + @compound_errors.join("<br/>") unless @compound_errors.empty?
+        warnings += "<p>Incorrect structures (ignored):</p>" + @compound_errors.join("<br/>") unless @compound_errors.empty?
         warnings += "<p>Irregular activities (ignored):</p>" + @activity_errors.join("<br/>") unless @activity_errors.empty?
         duplicate_warnings = ''
         @duplicates.each {|inchi,lines| duplicate_warnings << "<p>#{lines.join('<br/>')}</p>" if lines.size > 1 }
