@@ -242,18 +242,20 @@ module OpenTox
     # waits for a task, unless time exceeds or state is no longer running
     # @param [optional,OpenTox::Task] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @param [optional,Numeric] dur seconds pausing before cheking again for completion
-    def wait_for_completion( waiting_task=nil, dur=0.3)
+    def wait_for_completion( waiting_task=nil)
       
       waiting_task.waiting_for(self.uri) if waiting_task
       due_to_time = Time.new + DEFAULT_TASK_MAX_DURATION
+      start_time = Time.new
+      dur = 0
       LOGGER.debug "start waiting for task "+@uri.to_s+" at: "+Time.new.to_s+", waiting at least until "+due_to_time.to_s
       
       load_metadata # for extremely fast tasks
       check_state
       while self.running? or self.queued?
         sleep dur
-        #LOGGER.debug "dv ---------------- dur: '#{dur}'"
-        dur = dur*2 unless dur>=30.0 
+        dur = [[(Time.new - start_time)/20.0,0.3].max,300.0].min
+        #LOGGER.debug "task-object-id: #{self.object_id} - wait: #{"%.2f"%(Time.new - start_time)} - dur: #{"%.2f"%dur}"
         load_metadata 
         # if another (sub)task is waiting for self, set progress accordingly 
         waiting_task.progress(@metadata[OT.percentageCompleted].to_f) if waiting_task
