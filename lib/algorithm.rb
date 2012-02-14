@@ -420,10 +420,11 @@ module OpenTox
             @r.eval <<-EOR
               QSAR = data.frame(prop_matrix)
               q_prop = data.frame(q_prop)
-              names(q_prop)=names(QSAR)
+              names(q_prop) = names(QSAR)
               model_formula = as.formula(paste("y~", paste(names(QSAR), collapse="+"), sep=""))
-              QSAR$y=y
-              model = train ( model_formula, data=QSAR, method="glm", family=gaussian(link="log"), preProcess=c("center", "scale") )
+              QSAR$y = y
+              #model = train ( model_formula, data=QSAR, method="glm", family=gaussian(link="log"), preProcess=c("center", "scale") )
+              model = train ( model_formula, data=QSAR, method="lm", preProcess=c("center", "scale", "pca") )
               perf = model$results[which.min(model$results$RMSE),]$Rsquared
             EOR
 
