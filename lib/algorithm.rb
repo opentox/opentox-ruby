@@ -416,17 +416,21 @@ module OpenTox
             EOR
 
             # model + support vectors
-            LOGGER.debug "Creating R SVM model ..."
+            LOGGER.debug "Creating R GLM model ..."
             @r.eval <<-EOR
-              model = train(prop_matrix,y,method="svmradial",tuneLength=8,trControl=trainControl(method="LGOCV",number=10),preProcess=c("center", "scale"))
-              perf = ifelse ( class(y)!='numeric', max(model$results$Accuracy), model$results[which.min(model$results$RMSE),]$Rsquared )
+              QSAR = data.frame(prop_matrix)
+              q_prop = data.frame(q_prop)
+              names(q_prop)=names(QSAR)
+              model_formula = as.formula(paste("y~", paste(names(QSAR), collapse="+"), sep=""))
+              QSAR$y=y
+              model = train ( model_formula, data=QSAR, method="glm", family=gaussian(link="log"), preProcess=c("center", "scale") )
+              perf = model$results[which.min(model$results$RMSE),]$Rsquared
             EOR
 
 
             # prediction
             LOGGER.debug "Predicting ..."
             @r.eval "p = predict(model,q_prop)"
-            @r.eval "if (class(y)!='numeric') p = as.character(p)"
             prediction = @r.p
 
             # censoring
