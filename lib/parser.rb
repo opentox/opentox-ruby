@@ -394,7 +394,9 @@ module OpenTox
 
         info = ''
         @feature_types.each do |feature,types|
-          if types.uniq.size > 1
+          if types.uniq.size == 0
+            type = "helper#MissingFeature"
+          elsif types.uniq.size > 1
             type = OT.NumericFeature
           else
             type = types.first
