@@ -402,6 +402,7 @@ module OpenTox
             LOGGER.debug "Preparing R data ..."
             @r.eval "if (class(y) == 'character') { y = factor(y); suppressPackageStartupMessages(library('class')) }" # For classification
 
+            LOGGER.debug "VC: #{@r.n_prop_x_size}x#{@r.n_prop_y_size}"
             @r.eval <<-EOR
               rem = nearZeroVar(prop_matrix)
               if (length(rem) > 0) {
@@ -413,25 +414,55 @@ module OpenTox
                 prop_matrix = prop_matrix[,-rem,drop=F]
                 q_prop = q_prop[,-rem,drop=F]
               }
+              n_prop_x_size = dim(prop_matrix)[1]
+              n_prop_y_size = dim(prop_matrix)[2]
             EOR
+            LOGGER.debug "VC: #{@r.n_prop_x_size}x#{@r.n_prop_y_size}"
+
+
+            # model + support vectors
+            LOGGER.debug "Preprocessing R data ..."
+            @r.eval <<-EOR
+              # names
+              prop_matrix=data.frame(prop_matrix)
+              q_prop=data.frame(q_prop)
+              names(prop_matrix) = paste("Var",seq(1:dim(prop_matrix)[2]),sep="")
+              names(q_prop)=names(prop_matrix)
+ 
+              # preProcess
+              pp = preProcess(prop_matrix, method=c("scale", "center", "pca"))
+              prop_matrix=predict(pp, prop_matrix)
+              q_prop=predict(pp, q_prop)
+              n_prop_x_size = dim(prop_matrix)[1]
+              n_prop_y_size = dim(prop_matrix)[2]
+             EOR
+            LOGGER.debug "VC: #{@r.n_prop_x_size}x#{@r.n_prop_y_size}"
+
 
             # model + support vectors
             LOGGER.debug "Creating R GLM model ..."
             @r.eval <<-EOR
-              QSAR = data.frame(prop_matrix)
-              q_prop = data.frame(q_prop)
-              names(q_prop) = names(QSAR)
-              model_formula = as.formula(paste("y~", paste(names(QSAR), collapse="+"), sep=""))
-              QSAR$y = y
-              #model = train ( model_formula, data=QSAR, method="glm", family=gaussian(link="log"), preProcess=c("center", "scale") )
-              model = train ( model_formula, data=QSAR, method="lm", preProcess=c("center", "scale", "pca") )
-              perf = model$results[which.min(model$results$RMSE),]$Rsquared
+              # determine subsets
+              subsets = dim(prop_matrix)[2]*c(0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
+              subsets = c(2,3,4,5,7,10,subsets)
+              subsets = unique(sort(round(subsets))) 
+              subsets = subsets[subsets<=dim(prop_matrix)[2]]
+              subsets = subsets[subsets>1] 
+
+              save.image("/tmp/test.R")
+              # rfeControl
+              ctrl = rfeControl(functions=lmFuncs,verbose=F,returnResamp="final")
+ 
+              # do rfe
+              model = rfe(prop_matrix,y,sizes=subsets,rfeControl=ctrl) 
+              res=model$results; bs=model$bestSubset
+              perf = res[res$Variables==bs,"Rsquared"]
             EOR
 
 
             # prediction
-            LOGGER.debug "Predicting ..."
-            @r.eval "p = predict(model,q_prop)"
+            LOGGER.debug "Predicting (#{@r.bs} features)..."
+            @r.eval "p = predict(model$fit,q_prop)"
             prediction = @r.p
 
             # censoring
