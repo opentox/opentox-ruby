@@ -522,6 +522,7 @@ module OpenTox
       def initialize
         @data = {}
         @activity_errors = []
+        @max_class_values = 3
       end
 
       def feature_values(feature)
@@ -653,8 +654,8 @@ module OpenTox
           obmol.get_data.each { |d| row[d.get_attribute] = d.get_value if properties.include?(d.get_attribute) }
           table.data[compound.uri] = row
         end
-
-        # finda and remove ignored_features
+        
+        # find and remove ignored_features
         @activity_errors = table.clean_features
         table.add_to_dataset @dataset
 
