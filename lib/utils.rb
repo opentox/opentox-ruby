@@ -1,4 +1,5 @@
 require 'csv'
+require 'tempfile'
 
 
 module OpenTox
@@ -8,18 +9,56 @@ module OpenTox
     include OpenTox
 
     # Calculate physico-chemical descriptors.
-    # @param[Hash] Required keys: :dataset_uri, :pc_type
+    # @param[Hash] Required keys: :dataset_uri, :pc_type, :rjb
     # @return[String] dataset uri
-
     def self.pc_descriptors(params)
 
       begin
         ds = OpenTox::Dataset.find(params[:dataset_uri])
         compounds = ds.compounds.collect
-        ambit_result_uri, smiles_to_inchi = get_pc_descriptors( { :compounds => compounds, :pc_type => params[:pc_type] } )
-        #ambit_result_uri = ["http://apps.ideaconsult.net:8080/ambit2/dataset/987103?" ,"feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Ffeature%2F4276789&", "feature_uris[]=http%3A%2F%2Fapps.ideaconsult.net%3A8080%2Fambit2%2Fmodel%2F16%2Fpredicted"] # for testing
-        LOGGER.debug "Ambit result uri for #{params.inspect}: '#{ambit_result_uri.to_yaml}'"
-        load_ds_csv(ambit_result_uri, smiles_to_inchi)
+
+        jl_master=nil
+        ambit_master=nil
+
+        # joelib via rjb
+        types = params[:pc_type].split(",")
+        if types.size && types.include?("joelib")
+          jl_master = get_jl_descriptors ( { :compounds => compounds, :rjb => params[:rjb] } )
+          types.delete("joelib")
+        end
+
+        # ambit via REST
+        if types.size > 0
+          ambit_result_uri, smiles_to_inchi = get_ambit_descriptors( { :compounds => compounds, :pc_type => types.join(',') } )
+          LOGGER.debug "Ambit result uri for #{params.inspect}: '#{ambit_result_uri.to_yaml}'"
+          ambit_master = load_ds_csv(ambit_result_uri, smiles_to_inchi)
+        end
+
+
+        # Fuse CSVs
+        if jl_master && ambit_master
+          nr_cols = (jl_master[0].size)-1
+          LOGGER.debug "Merging #{nr_cols} new columns"
+          ambit_master.each {|row| nr_cols.times { row.push(nil) }  } # Adds empty columns to all rows
+          jl_master.each do |row|
+            temp = ambit_master.assoc(row[0]) # Finds the appropriate line in master
+            ((-1*nr_cols)..-1).collect.each { |idx|
+              temp[idx] = row[nr_cols+idx+1] if temp # Updates columns if line is found
+            }
+          end
+          master = ambit_master
+        else
+          master = jl_master if jl_master
+          master = ambit_master if ambit_master
+        end
+
+        parser = OpenTox::Parser::Spreadsheets.new
+        ds = OpenTox::Dataset.new
+        ds.save
+        parser.dataset = ds
+        ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"))
+        ds.save
+
       rescue Exception => e
         LOGGER.debug "#{e.class}: #{e.message}"
         LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
@@ -27,10 +66,95 @@ module OpenTox
 
     end
     
-    # Calculates PC descriptors via Ambit -- DO NOT OVERLOAD Ambit.
+
+    # Calculates PC descriptors via JOELib2.
+    # @param[Hash] Required keys: :compounds, :rjb
+    # @return[String] dataset uri
+    def self.get_jl_descriptors(params)
+
+      s = params[:rjb]
+      LOGGER.debug("------ AM #{s}")
+      master = nil
+      raise "No Java environment" unless s
+
+      # Load keys, enter CSV headers
+      begin
+        keysfile = File.join(ENV['HOME'], ".opentox", "config", "jl_keys.yaml")
+        csvfile = Tempfile.open(['jl_descriptors-csv-','.sdf'])
+        jl_keys = YAML::load_file(keysfile)
+        jl_colnames = jl_keys.collect{ |k| 
+          k.split(".").last
+        }
+        csvfile.puts((["SMILES"] + jl_colnames).join(","))
+
+        # remember inchis
+        inchis = params[:compounds].collect { |c_uri| 
+          cmpd = OpenTox::Compound.new(c_uri)
+          URI.encode_www_form_component(cmpd.to_inchi)
+        }
+
+        # Process compounds
+        params[:compounds].each_with_index { |c_uri, c_idx| 
+          cmpd = OpenTox::Compound.new(c_uri)
+          inchi = cmpd.to_inchi
+          sdf_data = cmpd.to_sdf
+
+          infile = Tempfile.open(['jl_descriptors-in-','.sdf'])
+          outfile_path = infile.path.gsub(/jl_descriptors-in/,"jl_descriptors-out")
+
+          begin
+            infile.puts sdf_data
+            infile.flush
+            s.new(infile.path, outfile_path)
+                   
+            row = [inchis[c_idx]]
+            jl_keys.each_with_index do |k,i| # Fill row
+              re = Regexp.new(k)
+              open(outfile_path) do |f|
+                f.each do |line|
+                  if @prev =~ re
+                    entry = line.chomp
+                    val = nil
+                    if OpenTox::Algorithm.numeric?(entry)
+                      val = Float(entry)
+                      val = nil if val.nan?
+                      val = nil if val.infinite?
+                    end
+                    row << val
+                  end
+                  @prev = line
+                end
+              end
+            end
+            csvfile.puts(row.join(","))
+            csvfile.flush
+
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          ensure
+            File.delete(infile.path.gsub(/\.sdf/,".numeric.sdf"))
+            File.delete(outfile_path)
+            infile.close!
+          end
+        }
+        master = CSV::parse(File.open(csvfile.path, "rb").read)
+
+      rescue Exception => e
+        LOGGER.debug "#{e.class}: #{e.message}"
+        LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+      ensure
+        [ csvfile].each { |f| f.close! }
+      end
+
+      master
+    end
+
+
+    # Calcul:compoundsates PC descriptors via Ambit -- DO NOT OVERLOAD Ambit.
     # @param[Hash] Required keys: :compounds, :pc_type
     # @return[Array] Ambit result uri, piecewise (1st: base, 2nd: SMILES, 3rd+: features
-    def self.get_pc_descriptors(params)
+    def self.get_ambit_descriptors(params)
 
       begin
 
@@ -139,17 +263,12 @@ module OpenTox
       master[0][0] = "Compound" #"SMILES" 
       index_smi = master[0].index("SMILES")
       master.map {|i| i.delete_at(index_smi)} if index_smi
-      #master[0][0] = "SMILES" 
+      master[0][0] = "SMILES" 
        
       #LOGGER.debug "-------- AM: Writing to dumpfile"
       #File.open("/tmp/test.csv", 'w') {|f| f.write( master.collect {|r| r.join(",")}.join("\n") ) }
      
-      parser = OpenTox::Parser::Spreadsheets.new
-      ds = OpenTox::Dataset.new
-      ds.save
-      parser.dataset = ds
-      ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"))
-      ds.save
+      master 
     end
 
 
