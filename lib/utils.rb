@@ -22,14 +22,18 @@ module OpenTox
 
         # joelib via rjb
         types = params[:pc_type].split(",")
+
+        step= (1.0/types.size * 100).floor
         if types.size && types.include?("joelib")
           jl_master = get_jl_descriptors ( { :compounds => compounds, :rjb => params[:rjb] } )
           types.delete("joelib")
         end
+        params[:task].progress(step) if params[:task]
+
 
         # ambit via REST
         if types.size > 0
-          ambit_result_uri, smiles_to_inchi = get_ambit_descriptors( { :compounds => compounds, :pc_type => types.join(',') } )
+          ambit_result_uri, smiles_to_inchi = get_ambit_descriptors( { :compounds => compounds, :pc_type => types.join(','), :task => params[:task], :step => step } )
           LOGGER.debug "Ambit result uri for #{params.inspect}: '#{ambit_result_uri.to_yaml}'"
           ambit_master = load_ds_csv(ambit_result_uri, smiles_to_inchi)
         end
@@ -56,7 +60,7 @@ module OpenTox
         ds = OpenTox::Dataset.new
         ds.save
         parser.dataset = ds
-        ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"))
+        ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"),false,true)
         ds.save
 
       rescue Exception => e
@@ -73,7 +77,6 @@ module OpenTox
     def self.get_jl_descriptors(params)
 
       s = params[:rjb]
-      LOGGER.debug("------ AM #{s}")
       master = nil
       raise "No Java environment" unless s
 
@@ -162,13 +165,14 @@ module OpenTox
         ambit_mopac_model_uri = "http://apps.ideaconsult.net:8080/ambit2/model/69632"
         descs = YAML::load_file( File.join(ENV['HOME'], ".opentox", "config", "ambit_descriptors.yaml") )
         descs_uris = []
-        params[:pc_type] = "electronic,cpsa" if params[:pc_type].nil? # rescue missing pc_type
         types = params[:pc_type].split(",")
         descs.each { |uri, cat_name| 
           if types.include? cat_name[:category]
-            descs_uris << uri
+            descs_uris << "#{cat_name[:category]}:::#{uri}"
           end
         }
+        descs_uris.sort!
+        descs_uris.collect! { |uri| uri.split(":::").last }
         if descs_uris.size == 0
           raise "Error! Empty set of descriptors. Did you supply one of [geometrical, topological, electronic, constitutional, hybrid, cpsa] ?"
         end
@@ -209,7 +213,10 @@ module OpenTox
         ambit_result_uri = [] # 1st pos: base uri, then features
         ambit_result_uri << ambit_ds_uri + "?"
         ambit_result_uri << ("feature_uris[]=" + URI.encode_www_form_component(ambit_smiles_uri) + "&")
+        current_cat = ""
         descs_uris.each_with_index do |uri, i|
+          old_cat = current_cat; current_cat = descs[uri][:category]
+          params[:task].progress(params[:task].metadata[OT.percentageCompleted] + params[:step]) if params[:task] && params[:step] && old_cat != current_cat && old_cat != ""
           algorithm = Algorithm::Generic.new(uri)
           result_uri = algorithm.run({:dataset_uri => ambit_ds_uri})
           ambit_result_uri << result_uri.split("?")[1] + "&"

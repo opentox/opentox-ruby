@@ -349,8 +349,10 @@ module OpenTox
 
       # Load CSV string (format specification: http://toxcreate.org/help)
       # @param [String] csv CSV representation of the dataset
+      # @param [Boolean] drop_missing Whether completely missing rows should be droppped
+      # @param [Boolean] all_numeric Whether all features should be treated as numeric
       # @return [OpenTox::Dataset] Dataset object with CSV data
-      def load_csv(csv, drop_missing=false)
+      def load_csv(csv, drop_missing=false, all_numeric=false)
         row = 0
         input = csv.split("\n")
         headers = split_row(input.shift)
@@ -362,7 +364,7 @@ module OpenTox
           row = split_row(row)
           value_maps = detect_new_values(row, value_maps)
           value_maps.each_with_index { |vm,j|
-            if vm.size > @max_class_values # max @max_class_values classes.
+            if (vm.size > @max_class_values) || all_numeric # max @max_class_values classes.
               regression_features[j]=true 
             else
               regression_features[j]=false
@@ -371,7 +373,7 @@ module OpenTox
         }
 
         input.each_with_index { |row, i| 
-          drop=false
+          drop = false
           row = split_row(row)
           raise "Entry has size #{row.size}, different from headers (#{headers.size})" if row.size != headers.size
           if row.include?("")
@@ -486,7 +488,7 @@ module OpenTox
 
             feature_idx += 1
   
-            if val != nil
+            if val != nil && !val.infinite? && !val.nan?
               @dataset.add(compound.uri, feature, val)
               if type != OT.NumericFeature
                 @dataset.features[feature][OT.acceptValue] = [] unless @dataset.features[feature][OT.acceptValue]
