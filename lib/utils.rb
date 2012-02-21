@@ -171,11 +171,11 @@ module OpenTox
             descs_uris << "#{cat_name[:category]}:::#{uri}"
           end
         }
-        descs_uris.sort!
-        descs_uris.collect! { |uri| uri.split(":::").last }
         if descs_uris.size == 0
           raise "Error! Empty set of descriptors. Did you supply one of [geometrical, topological, electronic, constitutional, hybrid, cpsa] ?"
         end
+        descs_uris.sort!
+        descs_uris.collect! { |uri| uri.split(":::").last }
         #LOGGER.debug "Ambit descriptor URIs: #{descs_uris.join(", ")}"
 
         begin
