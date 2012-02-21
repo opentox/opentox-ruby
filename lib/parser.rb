@@ -397,17 +397,14 @@ module OpenTox
         info = ''
         @feature_types.each do |feature,types|
           if types.uniq.size == 0
-            type = "helper#MissingFeature"
+            type = "helper#MissingFeature" # TODO: Fit to OT ontology!
           elsif types.uniq.size > 1
             type = OT.NumericFeature
           else
             type = types.first
           end
           @dataset.add_feature_metadata(feature,{RDF.type => [type]})
-          info += "\"#{@dataset.feature_name(feature)}\" detected as #{type.split('#').last}." if type
-
-          # TODO: rewrite feature values
-          # TODO if value.to_f == 0 @activity_errors << "#{id} Zero values not allowed for regression datasets - entry ignored."
+          info += "'#{@dataset.feature_name(feature)}' detected as '#{type.split('#').last}'<br>" if type
         end
 
         @dataset.metadata[OT.Info] = info 

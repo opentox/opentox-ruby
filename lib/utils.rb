@@ -203,11 +203,12 @@ module OpenTox
         end
         ambit_smiles_uri = OpenTox::RestClientWrapper.get(ambit_ds_uri + "/features", {:accept=> "text/uri-list"} ).chomp
 
-        # Calculate 3D for CPSA
-        if types.include? "cpsa"
-          ambit_ds_mopac_uri = OpenTox::RestClientWrapper.post(ambit_mopac_model_uri, {:dataset_uri => ambit_ds_uri}, {:accept => "text/uri-list"} ) 
-          LOGGER.debug "MOPAC dataset: #{ambit_ds_mopac_uri }"
-        end
+        # -C-a-l-c-u-l-a-t-e- -3-D- -f-o-r- -C-P-S-A-
+        # Always calculate 3D! See http://goo.gl/Tk81j
+        #if types.include? "cpsa"
+        ambit_ds_mopac_uri = OpenTox::RestClientWrapper.post(ambit_mopac_model_uri, {:dataset_uri => ambit_ds_uri}, {:accept => "text/uri-list"} ) 
+        LOGGER.debug "MOPAC dataset: #{ambit_ds_mopac_uri }"
+        #end
 
         # Get Ambit results
         ambit_result_uri = [] # 1st pos: base uri, then features
