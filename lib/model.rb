@@ -237,7 +237,6 @@ module OpenTox
 
         @compound = Compound.new compound_uri
         features = {}
-
         #LOGGER.debug self.to_yaml
         unless @prediction_dataset
           @prediction_dataset = Dataset.create(CONFIG[:services]["opentox-dataset"], subjectid)
@@ -248,22 +247,19 @@ module OpenTox
             OT.parameters => [{DC.title => "compound_uri", OT.paramValue => compound_uri}]
           } )
         end
-
         if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "regression"
           all_activities = [] 
           all_activities = @activities.values.flatten.collect! { |i| i.to_f }
         end
-
         unless database_activity(subjectid) # adds database activity to @prediction_dataset
-
           # Calculation of needed values for query compound
           @compound_features = eval("#{@feature_calculation_algorithm}({
                                     :compound => @compound, 
                                     :features => @features, 
                                     :feature_dataset_uri => @metadata[OT.featureDataset],
-                                    :pc_type => self.parameter(\"pc_type\")
+                                    :pc_type => self.parameter(\"pc_type\"),
+                                    :subjectid => subjectid
                                     })")
-          
           # Adding fingerprint of query compound with features and values(p_value*nr_hits)
           @compound_fingerprints = {}
           @compound_features.each do |feature, value| # value is nil if "Substructure.match"
