@@ -476,6 +476,14 @@ module OpenTox
           # assumes a data matrix 'features' and a vector 'y' of target values
           row.names(features)=NULL
           
+          # features with all values missing removed
+          na_col = names ( which ( apply ( features, 2, function(x) all ( is.na ( x ) ) ) ) )
+          features = features[,!names(features) %in% na_col]
+
+          # features with zero variance removed
+          zero_var = names ( which ( apply ( features, 2, function(x) var(x, na.rm=T) ) == 0 ) )
+          features = features[,!names(features) %in% zero_var]
+
           pp = NULL
           if (del_missing) {
             # needed if rows should be removed
