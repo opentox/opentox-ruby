@@ -460,6 +460,17 @@ module OpenTox
         @rows = []
         @rows << ["SMILES"]
         features = dataset.features.keys
+
+        delete_features = []
+        features.each{ |fn|
+          dataset.features[fn][RDF.type].each { |typestr|
+            if typestr.include? "MissingFeature"
+              delete_features << fn 
+            end
+          }
+        }
+        features = features - delete_features
+
         @rows.first << features
         @rows.first.flatten!
         dataset.data_entries.each do |compound,entries|
