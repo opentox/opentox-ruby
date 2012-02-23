@@ -485,7 +485,7 @@ module OpenTox
 
             feature_idx += 1
   
-            if val != nil && !val.infinite? && !val.nan?
+            if val != nil
               @dataset.add(compound.uri, feature, val)
               if type != OT.NumericFeature
                 @dataset.features[feature][OT.acceptValue] = [] unless @dataset.features[feature][OT.acceptValue]

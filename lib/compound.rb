@@ -197,6 +197,7 @@ module OpenTox
     # Lookup numerical values, returns hash with feature name as key and value as value 
     # @param [Array] Array of feature names
     # @param [String] Feature dataset uri
+    # @param [String] Comma separated pc types
     # @return [Hash] Hash with feature name as key and value as value
 		def lookup(feature_array,feature_dataset_uri,pc_type)
       ds = OpenTox::Dataset.find(feature_dataset_uri)
@@ -213,11 +214,12 @@ module OpenTox
       LOGGER.debug "#{entry.size} entries in feature ds for query." unless entry.nil?
 
       if entry.nil?
-        uri, smiles_to_inchi = OpenTox::Algorithm.get_pc_descriptors({:compounds => [self.uri], :pc_type => pc_type})
-        uri = OpenTox::Algorithm.load_ds_csv(uri, smiles_to_inchi)
+        temp_ds = OpenTox::Dataset.create; temp_ds.add_compound(self.uri)
+        uri = RestClientWrapper.post(temp_ds.save + "/pcdesc", {:pc_type => pc_type})
         ds = OpenTox::Dataset.find(uri)
         entry = ds.data_entries[self.uri]
         ds.delete
+        temp_ds.delete
       end
 
       features = entry.keys
@@ -227,7 +229,6 @@ module OpenTox
         entry.delete(feature) unless feature == new_feature # e.g. when loading from ambit
       }
       #res = feature_array.collect {|v| entry[v]}
-      #LOGGER.debug "----- am #{entry.to_yaml}"
       entry
 		end
 
