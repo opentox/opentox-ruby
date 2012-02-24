@@ -497,7 +497,7 @@ module OpenTox
           subsets = subsets[subsets>1] 
           
           # Recursive feature elimination
-          rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, number=50), sizes=subsets)
+          rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, number=150), sizes=subsets)
           
           # read existing dataset and select most useful features
           csv=feats[,c("SMILES", rfProfile$optVariables)]
