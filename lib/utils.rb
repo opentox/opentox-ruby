@@ -25,7 +25,7 @@ module OpenTox
 
         step= (1.0/types.size * 100).floor
         if types.size && types.include?("joelib")
-          jl_master = get_jl_descriptors ( { :compounds => compounds, :rjb => params[:rjb] } )
+          jl_master = get_jl_descriptors( { :compounds => compounds, :rjb => params[:rjb] } )
           types.delete("joelib")
         end
         params[:task].progress(step) if params[:task]
