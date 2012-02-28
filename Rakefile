@@ -42,7 +42,7 @@ begin
     gem.add_dependency "dm-migrations",  "=1.1.0"
     gem.add_dependency "dm-validations",  "=1.1.0"
     gem.add_dependency "dm-sqlite-adapter", "=1.1.0"
-    gem.add_dependency "ruby-plot", "=0.6.0"
+    gem.add_dependency "ruby-plot", "=0.6.1"
     gem.add_dependency "gsl", "=1.14.7"
     gem.add_dependency "statsample", "=1.1.0"
     #gem.add_dependency "statsample-optimization", "=2.1.0"
