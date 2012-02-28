@@ -91,5 +91,5 @@ DC =  OwlNamespace.new 'http://purl.org/dc/elements/1.1/'
 OT =  OwlNamespace.new 'http://www.opentox.org/api/1.1#'
 OTA =  OwlNamespace.new 'http://www.opentox.org/algorithmTypes.owl#'
 XSD = OwlNamespace.new 'http://www.w3.org/2001/XMLSchema#'
-BO = OwlNamespace.new 'http://www.blueobelisk.org/ontologies/chemoinformatics-algorithms/#'
+#BO = OwlNamespace.new 'http://www.blueobelisk.org/ontologies/chemoinformatics-algorithms/#'
 

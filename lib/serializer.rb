@@ -55,7 +55,7 @@ module OpenTox
           OT.predictedVariables => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
           OT.paramValue => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
 
-          #object props for validation#           
+          #object props for validation#
           OT.model => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
           OT.trainingDataset => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
           OT.predictionFeature => { RDF["type"] => [{ "type" => "uri", "value" => OWL.ObjectProperty }] } ,
@@ -87,7 +87,7 @@ module OpenTox
           OT.percentageCompleted => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.acceptValue => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
 
-          # annotation props for validation        
+          # annotation props for validation
           OT.numUnpredicted => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.crossvalidationFold => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
           OT.numInstances => { RDF["type"] => [{ "type" => "uri", "value" => OWL.AnnotationProperty }] } ,
@@ -143,8 +143,8 @@ module OpenTox
         @data_entries = {}
         @values_id = 0
         @parameter_id = 0
-        
-        @classes = Set.new 
+
+        @classes = Set.new
         @object_properties = Set.new
         @annotation_properties = Set.new
         @datatype_properties = Set.new
@@ -208,7 +208,7 @@ module OpenTox
         @object[uri] = { RDF["type"] => [{ "type" => "uri", "value" => OT.Task }] }
         add_metadata uri, metadata
       end
-      
+
       # Add a resource defined by resource_class and content
       # (see documentation of add_content for example)
       # @param [String] uri of resource
@@ -223,10 +223,10 @@ module OpenTox
       def add_uri(uri,type)
         @object[uri] = { RDF["type"] => [{ "type" => "uri", "value" => type }] }
       end
-      
+
       private
       @@content_id = 1
-      
+
       #Recursiv function to add content
       #@example
       #  { DC.description => "bla",
@@ -244,7 +244,7 @@ module OpenTox
         hash.each do |u,v|
           if v.is_a? Hash
             # value is again a hash, i.e. a new owl class is added
-            # first make sure type (==class) is set 
+            # first make sure type (==class) is set
             type = v[RDF.type]
             raise "type missing for "+u.to_s+" content:\n"+v.inspect unless type
             raise "class unknown "+type.to_s+" (for "+u.to_s+")" unless @object.has_key?(type)
@@ -256,7 +256,7 @@ module OpenTox
             # add content to new class
             add_content(genid,v)
           elsif v.is_a? Array
-            # value is an array, i.e. a list of values with property is added 
+            # value is an array, i.e. a list of values with property is added
             v.each{ |vv| add_content( uri, { u => vv } ) }
           else # v.is_a? String
             # simple string value
@@ -268,7 +268,7 @@ module OpenTox
           end
         end
       end
-      
+
       public
 
       # Add metadata
@@ -329,7 +329,7 @@ module OpenTox
           v = [{ "type" => "uri", "value" => value}]
         when "literal"
           v = [{ "type" => "literal", "value" => value, "datatype" => datatype(value) }]
-        else 
+        else
           raise "Illegal type #{type(value)} for #{value}."
         end
         @object[values] = {
@@ -342,7 +342,7 @@ module OpenTox
       end
 
       # Serializers
-      
+
       # Convert to N-Triples
       # @return [text/plain] Object OWL-DL in N-Triples format
       def to_ntriples
@@ -353,7 +353,7 @@ module OpenTox
           entry.each do |p,objects|
             p = url(p)
             objects.each do |o|
-              case o["type"] 
+              case o["type"]
               when "uri"
                 o = url(o["value"])
               when "literal"
@@ -371,9 +371,15 @@ module OpenTox
       # Convert to RDF/XML
       # @return [text/plain] Object OWL-DL in RDF/XML format
       def to_rdfxml
-        Tempfile.open("owl-serializer"){|f| f.write(self.to_ntriples); @path = f.path}
+        tmpf = Tempfile.open("owl-serializer")
+        tmpf.write(self.to_ntriples)
+        tmpf.flush
+        @path = tmpf.path
         # TODO: add base uri for ist services
-        `rapper -i ntriples -f 'xmlns:ot="#{OT.uri}"' -f 'xmlns:ota="#{OTA.uri}"' -f 'xmlns:dc="#{DC.uri}"' -f 'xmlns:rdf="#{RDF.uri}"' -f 'xmlns:owl="#{OWL.uri}"' -o rdfxml #{@path} 2>/dev/null`
+        res=`rapper -i ntriples -f 'xmlns:ot="#{OT.uri}"' -f 'xmlns:ota="#{OTA.uri}"' -f 'xmlns:dc="#{DC.uri}"' -f 'xmlns:rdf="#{RDF.uri}"' -f 'xmlns:owl="#{OWL.uri}"' -o rdfxml #{@path} 2>/dev/null`
+        tmpf.close
+        tmpf.delete
+        res
       end
 
       # Convert to JSON as specified in http://n2.talis.com/wiki/RDF_JSON_Specification
@@ -427,20 +433,20 @@ module OpenTox
       end
 
       def literal(value,type)
-        # concat and << are faster string concatination operators than + 
+        # concat and << are faster string concatination operators than +
         '"'.concat(value.to_s).concat('"^^<').concat(type).concat('>')
       end
 
       def url(uri)
-        # concat and << are faster string concatination operators than + 
+        # concat and << are faster string concatination operators than +
         '<'.concat(uri).concat('>')
       end
 
       def rdf_types
-        @classes.each { |c| @object[c] = { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } } 
-        @object_properties.each { |p| @object[p] = { RDF["type"] => [{ "type" => "uri", "value" => OWL['ObjectProperty'] }] } } 
-        @annotation_properties.each { |a| @object[a] = { RDF["type"] => [{ "type" => "uri", "value" => OWL['AnnotationProperty'] }] } } 
-        @datatype_properties.each { |d| @object[d] = { RDF["type"] => [{ "type" => "uri", "value" => OWL['DatatypeProperty'] }] } } 
+        @classes.each { |c| @object[c] = { RDF["type"] => [{ "type" => "uri", "value" => OWL['Class'] }] } }
+        @object_properties.each { |p| @object[p] = { RDF["type"] => [{ "type" => "uri", "value" => OWL['ObjectProperty'] }] } }
+        @annotation_properties.each { |a| @object[a] = { RDF["type"] => [{ "type" => "uri", "value" => OWL['AnnotationProperty'] }] } }
+        @datatype_properties.each { |d| @object[d] = { RDF["type"] => [{ "type" => "uri", "value" => OWL['DatatypeProperty'] }] } }
       end
 
     end
@@ -457,27 +463,38 @@ module OpenTox
         @rows.first << features
         @rows.first.flatten!
         dataset.data_entries.each do |compound,entries|
-          smiles = Compound.new(compound).to_smiles
+          cmpd = Compound.new(compound)
+          smiles = cmpd.to_smiles
+          inchi = URI.encode_www_form_component(cmpd.to_inchi)
+          row_container = Array.new
           row = Array.new(@rows.first.size)
-          row[0] = smiles
+          row_container << row
+          #row[0] = smiles
+          row[0] = inchi
           entries.each do |feature, values|
             i = features.index(feature)+1
             values.each do |value|
-              if row[i] 
-                row[i] = "#{row[i]} #{value}" # multiple values
+              if row_container[0][i]
+                #LOGGER.debug "Feature '#{feature}' (nr '#{i}'): '#{value}'"
+                row_container << row_container.last.collect
+                row_container.last[i] = value
+                #LOGGER.debug "RC: #{row_container.to_yaml}"
               else
-                row[i] = value 
+                row_container.each { |r| r[i] = value }
               end
             end
           end
-          @rows << row
+          row_container.each { |r| @rows << r }
         end
       end
 
       # Convert to CSV string
       # @return [String] CSV string
       def to_csv
-        @rows.collect{|r| r.join(", ")}.join("\n")
+        rows = @rows.collect
+        result = ""
+        result << rows.shift.collect { |f| f.split('/').last }.join(",") << "\n" # only feature name
+        result << rows.collect{ |r| r.join(",") }.join("\n")
       end
 
       # Convert to spreadsheet workbook
