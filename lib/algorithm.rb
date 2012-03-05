@@ -443,7 +443,7 @@ module OpenTox
 
     end
 
-    module FeatureSelection
+ module FeatureSelection
       include Algorithm
       # Recursive Feature Elimination using caret
       # @param [Hash] required keys: ds_csv_file, prediction_feature, fds_csv_file (dataset CSV file, prediction feature column name, and feature dataset CSV file), optional: del_missing (delete rows with missing values).
@@ -480,14 +480,18 @@ module OpenTox
           na_col = names ( which ( apply ( features, 2, function(x) all ( is.na ( x ) ) ) ) )
           features = features[,!names(features) %in% na_col]
 
+          # features with infinite values removed
+          inf_col = names ( which ( apply ( features, 2, function(x) any ( is.infinite ( x ) ) ) ) )
+          features = features[,!names(features) %in% inf_col]
+
           # features with zero variance removed
           zero_var = names ( which ( apply ( features, 2, function(x) var(x, na.rm=T) ) == 0 ) )
           features = features[,!names(features) %in% zero_var]
-
+         
           pp = NULL
           if (del_missing) {
             # needed if rows should be removed
-            na_ids = apply(features,1,function(x)any(is.na(x)))
+            na_ids = apply ( features,1,function(x) any ( is.na ( x ) ) )
             features = features[!na_ids,]
             y = y[!na_ids]
             pp = preProcess(features, method=c("scale", "center"))
@@ -497,16 +501,20 @@ module OpenTox
           }
           features = predict(pp, features)
           
+          # features with nan values removed (sometimes preProcess return NaN values)
+          nan_col = names ( which ( apply ( features, 2, function(x) any ( is.nan ( x ) ) ) ) )
+          features = features[,!names(features) %in% nan_col]
+         
           # determine subsets
           subsets = dim(features)[2]*c(0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
           subsets = c(2,3,4,5,7,10,subsets)
+          #subsets = c(2,3,4,5,7,10,13,16,19,22,25,28,30)
           subsets = unique(sort(round(subsets))) 
           subsets = subsets[subsets<=dim(features)[2]]
           subsets = subsets[subsets>1] 
-          
+         
           # Recursive feature elimination
-          rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, number=50), sizes=subsets)
-          save.image('/tmp/testam.R') # TODO: remove DBG
+          rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, number=250), sizes=subsets)
           optVar = rfProfile$optVariables
           if (rfProfile$bestSubset == dim(features)[2]) {
             newRMSE = rfProfile$results$RMSE
