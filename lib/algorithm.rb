@@ -505,10 +505,18 @@ module OpenTox
           subsets = subsets[subsets>1] 
           
           # Recursive feature elimination
-          rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, number=150), sizes=subsets)
+          rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, number=50), sizes=subsets)
+          save.image('/tmp/testam.R') # TODO: remove DBG
+          optVar = rfProfile$optVariables
+          if (rfProfile$bestSubset == dim(features)[2]) {
+            newRMSE = rfProfile$results$RMSE
+            newRMSE[which.min(rfProfile$results$RMSE)] = Inf
+            newOptSize = rfProfile$results[which.min(newRMSE),]$Variables
+            optVar = rfProfile$Variables(1:newOptSize)
+          }
           
           # read existing dataset and select most useful features
-          csv=feats[,c("SMILES", rfProfile$optVariables)]
+          csv=feats[,c("SMILES", optVar)]
           write.csv(x=csv,file=f_fds_r, row.names=F, quote=F, na='')
         EOR
         r_result_file

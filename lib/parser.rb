@@ -373,7 +373,7 @@ module OpenTox
         }
 
         input.each_with_index { |row, i| 
-          drop = false
+          drop=false
           row = split_row(row)
           raise "Entry has size #{row.size}, different from headers (#{headers.size})" if row.size != headers.size
           if row.include?("")
@@ -653,7 +653,7 @@ module OpenTox
           table.data[compound.uri] = row
         end
 
-        # finda and remove ignored_features
+        # find and remove ignored_features
         @activity_errors = table.clean_features
         table.add_to_dataset @dataset
 
