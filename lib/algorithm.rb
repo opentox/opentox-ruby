@@ -443,7 +443,7 @@ module OpenTox
 
     end
 
- module FeatureSelection
+    module FeatureSelection
       include Algorithm
       # Recursive Feature Elimination using caret
       # @param [Hash] required keys: ds_csv_file, prediction_feature, fds_csv_file (dataset CSV file, prediction feature column name, and feature dataset CSV file), optional: del_missing (delete rows with missing values).
@@ -487,7 +487,7 @@ module OpenTox
           # features with zero variance removed
           zero_var = names ( which ( apply ( features, 2, function(x) var(x, na.rm=T) ) == 0 ) )
           features = features[,!names(features) %in% zero_var]
-         
+          
           pp = NULL
           if (del_missing) {
             # needed if rows should be removed
@@ -514,13 +514,13 @@ module OpenTox
           subsets = subsets[subsets>1] 
          
           # Recursive feature elimination
-          rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, number=250), sizes=subsets)
+          rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, method='cv'), sizes=subsets)
           optVar = rfProfile$optVariables
           if (rfProfile$bestSubset == dim(features)[2]) {
             newRMSE = rfProfile$results$RMSE
             newRMSE[which.min(rfProfile$results$RMSE)] = Inf
             newOptSize = rfProfile$results[which.min(newRMSE),]$Variables
-            optVar = rfProfile$Variables(1:newOptSize)
+            optVar = rfProfile$optVariables[1:newOptSize]
           }
           
           # read existing dataset and select most useful features
