@@ -60,7 +60,7 @@ module OpenTox
         ds = OpenTox::Dataset.new
         ds.save
         parser.dataset = ds
-        ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"),false,true)
+        ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"),false,false,true)
         ds.save
 
       rescue Exception => e
