@@ -37,13 +37,14 @@ module OpenTox
       
       #Loads and sends Policyfile(XML) to open-sso server
       # @param [String] URI to create a policy for      
-      def send(uri)    
+      def send(uri)
         xml = get_xml(uri)
         ret = false
-        ret = Authorization.create_policy(xml, @subjectid) 
+        ret = Authorization.create_policy(xml, @subjectid)
+        ret = Authorization.create_policy(xml, @subjectid) if !ret
         LOGGER.debug "Policy send with subjectid: #{@subjectid}"
         LOGGER.warn "Not created Policy is: #{xml}" if !ret
-        ret  
+        ret
       end
       
     end
@@ -360,7 +361,7 @@ module OpenTox
         false
       end
     end
-    
+
     private
     def self.free_uri?(uri, request_method)
       if CONFIG[:authorization][:free_uris]
@@ -374,7 +375,7 @@ module OpenTox
       end    
       return false
     end
-    
+
     def self.authorize_exception?(uri, request_method)
       if CONFIG[:authorization][:authorize_exceptions]
         CONFIG[:authorization][:authorize_exceptions].each do |request_methods,uris|
@@ -387,6 +388,6 @@ module OpenTox
       end    
       return false
     end    
-    
+
   end
 end
