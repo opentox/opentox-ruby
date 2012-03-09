@@ -55,12 +55,16 @@ module OpenTox
           master = jl_master if jl_master
           master = ambit_master if ambit_master
         end
-
+        
         parser = OpenTox::Parser::Spreadsheets.new
         ds = OpenTox::Dataset.new
         ds.save
         parser.dataset = ds
-        ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"),false,false,true)
+        if compounds.size == 1
+          ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"),false,true,false) # all_numeric = true, all features should be treated as numeric
+        else
+          ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"),false,false,true) # del_nominal = true, which removes nominal features
+        end
         ds.save
 
       rescue Exception => e
