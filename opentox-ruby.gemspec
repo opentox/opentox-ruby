@@ -55,7 +55,7 @@ Gem::Specification.new do |s|
   ]
   s.homepage = %q{http://github.com/opentox/opentox-ruby}
   s.require_paths = ["lib"]
-  s.rubygems_version = %q{1.5.2}
+  s.rubygems_version = %q{1.5.3}
   s.summary = %q{Ruby wrapper for the OpenTox REST API}
 
   if s.respond_to? :specification_version then
