@@ -104,13 +104,13 @@ module OpenTox
     # Load dataset via CSV
     # @param[Array] Ambit result uri, piecewise (1st: base, 2nd: SMILES, 3rd+: features
     # @return[String] dataset uri 
-    def self.load_ds_csv(ambit_result_uri, smiles_to_inchi)
+    def self.load_ds_csv(ambit_result_uri, smiles_to_inchi, subjectid=nil)
       
       master=nil
       (1...ambit_result_uri.size).collect { |idx|
         curr_uri = ambit_result_uri[0] + ambit_result_uri[idx]
         LOGGER.debug "Requesting #{curr_uri}"
-        csv_data = CSV.parse( OpenTox::RestClientWrapper.get(curr_uri, {:accept => "text/csv"}) )
+        csv_data = CSV.parse( OpenTox::RestClientWrapper.get(curr_uri, {:accept => "text/csv", :subjectid => subjectid}) )
         if csv_data[0] && csv_data[0].size>1
           if master.nil? # This is the smiles entry
             (1...csv_data.size).each{ |idx| csv_data[idx][1] = smiles_to_inchi[csv_data[idx][1]] }
@@ -145,11 +145,11 @@ module OpenTox
       #File.open("/tmp/test.csv", 'w') {|f| f.write( master.collect {|r| r.join(",")}.join("\n") ) }
      
       parser = OpenTox::Parser::Spreadsheets.new
-      ds = OpenTox::Dataset.new
-      ds.save
+      ds = OpenTox::Dataset.new(nil,subjectid)
+      ds.save(subjectid)
       parser.dataset = ds
       ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"))
-      ds.save
+      ds.save(subjectid)
     end
 
 

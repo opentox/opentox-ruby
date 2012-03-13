@@ -37,13 +37,15 @@ module OpenTox
       
       #Loads and sends Policyfile(XML) to open-sso server
       # @param [String] URI to create a policy for      
-      def send(uri)    
+      def send(uri)
         xml = get_xml(uri)
         ret = false
-        ret = Authorization.create_policy(xml, @subjectid) 
+        ret = Authorization.create_policy(xml, @subjectid)
+        LOGGER.warn "Create policy on openSSO failed for URI: #{uri} subjectid: #{@subjectid}. Will try again." if !ret
+        ret = Authorization.create_policy(xml, @subjectid) if !ret
         LOGGER.debug "Policy send with subjectid: #{@subjectid}"
         LOGGER.warn "Not created Policy is: #{xml}" if !ret
-        ret  
+        ret
       end
       
     end
@@ -337,7 +339,7 @@ module OpenTox
     # @param [String] subjectid
     # @return [Boolean] true if access granted, else otherwise
     def self.authorized?(uri, request_method, subjectid)
-      if CONFIG[:authorization][:free_request].include?(request_method)  
+      if CONFIG[:authorization][:free_request].include?(request_method)
         #LOGGER.debug "authorized? >>true<< (request is free), method: #{request_method}, URI: #{uri}, subjectid: #{subjectid}"
         true
       elsif OpenTox::Authorization.free_uri?(uri, request_method)
@@ -360,7 +362,7 @@ module OpenTox
         false
       end
     end
-    
+
     private
     def self.free_uri?(uri, request_method)
       if CONFIG[:authorization][:free_uris]
@@ -374,7 +376,7 @@ module OpenTox
       end    
       return false
     end
-    
+
     def self.authorize_exception?(uri, request_method)
       if CONFIG[:authorization][:authorize_exceptions]
         CONFIG[:authorization][:authorize_exceptions].each do |request_methods,uris|
@@ -387,6 +389,6 @@ module OpenTox
       end    
       return false
     end    
-    
+
   end
 end

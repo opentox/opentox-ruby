@@ -198,9 +198,8 @@ module OpenTox
     # @param [Array] Array of feature names
     # @param [String] Feature dataset uri
     # @return [Hash] Hash with feature name as key and value as value
-		def lookup(feature_array,feature_dataset_uri,pc_type)
-      ds = OpenTox::Dataset.find(feature_dataset_uri)
-
+    def lookup(feature_array,feature_dataset_uri,pc_type,subjectid=nil)
+      ds = OpenTox::Dataset.find(feature_dataset_uri,subjectid)
       #entry = ds.data_entries[self.uri]
       entry = nil 
       ds.data_entries.each { |c_uri, values| 
@@ -209,17 +208,15 @@ module OpenTox
           break
         end
       }
-
       LOGGER.debug "#{entry.size} entries in feature ds for query." unless entry.nil?
 
       if entry.nil?
         uri, smiles_to_inchi = OpenTox::Algorithm.get_pc_descriptors({:compounds => [self.uri], :pc_type => pc_type})
-        uri = OpenTox::Algorithm.load_ds_csv(uri, smiles_to_inchi)
-        ds = OpenTox::Dataset.find(uri)
+        uri = OpenTox::Algorithm.load_ds_csv(uri, smiles_to_inchi, subjectid)
+        ds = OpenTox::Dataset.find(uri,subjectid)
         entry = ds.data_entries[self.uri]
-        ds.delete
+        ds.delete(subjectid)
       end
-
       features = entry.keys
       features.each { |feature| 
         new_feature = File.join(feature_dataset_uri, "feature", feature.split("/").last) 
