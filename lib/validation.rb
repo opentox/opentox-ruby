@@ -1,3 +1,4 @@
+require "yaml"
 module OpenTox
   class Validation
     include OpenTox
@@ -66,7 +67,7 @@ module OpenTox
     # @return [String] report uri
     def find_or_create_report( subjectid=nil, waiting_task=nil )
       @report = ValidationReport.find_for_validation(@uri, subjectid) unless @report
-      @report = ValidationReport.create(@uri, subjectid, waiting_task) unless @report
+      @report = ValidationReport.create(@uri, {}, subjectid, waiting_task) unless @report
       @report.uri
     end
     
@@ -106,6 +107,31 @@ module OpenTox
         end
       end
       table
+    end
+    
+    # returns probability-distribution for a given prediction
+    # it takes all predictions into account that have a confidence value that is >= confidence and that have the same predicted value
+    # (minimum 12 predictions with the hightest confidence are selected (even if the confidence is lower than the given param)
+    # 
+    # @param [Float] confidence value (between 0 and 1)
+    # @param [String] predicted value
+    # @param [String,optional] subjectid
+    # @return [Hash] see example
+    #
+    # Example 1:
+    # validation.probabilities(0.3,"active")
+    # -> {:min_confidence=>0.32, :num_predictions=>20, :probs=>{"active"=>0.7, "moderate"=>0.25 "inactive"=>0.05}}
+    # there have been 20 "active" predictions with confidence >= 0.3, 70 percent of them beeing correct
+    #
+    # Example 2:
+    # validation.probabilities(0.8,"active")
+    # -> {:min_confidence=>0.45, :num_predictions=>12, :probs=>{"active"=>0.9, "moderate"=>0.1 "inactive"=>0}}
+    # the given confidence value was to high (i.e. <12 predictions with confidence value >= 0.8)
+    # the top 12 "active" predictions have a min_confidence of 0.45, 90 percent of them beeing correct
+    # 
+    def probabilities( confidence, prediction, subjectid=nil )
+      YAML.load(OpenTox::RestClientWrapper.get(@uri+"/probabilities?prediction="+prediction.to_s+"&confidence="+confidence.to_s,
+        {:subjectid => subjectid, :accept => "application/x-yaml"}))
     end
   end
   
@@ -168,6 +194,13 @@ module OpenTox
     def statistics( subjectid=nil )
       Validation.from_cv_statistics( @uri, subjectid )
     end
+    
+    # documentation see OpenTox::Validation.probabilities
+    def probabilities( confidence, prediction, subjectid=nil )
+      YAML.load(OpenTox::RestClientWrapper.get(@uri+"/statistics/probabilities?prediction="+prediction.to_s+"&confidence="+confidence.to_s,
+        {:subjectid => subjectid, :accept => "application/x-yaml"}))
+    end
+    
   end
   
   class ValidationReport
@@ -196,12 +229,18 @@ module OpenTox
     
     # creates a validation report via validation
     # @param [String] validation uri 
+    # @param [Hash] params addiditonal possible 
+    #               (min_confidence, params={}, min_num_predictions, max_num_predictions)
     # @param [String,optional] subjectid
     # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @return [OpenTox::ValidationReport]
-    def self.create( validation_uri, subjectid=nil, waiting_task=nil )
+    def self.create( validation_uri, params={}, subjectid=nil, waiting_task=nil )
+      params = {} if params==nil
+      raise OpenTox::BadRequestError.new "params is no hash" unless params.is_a?(Hash)
+      params[:validation_uris] = validation_uri
+      params[:subjectid] = subjectid
       uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-validation"],"/report/validation"),
-        { :validation_uris => validation_uri, :subjectid => subjectid }, {}, waiting_task )
+        params, {}, waiting_task )
       ValidationReport.new(uri)
     end
     
@@ -268,15 +307,17 @@ module OpenTox
       uris.size==0 ? nil : AlgorithmComparisonReport.new(uris[-1])
     end
     
-    # creates a crossvalidation report via crossvalidation
+    # creates a algorithm comparison report via crossvalidation uris
     # @param [Hash] crossvalidation uri_hash, see example 
+    # @param [Hash] params addiditonal possible 
+    #               (ttest_significance, ttest_attributes, min_confidence, min_num_predictions, max_num_predictions)
     # @param [String,optional] subjectid
     # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @return [OpenTox::AlgorithmComparisonReport]
     # example for hash:
     # { :lazar-bbrc => [ http://host/validation/crossvalidation/x1, http://host/validation/crossvalidation/x2 ],
     #   :lazar-last => [ http://host/validation/crossvalidation/xy, http://host/validation/crossvalidation/xy ] }
-    def self.create( crossvalidation_uri_hash, subjectid=nil, waiting_task=nil )
+    def self.create( crossvalidation_uri_hash, params={}, subjectid=nil, waiting_task=nil )
       identifier = []
       validation_uris = []
       crossvalidation_uri_hash.each do |id, uris|
@@ -285,8 +326,13 @@ module OpenTox
           validation_uris << uri
         end
       end
+      params = {} if params==nil
+      raise OpenTox::BadRequestError.new "params is no hash" unless params.is_a?(Hash)
+      params[:validation_uris] = validation_uris.join(",")
+      params[:identifier] = identifier.join(",")
+      params[:subjectid] = subjectid
       uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-validation"],"/report/algorithm_comparison"),
-        { :validation_uris => validation_uris.join(","), :identifier => identifier.join(","), :subjectid => subjectid }, {}, waiting_task )
+        params, {}, waiting_task )
       AlgorithmComparisonReport.new(uri)
     end
   end  

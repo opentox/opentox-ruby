@@ -6,13 +6,15 @@ module OpenTox
   # Ruby wrapper for OpenTox Compound Webservices (http://opentox.org/dev/apis/api-1.2/structure).
 	class Compound 
 
+    include OpenTox
+
 		attr_accessor :inchi, :uri
 
 		# Create compound with optional uri
     # @example
-    #   compound = OpenTox::Compound.new("http://webservices.in-silico.ch/compound/InChI=1S/C6H6/c1-2-4-6-5-3-1/h1-6H"")
+    #   compound = Compound.new("http://webservices.in-silico.ch/compound/InChI=1S/C6H6/c1-2-4-6-5-3-1/h1-6H"")
     # @param [optional, String] uri Compound URI
-    # @return [OpenTox::Compound] Compound
+    # @return [Compound] Compound
 		def initialize(uri=nil)
       @uri = uri
       case @uri
@@ -36,9 +38,9 @@ module OpenTox
 
     # Create a compound from smiles string
     # @example
-    #   compound = OpenTox::Compound.from_smiles("c1ccccc1")
+    #   compound = Compound.from_smiles("c1ccccc1")
     # @param [String] smiles Smiles string
-    # @return [OpenTox::Compound] Compound
+    # @return [Compound] Compound
     def self.from_smiles(smiles)
       c = Compound.new
       c.inchi = Compound.smiles2inchi(smiles)
@@ -48,7 +50,7 @@ module OpenTox
 
     # Create a compound from inchi string
     # @param [String] smiles InChI string
-    # @return [OpenTox::Compound] Compound
+    # @return [Compound] Compound
     def self.from_inchi(inchi)
       c = Compound.new
       c.inchi = inchi
@@ -58,7 +60,7 @@ module OpenTox
 
     # Create a compound from sdf string
     # @param [String] smiles SDF string
-    # @return [OpenTox::Compound] Compound
+    # @return [Compound] Compound
     def self.from_sdf(sdf)
       c = Compound.new
       c.inchi = Compound.sdf2inchi(sdf)
@@ -68,9 +70,9 @@ module OpenTox
 
     # Create a compound from name. Relies on an external service for name lookups.
     # @example
-    #   compound = OpenTox::Compound.from_name("Benzene")
+    #   compound = Compound.from_name("Benzene")
     # @param [String] name name can be also an InChI/InChiKey, CAS number, etc
-    # @return [OpenTox::Compound] Compound
+    # @return [Compound] Compound
     def self.from_name(name)
       c = Compound.new
       # paranoid URI encoding to keep SMILES charges and brackets
@@ -131,7 +133,7 @@ module OpenTox
 
 		# Match a smarts string
     # @example
-    #   compound = OpenTox::Compound.from_name("Benzene")
+    #   compound = Compound.from_name("Benzene")
     #   compound.match?("cN") # returns false
     # @param [String] smarts Smarts string
 		def match?(smarts)
@@ -146,7 +148,7 @@ module OpenTox
 
 		# Match an array of smarts strings, returns array with matching smarts
     # @example
-    #   compound = OpenTox::Compound.from_name("Benzene")
+    #   compound = Compound.from_name("Benzene")
     #   compound.match(['cc','cN']) # returns ['cc']
     # @param [Array] smarts_array Array with Smarts strings
     # @return [Array] Array with matching Smarts strings
@@ -166,7 +168,7 @@ module OpenTox
 
     # Match_hits an array of smarts strings, returns hash with matching smarts as key and number of non-unique hits as value 
     # @example
-    #   compound = OpenTox::Compound.from_name("Benzene")
+    #   compound = Compound.from_name("Benzene")
     #   compound.match(['cc','cN']) # returns ['cc']
     # @param [Array] smarts_array Array with Smarts strings
     # @return [Hash] Hash with matching smarts as key and number of non-unique hits as value
@@ -190,6 +192,40 @@ module OpenTox
       #LOGGER.debug "dv ----------- smarts => hits #{smarts_hits}"
       return smarts_hits
       #smarts_array.collect { |s| s if match?(s)}.compact
+		end
+    
+    # Lookup numerical values, returns hash with feature name as key and value as value 
+    # @param [Array] Array of feature names
+    # @param [String] Feature dataset uri
+    # @return [Hash] Hash with feature name as key and value as value
+    def lookup(feature_array,feature_dataset_uri,pc_type,subjectid=nil)
+      ds = OpenTox::Dataset.find(feature_dataset_uri,subjectid)
+      #entry = ds.data_entries[self.uri]
+      entry = nil 
+      ds.data_entries.each { |c_uri, values| 
+        if c_uri.split('/compound/').last == self.to_inchi
+          entry = ds.data_entries[self.uri]
+          break
+        end
+      }
+      LOGGER.debug "#{entry.size} entries in feature ds for query." unless entry.nil?
+
+      if entry.nil?
+        uri, smiles_to_inchi = OpenTox::Algorithm.get_pc_descriptors({:compounds => [self.uri], :pc_type => pc_type})
+        uri = OpenTox::Algorithm.load_ds_csv(uri, smiles_to_inchi, subjectid)
+        ds = OpenTox::Dataset.find(uri,subjectid)
+        entry = ds.data_entries[self.uri]
+        ds.delete(subjectid)
+      end
+      features = entry.keys
+      features.each { |feature| 
+        new_feature = File.join(feature_dataset_uri, "feature", feature.split("/").last) 
+        entry[new_feature] = entry[feature].flatten.first.to_f # see algorithm/lazar.rb:182, to_f because feature type detection doesn't work w 1 entry
+        entry.delete(feature) unless feature == new_feature # e.g. when loading from ambit
+      }
+      #res = feature_array.collect {|v| entry[v]}
+      #LOGGER.debug "----- am #{entry.to_yaml}"
+      entry
 		end
 
 

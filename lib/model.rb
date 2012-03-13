@@ -102,8 +102,8 @@ module OpenTox
       include Algorithm
       include Model
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :min_sim, :subjectid, :prop_kernel, :value_map, :nr_hits, :transform, :conf_stdev, :prediction_min_max
 
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :subjectid, :value_map, :compound_fingerprints, :feature_calculation_algorithm, :neighbors
       def initialize(uri=nil)
 
         if uri
@@ -120,18 +120,11 @@ module OpenTox
         @p_values = {}
         @fingerprints = {}
         @value_map = {}
-        @prediction_min_max = [] 
 
         @feature_calculation_algorithm = "Substructure.match"
         @similarity_algorithm = "Similarity.tanimoto"
         @prediction_algorithm = "Neighbors.weighted_majority_vote"
         
-        @nr_hits = false
-        @min_sim = 0.3
-        @prop_kernel = false
-        @transform = { "class" => "NOP"  }
-        @conf_stdev = false
-
       end
 
       # Get URIs of all lazar models
@@ -174,19 +167,14 @@ module OpenTox
         lazar.feature_calculation_algorithm = hash["feature_calculation_algorithm"] if hash["feature_calculation_algorithm"]
         lazar.similarity_algorithm = hash["similarity_algorithm"] if hash["similarity_algorithm"]
         lazar.prediction_algorithm = hash["prediction_algorithm"] if hash["prediction_algorithm"]
-        lazar.min_sim = hash["min_sim"] if hash["min_sim"]
         lazar.subjectid = hash["subjectid"] if hash["subjectid"]
-        lazar.prop_kernel = hash["prop_kernel"] if hash["prop_kernel"]
         lazar.value_map = hash["value_map"] if hash["value_map"]
-        lazar.nr_hits = hash["nr_hits"] if hash["nr_hits"]
-        lazar.transform = hash["transform"] if hash["transform"]
-        lazar.conf_stdev = hash["conf_stdev"] if hash["conf_stdev"]
-        lazar.prediction_min_max = hash["prediction_min_max"] if hash["prediction_min_max"]
+
         lazar
       end
 
       def to_json
-        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :min_sim => @min_sim, :subjectid => @subjectid, :prop_kernel => @prop_kernel, :value_map => @value_map, :nr_hits => @nr_hits, :transform => @transform, :conf_stdev => @conf_stdev, :prediction_min_max => @prediction_min_max})
+        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :subjectid => @subjectid, :value_map => @value_map})
       end
 
       def run( params, accept_header=nil, waiting_task=nil )
@@ -230,8 +218,11 @@ module OpenTox
             predict(compound_uri,false,subjectid)
             count += 1
             waiting_task.progress( count/d.compounds.size.to_f*100.0 ) if waiting_task
-          rescue => ex
-            LOGGER.warn "prediction for compound "+compound_uri.to_s+" failed: "+ex.message+" subjectid: #{subjectid}"
+          rescue => e
+            LOGGER.warn "prediction for compound "+compound_uri.to_s+" failed: "+e.message+" subjectid: #{subjectid}"
+            #LOGGER.debug "#{e.class}: #{e.message}"
+            #LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+
           end
         end
         #@prediction_dataset.save(subjectid)
@@ -246,7 +237,6 @@ module OpenTox
 
         @compound = Compound.new compound_uri
         features = {}
-
         #LOGGER.debug self.to_yaml
         unless @prediction_dataset
           @prediction_dataset = Dataset.create(CONFIG[:services]["opentox-dataset"], subjectid)
@@ -257,29 +247,42 @@ module OpenTox
             OT.parameters => [{DC.title => "compound_uri", OT.paramValue => compound_uri}]
           } )
         end
-
         if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "regression"
           all_activities = [] 
           all_activities = @activities.values.flatten.collect! { |i| i.to_f }
-          @prediction_min_max[0] = (all_activities.to_scale.min/2)
-          @prediction_min_max[1] = (all_activities.to_scale.max*2)
         end
-
         unless database_activity(subjectid) # adds database activity to @prediction_dataset
+          # Calculation of needed values for query compound
+          @compound_features = eval("#{@feature_calculation_algorithm}({
+                                    :compound => @compound, 
+                                    :features => @features, 
+                                    :feature_dataset_uri => @metadata[OT.featureDataset],
+                                    :pc_type => self.parameter(\"pc_type\"),
+                                    :subjectid => subjectid
+                                    })")
+          # Adding fingerprint of query compound with features and values(p_value*nr_hits)
+          @compound_fingerprints = {}
+          @compound_features.each do |feature, value| # value is nil if "Substructure.match"
+            if @feature_calculation_algorithm == "Substructure.match_hits" 
+              @compound_fingerprints[feature] = @p_values[feature] * value
+            elsif @feature_calculation_algorithm == "Substructure.match"
+              @compound_fingerprints[feature] = @p_values[feature]
+            elsif @feature_calculation_algorithm == "Substructure.lookup"
+              @compound_fingerprints[feature] = value
+            end
+          end
 
-          neighbors
-          prediction = eval("#{@prediction_algorithm} ( { :neighbors => @neighbors, 
-                                                          :compound => @compound,
-                                                          :features => @features, 
-                                                          :p_values => @p_values, 
-                                                          :fingerprints => @fingerprints,
-                                                          :similarity_algorithm => @similarity_algorithm, 
-                                                          :prop_kernel => @prop_kernel,
+          # Transform model data to machine learning scheme (tables of data)
+          mtf = OpenTox::Algorithm::Transform::ModelTransformer.new(self)
+          mtf.transform
+
+          # Make a prediction
+          prediction = eval("#{@prediction_algorithm}( { :props => mtf.props,
+                                                          :acts => mtf.acts,
+                                                          :sims => mtf.sims,
                                                           :value_map => @value_map,
-                                                          :nr_hits => @nr_hits,
-                                                          :conf_stdev => @conf_stdev,
-                                                          :prediction_min_max => @prediction_min_max,
-                                                          :transform => @transform } ) ")
+                                                          :min_train_performance => self.parameter(\"min_train_performance\")
+                                                        } ) ")
 
           value_feature_uri = File.join( @uri, "predicted", "value")
           confidence_feature_uri = File.join( @uri, "predicted", "confidence")
@@ -353,44 +356,6 @@ module OpenTox
 
         @prediction_dataset.save(subjectid)
         @prediction_dataset
-      end
-
-      
-
-      # Find neighbors and store them as object variable, access all compounds for that.
-      def neighbors
-        @compound_features = eval("#{@feature_calculation_algorithm}(@compound,@features)") if @feature_calculation_algorithm
-        @neighbors = []
-        @fingerprints.keys.each do |training_compound| # AM: access all compounds
-          add_neighbor @fingerprints[training_compound].keys, training_compound
-        end
-      end
-
-      # Adds a neighbor to @neighbors if it passes the similarity threshold.
-      def add_neighbor(training_features, training_compound)
-        compound_features_hits = {}
-        training_compound_features_hits = {}
-        if @nr_hits
-          compound_features_hits = @compound.match_hits(@compound_features)
-          training_compound_features_hits = @fingerprints[training_compound]
-          #LOGGER.debug "dv ------------ training_compound_features_hits:#{training_compound_features_hits.class}  #{training_compound_features_hits}"
-        end
-        params = {}
-        params[:nr_hits] = @nr_hits
-        params[:compound_features_hits] = compound_features_hits
-        params[:training_compound_features_hits] = training_compound_features_hits
-
-        sim = eval("#{@similarity_algorithm}(training_features, @compound_features, @p_values, params)")
-        if sim > @min_sim
-          @activities[training_compound].each do |act|
-            @neighbors << {
-              :compound => training_compound,
-              :similarity => sim,
-              :features => training_features,
-              :activity => act
-            }
-          end
-        end
       end
 
       # Find database activities and store them in @prediction_dataset

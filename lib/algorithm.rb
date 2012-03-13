@@ -5,6 +5,8 @@ R = nil
 require "rinruby" 
 require "statsample"
 require 'uri'
+require 'transform.rb'
+require 'utils.rb'
 
 module OpenTox
 
@@ -13,7 +15,7 @@ module OpenTox
 
     include OpenTox
 
-    # Execute algorithm with parameters, please consult the OpenTox API and the webservice documentation for acceptable parameters
+    # Execute algorithm with parameters, consult OpenTox API and webservice documentation for acceptable parameters
     # @param [optional,Hash] params Algorithm parameters
     # @param [optional,OpenTox::Task] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @return [String] URI of new resource (dataset, model, ...)
@@ -21,7 +23,7 @@ module OpenTox
       LOGGER.info "Running algorithm '"+@uri.to_s+"' with params: "+params.inspect
       RestClientWrapper.post(@uri, params, {:accept => 'text/uri-list'}, waiting_task).to_s
     end
-    
+
     # Get OWL-DL representation in RDF/XML format
     # @return [application/rdf+xml] RDF/XML representation
     def to_rdfxml
@@ -33,7 +35,7 @@ module OpenTox
     # Generic Algorithm class, should work with all OpenTox webservices
     class Generic 
       include Algorithm
-      
+
       # Find Generic Opentox Algorithm via URI, and loads metadata, could raise NotFound/NotAuthorized error
       # @param [String] uri Algorithm URI
       # @return [OpenTox::Algorithm::Generic] Algorithm instance
@@ -44,14 +46,14 @@ module OpenTox
         raise "cannot load algorithm metadata" if alg.metadata==nil or alg.metadata.size==0
         alg
       end
-      
+
     end
 
     # Fminer algorithms (https://github.com/amaunz/fminer2)
     class Fminer
       include Algorithm
       attr_accessor :prediction_feature, :training_dataset, :minfreq, :compounds, :db_class_sizes, :all_activities, :smi
-      
+
       def check_params(params,per_mil,subjectid=nil)
         raise OpenTox::NotFoundError.new "Please submit a dataset_uri." unless params[:dataset_uri] and  !params[:dataset_uri].nil?
         raise OpenTox::NotFoundError.new "Please submit a prediction_feature." unless params[:prediction_feature] and  !params[:prediction_feature].nil?
@@ -81,7 +83,7 @@ module OpenTox
             LOGGER.warn "Cannot find smiles for #{compound.to_s}."
             next
           end
-          
+
           value_map=params[:value_map] unless params[:value_map].nil?
           entry.each do |feature,values|
             if feature == @prediction_feature.uri
@@ -90,7 +92,7 @@ module OpenTox
                   LOGGER.warn "No #{feature} activity for #{compound.to_s}."
                 else
                   if @prediction_feature.feature_type == "classification"
-                    activity= value_map.invert[value].to_i # activities are mapped to 1..n
+                    activity= value_map.invert[value.to_s].to_i # activities are mapped to 1..n
                     @db_class_sizes[activity-1].nil? ? @db_class_sizes[activity-1]=1 : @db_class_sizes[activity-1]+=1 # AM effect
                   elsif @prediction_feature.feature_type == "regression"
                     activity= value.to_f 
@@ -115,23 +117,23 @@ module OpenTox
 
     end
 
-      # Backbone Refinement Class mining (http://bbrc.maunz.de/)
-      class BBRC < Fminer
-        # Initialize bbrc algorithm
-        def initialize(subjectid=nil)
-          super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/bbrc")
-          load_metadata(subjectid)
-        end
+    # Backbone Refinement Class mining (http://bbrc.maunz.de/)
+    class BBRC < Fminer
+      # Initialize bbrc algorithm
+      def initialize(subjectid=nil)
+        super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/bbrc")
+        load_metadata(subjectid)
       end
+    end
 
-      # LAtent STructure Pattern Mining (http://last-pm.maunz.de)
-      class LAST < Fminer
-        # Initialize last algorithm
-        def initialize(subjectid=nil)
-          super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/last")
-          load_metadata(subjectid)
-        end
+    # LAtent STructure Pattern Mining (http://last-pm.maunz.de)
+    class LAST < Fminer
+      # Initialize last algorithm
+      def initialize(subjectid=nil)
+        super File.join(CONFIG[:services]["opentox-algorithm"], "fminer/last")
+        load_metadata(subjectid)
       end
+    end
 
 
     # Create lazar prediction model
@@ -144,72 +146,6 @@ module OpenTox
       end
     end
 
-    # Utility methods without dedicated webservices
-
-    # Similarity calculations
-    module Similarity
-      include Algorithm
-
-      # Tanimoto similarity
-      # @param [Array] features_a Features of first compound
-      # @param [Array] features_b Features of second compound
-      # @param [optional, Hash] weights Weights for all features
-      # @param [optional, Hash] params Keys: `:training_compound, :compound, :training_compound_features_hits, :nr_hits, :compound_features_hits` are required
-      # @return [Float] (Weighted) tanimoto similarity
-      def self.tanimoto(features_a,features_b,weights=nil,params=nil)
-        common_features = features_a & features_b
-        all_features = (features_a + features_b).uniq
-        #LOGGER.debug "dv --------------- common: #{common_features}, all: #{all_features}"
-        if common_features.size > 0
-          if weights
-            #LOGGER.debug "nr_hits: #{params[:nr_hits]}"
-            if !params.nil? && params[:nr_hits]
-              params[:weights] = weights
-              params[:mode] = "min"
-              params[:features] = common_features
-              common_p_sum = Algorithm.p_sum_support(params)
-              params[:mode] = "max"
-              params[:features] = all_features
-              all_p_sum = Algorithm.p_sum_support(params)
-            else
-              common_p_sum = 0.0
-              common_features.each{|f| common_p_sum += Algorithm.gauss(weights[f])}
-              all_p_sum = 0.0
-              all_features.each{|f| all_p_sum += Algorithm.gauss(weights[f])}
-            end
-            #LOGGER.debug "common_p_sum: #{common_p_sum}, all_p_sum: #{all_p_sum}, c/a: #{common_p_sum/all_p_sum}"
-            common_p_sum/all_p_sum
-          else
-            #LOGGER.debug "common_features : #{common_features}, all_features: #{all_features}, c/a: #{(common_features.size/all_features.size).to_f}"
-            common_features.size.to_f/all_features.size.to_f
-          end
-        else
-          0.0
-        end
-      end
-
-      # Euclidean similarity
-      # @param [Hash] properties_a Properties of first compound
-      # @param [Hash] properties_b Properties of second compound
-      # @param [optional, Hash] weights Weights for all properties
-      # @return [Float] (Weighted) euclidean similarity
-      def self.euclidean(properties_a,properties_b,weights=nil)
-        common_properties = properties_a.keys & properties_b.keys
-        if common_properties.size > 1
-          dist_sum = 0
-          common_properties.each do |p|
-            if weights
-              dist_sum += ( (properties_a[p] - properties_b[p]) * Algorithm.gauss(weights[p]) )**2
-            else
-              dist_sum += (properties_a[p] - properties_b[p])**2
-            end
-          end
-          1/(1+Math.sqrt(dist_sum))
-        else
-          0.0
-        end
-      end
-    end
 
     # Structural Graph Clustering by TU Munich
     # Finds clusters similar to a query structure in a given training dataset
@@ -226,7 +162,7 @@ module OpenTox
           raise "Invalid URI."
         end
         @training_dataset_uri = training_dataset_uri
-        if !OpenTox::Algorithm.numeric? training_threshold || training_threshold <0 || training_threshold >1
+        if !self.numeric? training_threshold || training_threshold <0 || training_threshold >1
           raise "Training threshold out of bounds."
         end
         @training_threshold = training_threshold.to_f
@@ -259,7 +195,7 @@ module OpenTox
       # @params[Float]  Similarity threshold for query to clusters (optional)
       def get_clusters query_compound_uri, query_threshold = 0.5
 
-        if !OpenTox::Algorithm.numeric? query_threshold || query_threshold <0 || query_threshold >1
+        if !self.numeric? query_threshold || query_threshold <0 || query_threshold >1
           raise "Query threshold out of bounds."
         end
         @query_threshold = query_threshold.to_f
@@ -285,7 +221,7 @@ module OpenTox
           metadata[DC.title][pattern]=""
           feature_clusterid_map[feature_uri] = metadata[DC.title].to_i
         }
-        
+
         # Integrity check
         unless cluster_query_dataset.compounds.size == 1
           raise "Number of predicted compounds is != 1."
@@ -295,11 +231,11 @@ module OpenTox
         query_compound_uri = cluster_query_dataset.compounds[0]
         @target_clusters_array = Array.new
         cluster_query_dataset.features.keys.each { |cluster_membership_feature|
-        
+
           # Getting dataset URI for cluster
           target_cluster = feature_clusterid_map[cluster_membership_feature]
           dataset = @clusterid_dataset_map[target_cluster]
-        
+
           # Finally look up presence
           data_entry = cluster_query_dataset.data_entries[query_compound_uri]
           present = data_entry[cluster_membership_feature][0]
@@ -311,85 +247,13 @@ module OpenTox
 
     end
 
+
+
     module Neighbors
 
-      # Local multi-linear regression (MLR) prediction from neighbors. 
-      # Uses propositionalized setting.
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map,:transform` are required
-      # @return [Numeric] A prediction value.
-      def self.local_mlr_prop(params)
-
-        confidence=0.0
-        prediction=nil
-
-        if params[:neighbors].size>0
-          props = params[:prop_kernel] ? get_props(params) : nil
-          acts = params[:neighbors].collect { |n| act = n[:activity].to_f }
-          sims = params[:neighbors].collect { |n| Algorithm.gauss(n[:similarity]) }
-          LOGGER.debug "Local MLR (Propositionalization / GSL)."
-          prediction = mlr( {:n_prop => props[0], :q_prop => props[1], :sims => sims, :acts => acts} )
-          transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})")
-          prediction = transformer.values[0]
-          prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
-          LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
-          params[:conf_stdev] = false if params[:conf_stdev].nil?
-          confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
-          confidence = nil if prediction.nil?
-        end
-        {:prediction => prediction, :confidence => confidence}
-
-      end
-
-      # Multi-linear regression weighted by similarity.
-      # Objective Feature Selection, Principal Components Analysis, Scaling of Axes.
-      # @param [Hash] params Keys `:n_prop, :q_prop, :sims, :acts` are required
-      # @return [Numeric] A prediction value.
-      def self.mlr(params)
-
-        # GSL matrix operations: 
-        # to_a : row-wise conversion to nested array
-        #
-        # Statsample operations (build on GSL):
-        # to_scale: convert into Statsample format
-
-        begin
-          n_prop = params[:n_prop].collect { |v| v }
-          q_prop = params[:q_prop].collect { |v| v }
-          n_prop << q_prop # attach q_prop
-          nr_cases, nr_features = get_sizes n_prop
-          data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
-
-          # Principal Components Analysis
-          LOGGER.debug "PCA..."
-          pca = OpenTox::Algorithm::Transform::PCA.new(data_matrix)
-          data_matrix = pca.data_transformed_matrix
-
-          # Attach intercept column to data
-          intercept = GSL::Matrix.alloc(Array.new(nr_cases,1.0),nr_cases,1)
-          data_matrix = data_matrix.horzcat(intercept)
-          (0..data_matrix.size2-2).each { |i|
-            autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(data_matrix.col(i))
-            data_matrix.col(i)[0..data_matrix.size1-1] = autoscaler.scaled_values
-          }
-
-          # Detach query instance
-          n_prop = data_matrix.to_a
-          q_prop = n_prop.pop 
-          nr_cases, nr_features = get_sizes n_prop
-          data_matrix = GSL::Matrix.alloc(n_prop.flatten, nr_cases, nr_features)
-
-          # model + support vectors
-          LOGGER.debug "Creating MLR model ..."
-          c, cov, chisq, status = GSL::MultiFit::wlinear(data_matrix, params[:sims].to_scale.to_gsl, params[:acts].to_scale.to_gsl)
-          GSL::MultiFit::linear_est(q_prop.to_scale.to_gsl, c, cov)[0]
-        rescue Exception => e
-          LOGGER.debug "#{e.class}: #{e.message}"
-        end
-
-      end
 
       # Classification with majority vote from neighbors weighted by similarity
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map,:transform` are required
+      # @param [Hash] params Keys `:acts, :sims, :value_map` are required
       # @return [Numeric] A prediction value.
       def self.weighted_majority_vote(params)
 
@@ -398,12 +262,13 @@ module OpenTox
         confidence = 0.0
         prediction = nil
 
-        params[:neighbors].each do |neighbor|
-          neighbor_weight = Algorithm.gauss(neighbor[:similarity]).to_f
-          neighbor_contribution += neighbor[:activity].to_f * neighbor_weight
+        LOGGER.debug "Weighted Majority Vote Classification."
 
+        params[:acts].each_index do |idx|
+          neighbor_weight = params[:sims][1][idx]
+          neighbor_contribution += params[:acts][idx] * neighbor_weight
           if params[:value_map].size == 2 # AM: provide compat to binary classification: 1=>false 2=>true
-            case neighbor[:activity]
+            case params[:acts][idx]
             when 1
               confidence_sum -= neighbor_weight
             when 2
@@ -413,294 +278,257 @@ module OpenTox
             confidence_sum += neighbor_weight
           end
         end
-
         if params[:value_map].size == 2 
           if confidence_sum >= 0.0
-            prediction = 2 unless params[:neighbors].size==0
+            prediction = 2 unless params[:acts].size==0
           elsif confidence_sum < 0.0
-            prediction = 1 unless params[:neighbors].size==0
+            prediction = 1 unless params[:acts].size==0
           end
         else 
-          prediction = (neighbor_contribution/confidence_sum).round  unless params[:neighbors].size==0  # AM: new multinomial prediction
+          prediction = (neighbor_contribution/confidence_sum).round  unless params[:acts].size==0  # AM: new multinomial prediction
         end 
+
         LOGGER.debug "Prediction is: '" + prediction.to_s + "'." unless prediction.nil?
-        confidence = confidence_sum/params[:neighbors].size if params[:neighbors].size > 0
+        confidence = (confidence_sum/params[:acts].size).abs if params[:acts].size > 0
         LOGGER.debug "Confidence is: '" + confidence.to_s + "'." unless prediction.nil?
         return {:prediction => prediction, :confidence => confidence.abs}
       end
 
+
+
       # Local support vector regression from neighbors 
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map,:transform` are required
+      # @param [Hash] params Keys `:props, :acts, :sims, :min_train_performance` are required
       # @return [Numeric] A prediction value.
       def self.local_svm_regression(params)
 
-        confidence = 0.0
-        prediction = nil
-        if params[:neighbors].size>0
-          props = params[:prop_kernel] ? get_props(params) : nil
-          acts = params[:neighbors].collect{ |n| n[:activity].to_f }
-          sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) }
-          prediction = props.nil? ? local_svm(acts, sims, "nu-svr", params) : local_svm_prop(props, acts, "nu-svr")
-          transformer = eval("OpenTox::Algorithm::Transform::#{params[:transform]["class"]}.new ([#{prediction}], #{params[:transform]["offset"]})")
-          prediction = transformer.values[0]
-          prediction = nil if prediction.infinite? || params[:prediction_min_max][1] < prediction || params[:prediction_min_max][0] > prediction  
-          LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
-          params[:conf_stdev] = false if params[:conf_stdev].nil?
-          confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
-          confidence = nil if prediction.nil?
+        begin
+          confidence = 0.0
+          prediction = nil
+
+          LOGGER.debug "Local SVM."
+          if params[:acts].size>0
+            if params[:props]
+              n_prop = params[:props][0].collect
+              q_prop = params[:props][1].collect
+              props = [ n_prop, q_prop ]
+            end
+            acts = params[:acts].collect
+            prediction = local_svm_prop( props, acts, params[:min_train_performance]) # params[:props].nil? signals non-prop setting
+            prediction = nil if (!prediction.nil? && prediction.infinite?)
+            LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
+            confidence = get_confidence({:sims => params[:sims][1], :acts => params[:acts]})
+            confidence = 0.0 if prediction.nil?
+          end
+          {:prediction => prediction, :confidence => confidence}
+        rescue Exception => e
+          LOGGER.debug "#{e.class}: #{e.message}"
+          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
-        {:prediction => prediction, :confidence => confidence}
-        
+
       end
 
-      # Local support vector classification from neighbors 
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map,:transform` are required
+
+      # Local support vector regression from neighbors 
+      # @param [Hash] params Keys `:props, :acts, :sims, :min_train_performance` are required
       # @return [Numeric] A prediction value.
       def self.local_svm_classification(params)
 
-        confidence = 0.0
-        prediction = nil
-        if params[:neighbors].size>0
-          props = params[:prop_kernel] ? get_props(params) : nil
-          acts = params[:neighbors].collect { |n| act = n[:activity] }
-          sims = params[:neighbors].collect{ |n| Algorithm.gauss(n[:similarity]) } # similarity values btwn q and nbors
-          prediction = props.nil? ? local_svm(acts, sims, "C-bsvc", params) : local_svm_prop(props, acts, "C-bsvc")
-          LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
-          params[:conf_stdev] = false if params[:conf_stdev].nil?
-          confidence = get_confidence({:sims => sims, :acts => acts, :neighbors => params[:neighbors], :conf_stdev => params[:conf_stdev]})
+        begin
+          confidence = 0.0
+          prediction = nil
+
+          LOGGER.debug "Local SVM."
+          if params[:acts].size>0
+            if params[:props]
+              n_prop = params[:props][0].collect
+              q_prop = params[:props][1].collect
+              props = [ n_prop, q_prop ]
+            end
+            acts = params[:acts].collect
+            acts = acts.collect{|v| "Val" + v.to_s} # Convert to string for R to recognize classification
+            prediction = local_svm_prop( props, acts, params[:min_train_performance]) # params[:props].nil? signals non-prop setting
+            prediction = prediction.sub(/Val/,"") if prediction # Convert back to Float
+            confidence = 0.0 if prediction.nil?
+            LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
+            confidence = get_confidence({:sims => params[:sims][1], :acts => params[:acts]})
+          end
+          {:prediction => prediction, :confidence => confidence}
+        rescue Exception => e
+          LOGGER.debug "#{e.class}: #{e.message}"
+          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
         end
-        {:prediction => prediction, :confidence => confidence}
-        
+
       end
 
 
-      # Local support vector prediction from neighbors. 
-      # Uses pre-defined Kernel Matrix.
-      # Not to be called directly (use local_svm_regression or local_svm_classification).
-      # @param [Array] acts, activities for neighbors.
-      # @param [Array] sims, similarities for neighbors.
-      # @param [String] type, one of "nu-svr" (regression) or "C-bsvc" (classification).
-      # @param [Hash] params Keys `:neighbors,:compound,:features,:p_values,:similarity_algorithm,:prop_kernel,:value_map,:transform` are required
-      # @return [Numeric] A prediction value.
-      def self.local_svm(acts, sims, type, params)
-        LOGGER.debug "Local SVM (Weighted Tanimoto Kernel)."
-        neighbor_matches = params[:neighbors].collect{ |n| n[:features] } # URIs of matches
-        gram_matrix = [] # square matrix of similarities between neighbors; implements weighted tanimoto kernel
-
-        prediction = nil
-        if Algorithm::zero_variance? acts
-          prediction = acts[0]
-        else
-          # gram matrix
-          (0..(neighbor_matches.length-1)).each do |i|
-            neighbor_i_hits = params[:fingerprints][params[:neighbors][i][:compound]]
-            gram_matrix[i] = [] unless gram_matrix[i]
-            # upper triangle
-            ((i+1)..(neighbor_matches.length-1)).each do |j|
-              neighbor_j_hits= params[:fingerprints][params[:neighbors][j][:compound]]
-              sim_params = {}
-              if params[:nr_hits]
-                sim_params[:nr_hits] = true
-                sim_params[:compound_features_hits] = neighbor_i_hits
-                sim_params[:training_compound_features_hits] = neighbor_j_hits
-              end
-              sim = eval("#{params[:similarity_algorithm]}(neighbor_matches[i], neighbor_matches[j], params[:p_values], sim_params)")
-              gram_matrix[i][j] = Algorithm.gauss(sim)
-              gram_matrix[j] = [] unless gram_matrix[j] 
-              gram_matrix[j][i] = gram_matrix[i][j] # lower triangle
-            end
-            gram_matrix[i][i] = 1.0
-          end
-
-
-          #LOGGER.debug gram_matrix.to_yaml
-          @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
-          @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
-          LOGGER.debug "Setting R data ..."
-          # set data
-          @r.gram_matrix = gram_matrix.flatten
-          @r.n = neighbor_matches.size
-          @r.y = acts
-          @r.sims = sims
-
-          begin
-            LOGGER.debug "Preparing R data ..."
-            # prepare data
-            @r.eval "y<-as.vector(y)"
-            @r.eval "gram_matrix<-as.kernelMatrix(matrix(gram_matrix,n,n))"
-            @r.eval "sims<-as.vector(sims)"
-            
-            # model + support vectors
-            LOGGER.debug "Creating SVM model ..."
-            @r.eval "model<-ksvm(gram_matrix, y, kernel=matrix, type=\"#{type}\", nu=0.5)"
-            @r.eval "sv<-as.vector(SVindex(model))"
-            @r.eval "sims<-sims[sv]"
-            @r.eval "sims<-as.kernelMatrix(matrix(sims,1))"
-            LOGGER.debug "Predicting ..."
-            if type == "nu-svr" 
-              @r.eval "p<-predict(model,sims)[1,1]"
-            elsif type == "C-bsvc"
-              @r.eval "p<-predict(model,sims)"
-            end
-            if type == "nu-svr"
-              prediction = @r.p
-            elsif type == "C-bsvc"
-              #prediction = (@r.p.to_f == 1.0 ? true : false)
-              prediction = @r.p
-            end
-            @r.quit # free R
-          rescue Exception => e
-            LOGGER.debug "#{e.class}: #{e.message}"
-            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-          end
-
-        end
-        prediction
-      end
 
       # Local support vector prediction from neighbors. 
       # Uses propositionalized setting.
       # Not to be called directly (use local_svm_regression or local_svm_classification).
       # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
       # @param [Array] acts, activities for neighbors.
-      # @param [String] type, one of "nu-svr" (regression) or "C-bsvc" (classification).
+      # @param [Float] min_train_performance, parameter to control censoring
       # @return [Numeric] A prediction value.
-      def self.local_svm_prop(props, acts, type)
+      def self.local_svm_prop(props, acts, min_train_performance)
 
-          LOGGER.debug "Local SVM (Propositionalization / Kernlab Kernel)."
-          n_prop = props[0] # is a matrix, i.e. two nested Arrays.
-          q_prop = props[1] # is an Array.
+        LOGGER.debug "Local SVM (Propositionalization / Kernlab Kernel)."
+        n_prop = props[0] # is a matrix, i.e. two nested Arrays.
+        q_prop = props[1] # is an Array.
 
-          prediction = nil
-          if Algorithm::zero_variance? acts
-            prediction = acts[0]
-          else
-            #LOGGER.debug gram_matrix.to_yaml
-            @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
-            @r.eval "library('kernlab')" # this requires R package "kernlab" to be installed
-            LOGGER.debug "Setting R data ..."
+        prediction = nil
+        if Algorithm::zero_variance? acts
+          prediction = acts[0]
+        else
+          #LOGGER.debug gram_matrix.to_yaml
+          @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
+          @r.eval "set.seed(1)"
+          @r.eval "suppressPackageStartupMessages(library('caret'))" # requires R packages "caret" and "kernlab"
+          @r.eval "suppressPackageStartupMessages(library('doMC'))" # requires R packages "multicore"
+          @r.eval "registerDoMC()" # switch on parallel processing
+          begin
+
             # set data
+            LOGGER.debug "Setting R data ..."
             @r.n_prop = n_prop.flatten
             @r.n_prop_x_size = n_prop.size
             @r.n_prop_y_size = n_prop[0].size
             @r.y = acts
             @r.q_prop = q_prop
+            #@r.eval "y = matrix(y)"
+            @r.eval "prop_matrix = matrix(n_prop, n_prop_x_size, n_prop_y_size, byrow=T)"
+            @r.eval "q_prop = matrix(q_prop, 1, n_prop_y_size, byrow=T)"
 
-            begin
-              LOGGER.debug "Preparing R data ..."
-              # prepare data
-              @r.eval "y<-matrix(y)"
-              @r.eval "prop_matrix<-matrix(n_prop, n_prop_x_size, n_prop_y_size, byrow=TRUE)"
-              @r.eval "q_prop<-matrix(q_prop, 1, n_prop_y_size, byrow=TRUE)"
-              
-              # model + support vectors
-              LOGGER.debug "Creating SVM model ..."
-              @r.eval "model<-ksvm(prop_matrix, y, type=\"#{type}\", nu=0.5)"
-              LOGGER.debug "Predicting ..."
-              if type == "nu-svr" 
-                @r.eval "p<-predict(model,q_prop)[1,1]"
-              elsif type == "C-bsvc"
-                @r.eval "p<-predict(model,q_prop)"
-              end
-              if type == "nu-svr"
-                prediction = @r.p
-              elsif type == "C-bsvc"
-                #prediction = (@r.p.to_f == 1.0 ? true : false)
-                prediction = @r.p
-              end
-              @r.quit # free R
-            rescue Exception => e
-              LOGGER.debug "#{e.class}: #{e.message}"
-              LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-            end
-          end
-          prediction
-      end
+            # prepare data
+            LOGGER.debug "Preparing R data ..."
+            @r.eval "if (class(y) == 'character') { y = factor(y); suppressPackageStartupMessages(library('class')) }" # For classification
 
-      # Get confidence for regression, with standard deviation of neighbor activity if conf_stdev is set.
-      # @param[Hash] Required keys: :sims, :acts, :neighbors, :conf_stdev
-      # @return[Float] Confidence
-      def self.get_confidence(params)
-        if params[:conf_stdev]
-          sim_median = params[:sims].to_scale.median
-          if sim_median.nil?
-            confidence = nil
-          else
-            standard_deviation = params[:acts].to_scale.standard_deviation_sample
-            confidence = (sim_median*Math.exp(-1*standard_deviation)).abs
-            if confidence.nan?
-              confidence = nil
-            end
+            @r.eval <<-EOR
+              rem = nearZeroVar(prop_matrix)
+              if (length(rem) > 0) {
+                prop_matrix = prop_matrix[,-rem,drop=F]
+                q_prop = q_prop[,-rem,drop=F]
+              }
+              rem = findCorrelation(cor(prop_matrix))
+              if (length(rem) > 0) {
+                prop_matrix = prop_matrix[,-rem,drop=F]
+                q_prop = q_prop[,-rem,drop=F]
+              }
+            EOR
+
+            # model + support vectors
+            LOGGER.debug "Creating R SVM model ..."
+            @r.eval <<-EOR
+              model = train(prop_matrix,y,method="svmradial",tuneLength=8,trControl=trainControl(method="LGOCV",number=10),preProcess=c("center", "scale"))
+              perf = ifelse ( class(y)!='numeric', max(model$results$Accuracy), model$results[which.min(model$results$RMSE),]$Rsquared )
+            EOR
+
+
+            # prediction
+            LOGGER.debug "Predicting ..."
+            @r.eval "p = predict(model,q_prop)"
+            @r.eval "if (class(y)!='numeric') p = as.character(p)"
+            prediction = @r.p
+
+            # censoring
+            prediction = nil if ( @r.perf.nan? || @r.perf < min_train_performance )
+            LOGGER.debug "Performance: #{sprintf("%.2f", @r.perf)}"
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
           end
-        else
-          conf = params[:sims].inject{|sum,x| sum + x }
-          confidence = conf/params[:neighbors].size
+          @r.quit # free R
         end
-        LOGGER.debug "Confidence is: '" + confidence.to_s + "'."
-        return confidence
+        prediction
       end
 
-      # Get X and Y size of a nested Array (Matrix)
-      def self.get_sizes(matrix)
-        begin
-          nr_cases = matrix.size
-          nr_features = matrix[0].size
-        rescue Exception => e
-          LOGGER.debug "#{e.class}: #{e.message}"
-          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-        end
-        #puts "NRC: #{nr_cases}, NRF: #{nr_features}"
-        [ nr_cases, nr_features ]
-      end
+    end
 
-      # Calculate the propositionalization matrix aka instantiation matrix (0/1 entries for features)
-      # Same for the vector describing the query compound
-      # @param[Array] neighbors.
-      # @param[OpenTox::Compound] query compound.
-      # @param[Array] Dataset Features.
-      # @param[Array] Fingerprints of neighbors.
-      # @param[Float] p-values of Features.
-      def self.get_props (params)
-        matrix = Array.new
-        begin 
-          params[:neighbors].each do |n|
-            n = n[:compound]
-            row = []
-            params[:features].each do |f|
-              if ! params[:fingerprints][n].nil? 
-                row << (params[:fingerprints][n].include?(f) ? (params[:p_values][f] * params[:fingerprints][n][f]) : 0.0)
-              else
-                row << 0.0
-              end
-            end
-            matrix << row
-          end
-          row = []
-          params[:features].each do |f|
-            if params[:nr_hits]
-              compound_feature_hits = params[:compound].match_hits([f])
-              row << (compound_feature_hits.size == 0 ? 0.0 : (params[:p_values][f] * compound_feature_hits[f]))
-            else
-              row << (params[:compound].match([f]).size == 0 ? 0.0 : params[:p_values][f])
-            end
-          end
-        rescue Exception => e
-          LOGGER.debug "get_props failed with '" + $! + "'"
-        end
-        [ matrix, row ]
+    module FeatureSelection
+      include Algorithm
+      # Recursive Feature Elimination using caret
+      # @param [Hash] required keys: ds_csv_file, prediction_feature, fds_csv_file (dataset CSV file, prediction feature column name, and feature dataset CSV file), optional: del_missing (delete rows with missing values).
+      # @return [String] feature dataset CSV file composed of selected features.
+      def self.rfe(params)
+        @r=RinRuby.new(false,false)
+        @r.ds_csv_file = params[:ds_csv_file].to_s
+        @r.prediction_feature = params[:prediction_feature].to_s
+        @r.fds_csv_file = params[:fds_csv_file].to_s
+        @r.del_missing = params[:del_missing] == true ? 1 : 0
+        r_result_file = params[:fds_csv_file].sub("rfe_", "rfe_R_")
+        @r.f_fds_r = r_result_file.to_s
+        
+        # need packs 'randomForest', 'RANN'
+        @r.eval <<-EOR
+          set.seed(1)
+          suppressPackageStartupMessages(library('caret'))
+          suppressPackageStartupMessages(library('randomForest'))
+          suppressPackageStartupMessages(library('RANN'))
+          suppressPackageStartupMessages(library('doMC'))
+          registerDoMC()
+          
+          acts = read.csv(ds_csv_file, check.names=F)
+          feats = read.csv(fds_csv_file, check.names=F)
+          ds = merge(acts, feats, by="SMILES") # duplicates features for duplicate SMILES :-)
+          
+          features = ds[,(dim(acts)[2]+1):(dim(ds)[2])]
+          y = ds[,which(names(ds) == prediction_feature)] 
+          
+          # assumes a data matrix 'features' and a vector 'y' of target values
+          row.names(features)=NULL
+          
+          pp = NULL
+          if (del_missing) {
+            # needed if rows should be removed
+            na_ids = apply(features,1,function(x)any(is.na(x)))
+            features = features[!na_ids,]
+            y = y[!na_ids]
+            pp = preProcess(features, method=c("scale", "center"))
+          } else {
+            # Use imputation if NA's random (only then!)
+            pp = preProcess(features, method=c("scale", "center", "knnImpute"))
+          }
+          features = predict(pp, features)
+          
+          # determine subsets
+          subsets = dim(features)[2]*c(0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
+          subsets = c(2,3,4,5,7,10,subsets)
+          subsets = unique(sort(round(subsets))) 
+          subsets = subsets[subsets<=dim(features)[2]]
+          subsets = subsets[subsets>1] 
+          
+          # Recursive feature elimination
+          rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, number=50), sizes=subsets)
+          
+          # read existing dataset and select most useful features
+          csv=feats[,c("SMILES", rfProfile$optVariables)]
+          write.csv(x=csv,file=f_fds_r, row.names=F, quote=F, na='')
+        EOR
+        r_result_file
       end
-
     end
 
     module Substructure
       include Algorithm
       # Substructure matching
-      # @param [OpenTox::Compound] compound Compound
-      # @param [Array] features Array with Smarts strings
+      # @param [Hash] required keys: compound, features
       # @return [Array] Array with matching Smarts
-      def self.match(compound,features)
-        compound.match(features)
+      def self.match(params)
+        params[:compound].match(params[:features])
       end
+
+      # Substructure matching with number of non-unique hits
+      # @param [Hash] required keys: compound, features
+      # @return [Hash] Hash with matching Smarts and number of hits 
+      def self.match_hits(params)
+        params[:compound].match_hits(params[:features])
+      end
+
+      # Substructure matching with number of non-unique hits
+      # @param [Hash] required keys: compound, features, feature_dataset_uri, pc_type
+      # @return [Hash] Hash with matching Smarts and number of hits 
+      def self.lookup(params)
+        params[:compound].lookup(params[:features], params[:feature_dataset_uri],params[:pc_type],params[:subjectid])
+      end  
     end
 
     module Dataset
@@ -709,281 +537,5 @@ module OpenTox
       def features(dataset_uri,compound_uri)
       end
     end
-
-    module Transform
-      include Algorithm
-
-      # The transformer that inverts values.
-      # 1/x is used, after values have been moved >= 1.
-      class Inverter
-        attr_accessor :offset, :values
-
-        # @params[Array] Values to transform.
-        # @params[Float] Offset for restore.
-        def initialize *args
-          case args.size
-          when 1
-            begin
-              values=args[0]
-              raise "Cannot transform, values empty." if @values.size==0
-              @values = values.collect { |v| -1.0 * v }  
-              @offset = 1.0 - @values.minmax[0] 
-              @offset = -1.0 * @offset if @offset>0.0 
-              @values.collect! { |v| v - @offset }   # slide >1
-              @values.collect! { |v| 1 / v }         # invert to [0,1]
-            rescue Exception => e
-              LOGGER.debug "#{e.class}: #{e.message}"
-              LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-            end
-          when 2
-            @offset = args[1].to_f
-            @values = args[0].collect { |v| 1 / v }
-            @values.collect! { |v| v + @offset }
-            @values.collect! { |v| -1.0 * v }
-          end
-        end
-      end
-
-      # The transformer that takes logs.
-      # Log10 is used, after values have been moved > 0.
-      class Log10
-        attr_accessor :offset, :values
-
-        # @params[Array] Values to transform / restore.
-        # @params[Float] Offset for restore.
-        def initialize *args
-          @distance_to_zero = 0.000000001 # 1 / 1 billion
-          case args.size
-          when 1
-            begin
-              values=args[0]
-              raise "Cannot transform, values empty." if values.size==0
-              @offset = values.minmax[0] 
-              @offset = -1.0 * @offset if @offset>0.0 
-              @values = values.collect { |v| v - @offset }   # slide > anchor
-              @values.collect! { |v| v + @distance_to_zero }  #
-              @values.collect! { |v| Math::log10 v } # log10 (can fail)
-            rescue Exception => e
-              LOGGER.debug "#{e.class}: #{e.message}"
-              LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-            end
-          when 2
-            @offset = args[1].to_f
-            @values = args[0].collect { |v| 10**v }
-            @values.collect! { |v| v - @distance_to_zero }
-            @values.collect! { |v| v + @offset }
-          end
-        end
-      end
-
-      # The transformer that does nothing (No OPeration).
-      class NOP
-        attr_accessor :offset, :values
-
-        # @params[Array] Values to transform / restore.
-        # @params[Float] Offset for restore.
-        def initialize *args
-          @offset = 0.0
-          @distance_to_zero = 0.0
-          case args.size
-          when 1
-            @values = args[0]
-          when 2
-            @values = args[0]
-          end
-        end
-      end
-
-
-      # Auto-Scaler for Arrays
-      # Center on mean and divide by standard deviation
-      class AutoScale 
-        attr_accessor :scaled_values, :mean, :stdev
-
-        # @params[Array] Values to transform.
-        def initialize values
-          @scaled_values = values
-          @mean = @scaled_values.to_scale.mean
-          @stdev = @scaled_values.to_scale.standard_deviation_sample
-          @scaled_values = @scaled_values.collect {|vi| vi - @mean }
-          @scaled_values.collect! {|vi| vi / @stdev } unless @stdev == 0.0
-        end
-      end
-
-      # Principal Components Analysis
-      # Statsample Library (http://ruby-statsample.rubyforge.org/) by C. Bustos
-      class PCA
-        attr_accessor :data_matrix, :data_transformed_matrix, :eigenvector_matrix, :eigenvalue_sums, :autoscaler
-
-        # Creates a transformed dataset as GSL::Matrix.
-        # @param [GSL::Matrix] Data matrix.
-        # @param [Float] Compression ratio from [0,1].
-        # @return [GSL::Matrix] Data transformed matrix.
-        def initialize data_matrix, compression=0.05
-          begin
-            @data_matrix = data_matrix
-            @compression = compression.to_f
-            @stdev = Array.new
-            @mean = Array.new
-
-            # Objective Feature Selection
-            raise "Error! PCA needs at least two dimensions." if data_matrix.size2 < 2
-            @data_matrix_selected = nil
-            (0..@data_matrix.size2-1).each { |i|
-              if !Algorithm::zero_variance?(@data_matrix.col(i).to_a)
-                if @data_matrix_selected.nil?
-                  @data_matrix_selected = GSL::Matrix.alloc(@data_matrix.size1, 1) 
-                  @data_matrix_selected.col(0)[0..@data_matrix.size1-1] = @data_matrix.col(i)
-                else
-                  @data_matrix_selected = @data_matrix_selected.horzcat(GSL::Matrix.alloc(@data_matrix.col(i).to_a,@data_matrix.size1, 1))
-                end
-              end             
-            }
-            raise "Error! PCA needs at least two dimensions." if (@data_matrix_selected.nil? || @data_matrix_selected.size2 < 2)
-
-            # Scaling of Axes
-            @data_matrix_scaled = GSL::Matrix.alloc(@data_matrix_selected.size1, @data_matrix_selected.size2)
-            (0..@data_matrix_selected.size2-1).each { |i|
-              @autoscaler = OpenTox::Algorithm::Transform::AutoScale.new(@data_matrix_selected.col(i))
-              @data_matrix_scaled.col(i)[0..@data_matrix.size1-1] = @autoscaler.scaled_values
-              @stdev << @autoscaler.stdev
-              @mean << @autoscaler.mean
-            }
-
-            data_matrix_hash = Hash.new
-            (0..@data_matrix_scaled.size2-1).each { |i|
-              column_view = @data_matrix_scaled.col(i)
-              data_matrix_hash[i] = column_view.to_scale
-            }
-            dataset_hash = data_matrix_hash.to_dataset # see http://goo.gl/7XcW9
-            cor_matrix=Statsample::Bivariate.correlation_matrix(dataset_hash)
-            pca=Statsample::Factor::PCA.new(cor_matrix)
-            pca.eigenvalues.each { |ev| raise "PCA failed!" unless !ev.nan? }
-            @eigenvalue_sums = Array.new
-            (0..dataset_hash.fields.size-1).each { |i|
-              @eigenvalue_sums << pca.eigenvalues[0..i].inject{ |sum, ev| sum + ev }
-            }
-            eigenvectors_selected = Array.new
-            pca.eigenvectors.each_with_index { |ev, i|
-              if (@eigenvalue_sums[i] <= ((1.0-@compression)*dataset_hash.fields.size)) || (eigenvectors_selected.size == 0)
-                eigenvectors_selected << ev.to_a
-              end
-            }
-            @eigenvector_matrix = GSL::Matrix.alloc(eigenvectors_selected.flatten, eigenvectors_selected.size, dataset_hash.fields.size).transpose
-            dataset_matrix = dataset_hash.to_gsl.transpose
-            @data_transformed_matrix = (@eigenvector_matrix.transpose * dataset_matrix).transpose
-          rescue Exception => e
-              LOGGER.debug "#{e.class}: #{e.message}"
-              LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-          end
-        end
-
-        # Restores data in the original feature space (possibly with compression loss).
-        # @return [GSL::Matrix] Data matrix.
-        def restore
-          begin 
-            data_matrix_restored = (@eigenvector_matrix * @data_transformed_matrix.transpose).transpose # reverse pca
-            # reverse scaling
-            (0..data_matrix_restored.size2-1).each { |i|
-              data_matrix_restored.col(i)[0..data_matrix_restored.size1-1] *= @stdev[i] unless @stdev[i] == 0.0
-              data_matrix_restored.col(i)[0..data_matrix_restored.size1-1] += @mean[i]
-            }
-            data_matrix_restored
-          rescue Exception => e
-            LOGGER.debug "#{e.class}: #{e.message}"
-            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-          end
-        end
-
-      end
-
-    end
-    
-    # Gauss kernel
-    # @return [Float] 
-    def self.gauss(x, sigma = 0.3) 
-      d = 1.0 - x.to_f
-      Math.exp(-(d*d)/(2*sigma*sigma))
-    end
-
-    # For symbolic features
-    # @param [Array] Array to test, must indicate non-occurrence with 0.
-    # @return [Boolean] Whether the feature is singular or non-occurring or present everywhere.
-    def self.isnull_or_singular?(array)
-      nr_zeroes = array.count(0)
-      return (nr_zeroes == array.size) ||    # remove non-occurring feature
-             (nr_zeroes == array.size-1) ||  # remove singular feature
-             (nr_zeroes == 0)                # also remove feature present everywhere
-    end
-
-    # Numeric value test
-    # @param[Object] value
-    # @return [Boolean] Whether value is a number
-    def self.numeric?(value)
-      true if Float(value) rescue false
-    end
-
-    # For symbolic features
-    # @param [Array] Array to test, must indicate non-occurrence with 0.
-    # @return [Boolean] Whether the feature has variance zero.
-    def self.zero_variance?(array)
-      return (array.to_scale.variance_population == 0.0)
-    end
-    
-    # Sum of an array for Arrays.
-    # @param [Array] Array with values
-    # @return [Integer] Sum of size of values
-    def self.sum_size(array)
-      sum=0
-      array.each { |e| sum += e.size }
-      return sum
-    end
-
-    # Minimum Frequency
-    # @param [Integer] per-mil value
-    # return [Integer] min-frequency
-    def self.min_frequency(training_dataset,per_mil)
-      minfreq = per_mil * training_dataset.compounds.size.to_f / 1000.0 # AM sugg. 8-10 per mil for BBRC, 50 per mil for LAST
-      minfreq = 2 unless minfreq > 2
-      Integer (minfreq)
-    end
-
-    # Effect calculation for classification
-    # @param [Array] Array of occurrences per class in the form of Enumerables.
-    # @param [Array] Array of database instance counts per class.
-    def self.effect(occurrences, db_instances)
-      max=0
-      max_value=0
-      nr_o = self.sum_size(occurrences)
-      nr_db = db_instances.to_scale.sum
-
-      occurrences.each_with_index { |o,i| # fminer outputs occurrences sorted reverse by activity.
-        actual = o.size.to_f/nr_o
-        expected = db_instances[i].to_f/nr_db
-        if actual > expected
-          if ((actual - expected) / actual) > max_value
-           max_value = (actual - expected) / actual # 'Schleppzeiger'
-            max = i
-          end
-        end
-      }
-      max
-    end
-    
-    # Returns Support value of an fingerprint
-    # @param [Hash] params Keys: `:compound_features_hits, :weights, :training_compound_features_hits, :features, :nr_hits:, :mode` are required
-    # return [Numeric] Support value 
-    def self.p_sum_support(params)
-      p_sum = 0.0
-        params[:features].each{|f|
-        compound_hits = params[:compound_features_hits][f]
-        neighbor_hits = params[:training_compound_features_hits][f] 
-        p_sum += eval("(Algorithm.gauss(params[:weights][f]) * ([compound_hits, neighbor_hits].compact.#{params[:mode]}))")
-      }
-      p_sum 
-    end
-                
   end
 end
-
-

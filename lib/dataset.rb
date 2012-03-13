@@ -288,7 +288,7 @@ module OpenTox
 
     # Insert a statement (compound_uri,feature_uri,value)
     # @example Insert a statement (compound_uri,feature_uri,value)
-    #   dataset.add "http://webservices.in-silico.ch/compound/InChI=1S/C6Cl6/c7-1-2(8)4(10)6(12)5(11)3(1)9", "http://webservices.in-silico.ch/dataset/1/feature/hamster_carcinogenicity", true
+    #   dataset.add "http://webservices.in-silico.ch/compound/InChI=1S/C6Cl6/c7-1-2(8)4(10)6(12)5(11)3(1)9", "http://webservices.in-silico.ch/dataset/1/feature/hamster_carcinogenicity", 1
     # @param [String] compound Compound URI
     # @param [String] feature Compound URI
     # @param [Boolean,Float] value Feature value
@@ -313,6 +313,16 @@ module OpenTox
     # @param [Hash] metadata Hash with feature metadata
     def add_feature(feature,metadata={})
       @features[feature] = metadata
+    end
+
+    # Complete feature values by adding zeroes
+    def complete_data_entries
+      all_features = @features.keys
+      @data_entries.each { |c, e|
+        (Set.new(all_features.collect)).subtract(Set.new e.keys).to_a.each { |f|
+          self.add(c,f,0)
+        }
+      }
     end
 
     # Add/modify metadata for a feature
@@ -363,7 +373,45 @@ module OpenTox
       dataset.save(subjectid)
       dataset
     end
-
+    
+    # merges two dataset into a new dataset (by default uses all compounds and features)
+    # precondition: both datasets are fully loaded
+    # @param [OpenTox::Dataset] dataset1 to merge
+    # @param [OpenTox::Dataset] dataset2 to merge
+    # @param [Hash] metadata
+    # @param [optional,String] subjectid
+    # @param [optional,Array] features1, if specified only this features of dataset1 are used
+    # @param [optional,Array] features2, if specified only this features of dataset2 are used
+    # @param [optional,Array] compounds1, if specified only this compounds of dataset1 are used
+    # @param [optional,Array] compounds2, if specified only this compounds of dataset2 are used
+    # example: if you want no features from dataset2, give empty array as features2
+    def self.merge( dataset1, dataset2, metadata, subjectid=nil, features1=nil, features2=nil, compounds1=nil, compounds2=nil )
+      features1 = dataset1.features.keys unless features1
+      features2 = dataset2.features.keys unless features2
+      compounds1 = dataset1.compounds unless compounds1
+      compounds2 = dataset2.compounds unless compounds2
+      data_combined = OpenTox::Dataset.create(CONFIG[:services]["opentox-dataset"],subjectid)
+      LOGGER.debug("merging datasets #{dataset1.uri} and #{dataset2.uri} to #{data_combined.uri}")
+      [[dataset1, features1, compounds1], [dataset2, features2, compounds2]].each do |dataset,features,compounds|
+        compounds.each{|c| data_combined.add_compound(c)}
+        features.each do |f|
+          m = dataset.features[f]
+          m[OT.hasSource] = dataset.uri unless m[OT.hasSource]
+          data_combined.add_feature(f,m)
+          compounds.each do |c|
+            dataset.data_entries[c][f].each do |v|
+              data_combined.add(c,f,v)
+            end if dataset.data_entries[c] and dataset.data_entries[c][f]
+          end
+        end
+      end
+      metadata = {} unless metadata
+      metadata[OT.hasSource] = "Merge from #{dataset1.uri} and #{dataset2.uri}" unless metadata[OT.hasSource]
+      data_combined.add_metadata(metadata)
+      data_combined.save(subjectid)
+      data_combined
+    end
+    
     # Save dataset at the dataset service 
     # - creates a new dataset if uri is not set
     # - overwrites dataset if uri exists

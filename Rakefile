@@ -16,7 +16,7 @@ begin
     gem.add_dependency "sinatra-respond_to", "=0.7.0"
     gem.add_dependency "sinatra-static-assets", "=0.5.0"
     gem.add_dependency "rest-client", "=1.6.1"
-    gem.add_dependency "rack", "=1.3.1"
+    gem.add_dependency "rack", "=1.3.5"
     gem.add_dependency "rack-contrib", "=1.1.0"
     gem.add_dependency "rack-flash", "=0.1.1"
     gem.add_dependency "nokogiri", "=1.4.4"
@@ -42,10 +42,9 @@ begin
     gem.add_dependency "dm-migrations",  "=1.1.0"
     gem.add_dependency "dm-validations",  "=1.1.0"
     gem.add_dependency "dm-sqlite-adapter", "=1.1.0"
-    gem.add_dependency "ruby-plot", "=0.5.0"
+    gem.add_dependency "ruby-plot", "=0.6.0"
     gem.add_dependency "gsl", "=1.14.7"
     gem.add_dependency "statsample", "=1.1.0"
-    #gem.add_dependency "statsample-optimization", "=2.1.0"
 
     gem.add_development_dependency 'jeweler'
     gem.files =  FileList["[A-Z]*", "{bin,generators,lib,test}/**/*", 'lib/jeweler/templates/.gitignore']

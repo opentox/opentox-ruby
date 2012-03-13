@@ -24,7 +24,11 @@ end
 
 # database
 #`redis-server /opt/redis/redis.conf` unless File.exists? "/var/run/redis.pid" # removed by AM
-Ohm.connect :thread_safe => true
+ohm_port=6379
+if !CONFIG[:ohm_port].nil? 
+  ohm_port=CONFIG[:ohm_port].to_i
+end
+Ohm.connect(:thread_safe => true, :port => ohm_port)
 
 # load mail settings for error messages
 #load File.join config_dir,"mail.rb" if File.exists?(File.join config_dir,"mail.rb")
@@ -87,4 +91,5 @@ DC =  OwlNamespace.new 'http://purl.org/dc/elements/1.1/'
 OT =  OwlNamespace.new 'http://www.opentox.org/api/1.1#'
 OTA =  OwlNamespace.new 'http://www.opentox.org/algorithmTypes.owl#'
 XSD = OwlNamespace.new 'http://www.w3.org/2001/XMLSchema#'
+#BO = OwlNamespace.new 'http://www.blueobelisk.org/ontologies/chemoinformatics-algorithms/#'
 
