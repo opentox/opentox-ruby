@@ -41,6 +41,7 @@ module OpenTox
         xml = get_xml(uri)
         ret = false
         ret = Authorization.create_policy(xml, @subjectid)
+        LOGGER.warn "Create policy on openSSO failed for URI: #{uri} subjectid: #{@subjectid}. Will try again." if !ret
         ret = Authorization.create_policy(xml, @subjectid) if !ret
         LOGGER.debug "Policy send with subjectid: #{@subjectid}"
         LOGGER.warn "Not created Policy is: #{xml}" if !ret
