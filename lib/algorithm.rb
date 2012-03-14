@@ -381,10 +381,10 @@ module OpenTox
         else
           #LOGGER.debug gram_matrix.to_yaml
           @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
-          @r.eval "set.seed(1)"
           @r.eval "suppressPackageStartupMessages(library('caret'))" # requires R packages "caret" and "kernlab"
           @r.eval "suppressPackageStartupMessages(library('doMC'))" # requires R packages "multicore"
           @r.eval "registerDoMC()" # switch on parallel processing
+          @r.eval "set.seed(1)"
           begin
 
             # set data
@@ -417,7 +417,7 @@ module OpenTox
 
             # model + support vectors
             LOGGER.debug "Creating R SVM model ..."
-            @r.eval <<-EOR
+            train_success = @r.eval <<-EOR
               model = train(prop_matrix,y,method="svmradial",tuneLength=8,trControl=trainControl(method="LGOCV",number=10),preProcess=c("center", "scale"))
               perf = ifelse ( class(y)!='numeric', max(model$results$Accuracy), model$results[which.min(model$results$RMSE),]$Rsquared )
             EOR
@@ -431,6 +431,7 @@ module OpenTox
 
             # censoring
             prediction = nil if ( @r.perf.nan? || @r.perf < min_train_performance )
+            prediction = nil unless train_success
             LOGGER.debug "Performance: #{sprintf("%.2f", @r.perf)}"
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
@@ -459,12 +460,12 @@ module OpenTox
         
         # need packs 'randomForest', 'RANN'
         @r.eval <<-EOR
-          set.seed(1)
           suppressPackageStartupMessages(library('caret'))
           suppressPackageStartupMessages(library('randomForest'))
           suppressPackageStartupMessages(library('RANN'))
           suppressPackageStartupMessages(library('doMC'))
           registerDoMC()
+          set.seed(1)
           
           acts = read.csv(ds_csv_file, check.names=F)
           feats = read.csv(fds_csv_file, check.names=F)

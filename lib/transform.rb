@@ -396,9 +396,7 @@ module OpenTox
             @q_prop = gsl_q_prop_orig.row(0).to_a
           end
 
-         if (@n_prop && @q_prop)
-            LOGGER.debug "F: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}" 
-          end
+          LOGGER.debug "F: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}"  if (@n_prop && @n_prop[0] && @q_prop)
           LOGGER.debug "Sims: #{@sims.size}, Acts: #{@acts.size}" if (@sims && @acts)
 
           @sims = [ gram_matrix, @sims ] 
