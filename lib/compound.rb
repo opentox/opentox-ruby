@@ -3,6 +3,7 @@
 
 module OpenTox
 
+  require "rexml/document"
   # Ruby wrapper for OpenTox Compound Webservices (http://opentox.org/dev/apis/api-1.2/structure).
 	class Compound 
 
@@ -130,6 +131,47 @@ module OpenTox
         "not available"
       end
 		end
+    
+    
+    # Get all known compound names sorted by classification. Relies on an external service for name lookups.
+    # @example
+    #   names = compound.to_names_hash
+    # @return [Hash] Classification => Name Array
+		def to_names_hash
+      begin
+        xml = RestClientWrapper.get("#{@@cactus_uri}#{@inchi}/names/xml")
+        xmldoc = REXML::Document.new(xml)
+        data = {}
+        
+        xmldoc.root.elements[1].elements.each{|e|
+          if data.has_key?(e.attribute("classification").value) == false
+             data[e.attribute("classification").value] = [e.text]
+          else
+             data[e.attribute("classification").value].push(e.text)
+          end
+        }
+        data
+      rescue
+        "not available"
+      end
+		end
+
+    # Get all known compound names sorted by classification. Relies on an external service for name lookups.
+    # @example
+    #   names = compound.to_names_hash
+    # @return [Hash] Classification => Name Array
+    def to_ambit_names_hash
+      begin
+        ds = OpenTox::Dataset.new
+        ds.save
+        ds.load_rdfxml(RestClientWrapper.get("http://apps.ideaconsult.net:8080/ambit2/query/compound/search/names?type=smiles&property=&search=#{@inchi}"))
+        ds.save
+        ds.uri
+      rescue
+        "not available"
+      end
+    end
+
 
 		# Match a smarts string
     # @example
