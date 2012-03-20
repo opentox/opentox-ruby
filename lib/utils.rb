@@ -60,7 +60,7 @@ module OpenTox
         ds = OpenTox::Dataset.new
         ds.save
         parser.dataset = ds
-        if compounds.size == 1
+        if compounds.size < 4 
           ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"),false,true,false) # all_numeric = true, all features should be treated as numeric
         else
           ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"),false,false,true) # del_nominal = true, which removes nominal features

@@ -381,10 +381,10 @@ module OpenTox
         else
           #LOGGER.debug gram_matrix.to_yaml
           @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
-          @r.eval "set.seed(1)"
           @r.eval "suppressPackageStartupMessages(library('caret'))" # requires R packages "caret" and "kernlab"
           @r.eval "suppressPackageStartupMessages(library('doMC'))" # requires R packages "multicore"
           @r.eval "registerDoMC()" # switch on parallel processing
+          @r.eval "set.seed(1)"
           begin
 
             # set data
@@ -417,7 +417,7 @@ module OpenTox
 
             # model + support vectors
             LOGGER.debug "Creating R SVM model ..."
-            @r.eval <<-EOR
+            train_success = @r.eval <<-EOR
               model = train(prop_matrix,y,method="svmradial",tuneLength=8,trControl=trainControl(method="LGOCV",number=10),preProcess=c("center", "scale"))
               perf = ifelse ( class(y)!='numeric', max(model$results$Accuracy), model$results[which.min(model$results$RMSE),]$Rsquared )
             EOR
@@ -431,6 +431,7 @@ module OpenTox
 
             # censoring
             prediction = nil if ( @r.perf.nan? || @r.perf < min_train_performance )
+            prediction = nil unless train_success
             LOGGER.debug "Performance: #{sprintf("%.2f", @r.perf)}"
           rescue Exception => e
             LOGGER.debug "#{e.class}: #{e.message}"
@@ -459,12 +460,12 @@ module OpenTox
         
         # need packs 'randomForest', 'RANN'
         @r.eval <<-EOR
-          set.seed(1)
           suppressPackageStartupMessages(library('caret'))
           suppressPackageStartupMessages(library('randomForest'))
           suppressPackageStartupMessages(library('RANN'))
           suppressPackageStartupMessages(library('doMC'))
           registerDoMC()
+          set.seed(1)
           
           acts = read.csv(ds_csv_file, check.names=F)
           feats = read.csv(fds_csv_file, check.names=F)
@@ -506,15 +507,16 @@ module OpenTox
           features = features[,!names(features) %in% nan_col]
          
           # determine subsets
-          subsets = dim(features)[2]*c(0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
-          subsets = c(2,3,4,5,7,10,subsets)
+          subsets = dim(features)[2]*c(0.3, 0.32, 0.34, 0.36, 0.38, 0.4, 0.42, 0.44, 0.46, 0.48, 0.5, 0.52, 0.54, 0.56, 0.58, 0.6, 0.62, 0.64, 0.66, 0.68, 0.7)
+          #subsets = dim(features)[2]*c(0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
+          #subsets = c(2,3,4,5,7,10,subsets)
           #subsets = c(2,3,4,5,7,10,13,16,19,22,25,28,30)
           subsets = unique(sort(round(subsets))) 
           subsets = subsets[subsets<=dim(features)[2]]
           subsets = subsets[subsets>1] 
          
           # Recursive feature elimination
-          rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, method='cv'), sizes=subsets)
+          rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, number=150), sizes=subsets)
           optVar = rfProfile$optVariables
           if (rfProfile$bestSubset == dim(features)[2]) {
             newRMSE = rfProfile$results$RMSE
