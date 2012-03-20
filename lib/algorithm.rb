@@ -517,16 +517,9 @@ module OpenTox
          
           # Recursive feature elimination
           rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, number=150), sizes=subsets)
-          optVar = rfProfile$optVariables
-          if (rfProfile$bestSubset == dim(features)[2]) {
-            newRMSE = rfProfile$results$RMSE
-            newRMSE[which.min(rfProfile$results$RMSE)] = Inf
-            newOptSize = rfProfile$results[which.min(newRMSE),]$Variables
-            optVar = rfProfile$optVariables[1:newOptSize]
-          }
           
           # read existing dataset and select most useful features
-          csv=feats[,c("SMILES", optVar)]
+          csv=feats[,c("SMILES", rfProfile$optVariables)]
           write.csv(x=csv,file=f_fds_r, row.names=F, quote=F, na='')
         EOR
         r_result_file

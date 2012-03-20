@@ -353,11 +353,11 @@ module OpenTox
       # @param [Boolean] all_numeric Whether all features should be treated as numeric
       # @param [Boolean] del_nominal All nominal features will be removed
       # @return [OpenTox::Dataset] Dataset object with CSV data
-      def load_csv(csv, drop_missing=false, all_numeric=false, del_nominal=false)
-        
+      def load_csv(csv, drop_missing=false, all_numeric=false)
         row = 0
         input = csv.split("\n")
         headers = split_row(input.shift)
+        add_features(headers)
         value_maps = Array.new
         regression_features=Array.new
 
@@ -372,29 +372,6 @@ module OpenTox
             end
           }
         }
-        
-        if del_nominal
-          # Collect all nominal features 
-          del_features = Array.new
-          regression_features.each_with_index {|value, i|
-            if value == false
-              del_features << i
-            end
-          }
-          del_features = del_features.reverse
-          # Delete nominal entries in each row
-          del_features.each{|f|
-            regression_features.delete_at(f)
-            headers.delete_at(f+1)
-            input.map!{|row|
-              new_row = split_row(row)
-              new_row.delete_at(f+1)
-              row = new_row.join(",")
-            }
-          }
-        end
-        
-        add_features(headers)
 
         input.each_with_index { |row, i| 
           drop=false
