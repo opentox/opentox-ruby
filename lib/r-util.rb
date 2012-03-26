@@ -8,6 +8,18 @@ PACKAGE_DIR = package_dir
 
 require "tempfile"
 
+class Array
+  
+  def check_uniq
+    hash = {}
+    self.each do |x|
+      raise "duplicate #{x}" if hash[x]
+      hash[x] = true
+    end
+  end
+  
+end
+
 module OpenTox
   
   class RUtil
@@ -75,12 +87,10 @@ module OpenTox
     end
 
     # embedds feature values of two datasets into 2D and plots it
-    # fast_plot = true -> PCA, fast_plot = false -> SMACOF (iterative optimisation method) 
     #        
     def feature_value_plot(files, dataset_uri1, dataset_uri2, dataset_name1, dataset_name2,
-        features=nil, fast_plot=true, subjectid=nil, waiting_task=nil)
+        features=nil, subjectid=nil, waiting_task=nil)
         
-      raise "r-package smacof missing" if fast_plot==false and !package_installed?("smacof")
       LOGGER.debug("r-util> create feature value plot")
       d1 = OpenTox::Dataset.find(dataset_uri1,subjectid)
       d2 = OpenTox::Dataset.find(dataset_uri2,subjectid)
@@ -102,17 +112,13 @@ module OpenTox
       @r.eval "split <- c(rep(0,nrow(#{df1})),rep(1,nrow(#{df2})))"
       @r.names = [dataset_name1, dataset_name2]
       LOGGER.debug("r-util> - convert data to 2d")
-      @r.eval "df.2d <- plot_pre_process(df, method='#{(fast_plot ? "pca" : "smacof")}')"
+      #@r.eval "save.image(\"/tmp/image.R\")"
+      @r.eval "df.2d <- plot_pre_process(df, method='sammon')"
       waiting_task.progress(75) if waiting_task
       
-      if fast_plot
-        info = "main='PCA-Embedding of #{features.size} features',xlab='PC1',ylab='PC2'"
-      else
-        info = "main='SMACOF-Embedding of #{features.size} features',xlab='x',ylab='y'"
-      end
       LOGGER.debug("r-util> - plot data")
       plot_to_files(files) do |file|
-        @r.eval "plot_split( df.2d, split, names, #{info})"
+        @r.eval "plot_split( df.2d, split, names, main='Sammon embedding of #{features.size} features',xlab='x',ylab='y')"
       end
     end
     
@@ -174,6 +180,9 @@ module OpenTox
     # all features are taken into account unless <split_features> is given
     def stratified_split( dataset, missing_values="NA", pct=0.3, subjectid=nil, seed=42, split_features=nil )
       raise "not a loaded ot-dataset" unless dataset.is_a?(OpenTox::Dataset) and dataset.compounds.size>0 and dataset.features.size>0
+      raise "missing_values=#{missing_values}" unless missing_values.is_a?(String) or missing_values==0
+      raise "pct=#{pct}" unless pct.is_a?(Numeric)
+      raise "subjectid=#{subjectid}" unless subjectid==nil or subjectid.is_a?(String)          
       LOGGER.debug("r-util> apply stratified split to #{dataset.uri}")
       
       df = dataset_to_dataframe( dataset, missing_values, subjectid, split_features )
@@ -212,9 +221,13 @@ module OpenTox
         features = dataset.features.keys.sort
       end
       compounds = []
+      compound_names = []
       dataset.compounds.each do |c|
+        count = 0
         num_compounds[c].times do |i|
           compounds << c
+          compound_names << "#{c}$#{count}"
+          count+=1
         end
       end
 
@@ -238,7 +251,7 @@ module OpenTox
         end
       end  
       df_name = "df_#{dataset.uri.split("/")[-1].split("?")[0]}"
-      assign_dataframe(df_name,d_values,compounds,features)
+      assign_dataframe(df_name,d_values,compound_names,features)
       
       # set dataframe column types accordingly
       f_count = 1 #R starts at 1
@@ -271,7 +284,8 @@ module OpenTox
     private
     def dataframe_to_dataset_indices( df, subjectid=nil, compound_indices=nil )
       raise unless @@feats[df].size>0
-      values, compounds, features = pull_dataframe(df)
+      values, compound_names, features = pull_dataframe(df)
+      compounds = compound_names.collect{|c| c.split("$")[0]}
       features.each{|f| raise unless @@feats[df][f]}
       dataset = OpenTox::Dataset.create(CONFIG[:services]["opentox-dataset"],subjectid)
       LOGGER.debug "r-util> convert dataframe to dataset #{dataset.uri}"
@@ -323,6 +337,8 @@ module OpenTox
     end
     
     def assign_dataframe(df,input,rownames,colnames)
+      rownames.check_uniq
+      colnames.check_uniq
       tmp = File.join(Dir.tmpdir,Time.new.to_f.to_s+"_"+rand(10000).to_s+".csv")
       file = File.new(tmp, 'w')
       input.each{|i| file.puts(i.collect{|e| "\"#{e}\""}.join("#")+"\n")}  
