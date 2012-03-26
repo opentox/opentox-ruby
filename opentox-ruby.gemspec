@@ -4,14 +4,14 @@
 # -*- encoding: utf-8 -*-
 
 Gem::Specification.new do |s|
-  s.name = %q{opentox-ruby}
+  s.name = "opentox-ruby"
   s.version = "3.1.0"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Christoph Helma, Martin Guetlein, Andreas Maunz, Micha Rautenberg, David Vorgrimmler"]
-  s.date = %q{2012-03-23}
-  s.description = %q{Ruby wrapper for the OpenTox REST API (http://www.opentox.org)}
-  s.email = %q{helma@in-silico.ch}
+  s.date = "2012-03-26"
+  s.description = "Ruby wrapper for the OpenTox REST API (http://www.opentox.org)"
+  s.email = "helma@in-silico.ch"
   s.extra_rdoc_files = [
     "ChangeLog",
     "LICENSE",
@@ -53,10 +53,10 @@ Gem::Specification.new do |s|
     "lib/utils.rb",
     "lib/validation.rb"
   ]
-  s.homepage = %q{http://github.com/opentox/opentox-ruby}
+  s.homepage = "http://github.com/opentox/opentox-ruby"
   s.require_paths = ["lib"]
-  s.rubygems_version = %q{1.5.3}
-  s.summary = %q{Ruby wrapper for the OpenTox REST API}
+  s.rubygems_version = "1.8.18"
+  s.summary = "Ruby wrapper for the OpenTox REST API"
 
   if s.respond_to? :specification_version then
     s.specification_version = 3
