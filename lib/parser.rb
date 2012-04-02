@@ -480,13 +480,14 @@ module OpenTox
             case type
             when OT.NumericFeature
               val = value.to_f
+              val = nil if val.infinite?
             when OT.NominalFeature
               val = value.to_s
             end
 
             feature_idx += 1
   
-            if val != nil
+            if val != nil 
               @dataset.add(compound.uri, feature, val)
               if type != OT.NumericFeature
                 @dataset.features[feature][OT.acceptValue] = [] unless @dataset.features[feature][OT.acceptValue]

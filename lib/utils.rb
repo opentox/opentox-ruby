@@ -72,7 +72,7 @@ module OpenTox
     
 
     # Calculates PC descriptors via JOELib2.
-    # @param[Hash] Required keys: :compounds, :rjb
+    # @param[Hash] required: :compounds, :rjb, optional: :descriptor
     # @return[String] dataset uri
     def self.get_jl_descriptors(params)
 
@@ -82,66 +82,69 @@ module OpenTox
 
       # Load keys, enter CSV headers
       begin
-        keysfile = File.join(ENV['HOME'], ".opentox", "config", "jl_keys.yaml")
+        keysfile = File.join(ENV['HOME'], ".opentox", "config", "pc_descriptors.yaml")
         csvfile = Tempfile.open(['jl_descriptors-csv-','.sdf'])
         jl_keys = YAML::load_file(keysfile)
-        jl_colnames = jl_keys.collect{ |k| 
-          k.split(".").last
-        }
-        csvfile.puts((["SMILES"] + jl_colnames).join(","))
-
-        # remember inchis
-        inchis = params[:compounds].collect { |c_uri| 
-          cmpd = OpenTox::Compound.new(c_uri)
-          URI.encode_www_form_component(cmpd.to_inchi)
+        jl_colnames = jl_keys.collect{ |id, info| 
+          id if info[:lib] == "joelib" && (!params[:descriptor] || id == params[:descriptor])
         }
 
-        # Process compounds
-        params[:compounds].each_with_index { |c_uri, c_idx| 
-          cmpd = OpenTox::Compound.new(c_uri)
-          inchi = cmpd.to_inchi
-          sdf_data = cmpd.to_sdf
+        if jl_colnames
+          csvfile.puts((["SMILES"] + jl_colnames).join(","))
 
-          infile = Tempfile.open(['jl_descriptors-in-','.sdf'])
-          outfile_path = infile.path.gsub(/jl_descriptors-in/,"jl_descriptors-out")
+          # remember inchis
+          inchis = params[:compounds].collect { |c_uri| 
+            cmpd = OpenTox::Compound.new(c_uri)
+            URI.encode_www_form_component(cmpd.to_inchi)
+          }
 
-          begin
-            infile.puts sdf_data
-            infile.flush
-            s.new(infile.path, outfile_path)
-                   
-            row = [inchis[c_idx]]
-            jl_keys.each_with_index do |k,i| # Fill row
-              re = Regexp.new(k)
-              open(outfile_path) do |f|
-                f.each do |line|
-                  if @prev =~ re
-                    entry = line.chomp
-                    val = nil
-                    if OpenTox::Algorithm.numeric?(entry)
-                      val = Float(entry)
-                      val = nil if val.nan?
-                      val = nil if val.infinite?
+          # Process compounds
+          params[:compounds].each_with_index { |c_uri, c_idx| 
+            cmpd = OpenTox::Compound.new(c_uri)
+            inchi = cmpd.to_inchi
+            sdf_data = cmpd.to_sdf
+
+            infile = Tempfile.open(['jl_descriptors-in-','.sdf'])
+            outfile_path = infile.path.gsub(/jl_descriptors-in/,"jl_descriptors-out")
+
+            begin
+              infile.puts sdf_data
+              infile.flush
+              s.new(infile.path, outfile_path)
+                     
+              row = [inchis[c_idx]]
+              jl_colnames.each_with_index do |k,i| # Fill row
+                re = Regexp.new(k)
+                open(outfile_path) do |f|
+                  f.each do |line|
+                    if @prev =~ re
+                      entry = line.chomp
+                      val = nil
+                      if OpenTox::Algorithm.numeric?(entry)
+                        val = Float(entry)
+                        val = nil if val.nan?
+                        val = nil if val.infinite?
+                      end
+                      row << val
                     end
-                    row << val
+                    @prev = line
                   end
-                  @prev = line
                 end
               end
-            end
-            csvfile.puts(row.join(","))
-            csvfile.flush
+              csvfile.puts(row.join(","))
+              csvfile.flush
 
-          rescue Exception => e
-            LOGGER.debug "#{e.class}: #{e.message}"
-            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-          ensure
-            File.delete(infile.path.gsub(/\.sdf/,".numeric.sdf"))
-            File.delete(outfile_path)
-            infile.close!
-          end
-        }
-        master = CSV::parse(File.open(csvfile.path, "rb").read)
+            rescue Exception => e
+              LOGGER.debug "#{e.class}: #{e.message}"
+              LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+            ensure
+              File.delete(infile.path.gsub(/\.sdf/,".numeric.sdf"))
+              File.delete(outfile_path)
+              infile.close!
+            end
+          }
+          master = CSV::parse(File.open(csvfile.path, "rb").read)
+        end
 
       rescue Exception => e
         LOGGER.debug "#{e.class}: #{e.message}"
@@ -154,8 +157,8 @@ module OpenTox
     end
 
 
-    # Calcul:compoundsates PC descriptors via Ambit -- DO NOT OVERLOAD Ambit.
-    # @param[Hash] Required keys: :compounds, :pc_type
+    # Calculates PC descriptors via Ambit -- DO NOT OVERLOAD Ambit.
+    # @param[Hash] required: :compounds, :pc_type, optional: :descriptor
     # @return[Array] Ambit result uri, piecewise (1st: base, 2nd: SMILES, 3rd+: features
     def self.get_ambit_descriptors(params)
 
@@ -163,12 +166,13 @@ module OpenTox
 
         ambit_ds_service_uri = "http://apps.ideaconsult.net:8080/ambit2/dataset/"
         ambit_mopac_model_uri = "http://apps.ideaconsult.net:8080/ambit2/model/69632"
-        descs = YAML::load_file( File.join(ENV['HOME'], ".opentox", "config", "ambit_descriptors.yaml") )
+        ambit_descriptor_algorithm_uri = "http://apps.ideaconsult.net:8080/ambit2/algorithm/org.openscience.cdk.qsar.descriptors.molecular."
+        descs = YAML::load_file( File.join(ENV['HOME'], ".opentox", "config", "pc_descriptors.yaml") )
         descs_uris = []
         types = params[:pc_type].split(",")
-        descs.each { |uri, cat_name| 
-          if types.include? cat_name[:category]
-            descs_uris << "#{cat_name[:category]}:::#{uri}"
+        descs.each { |id, info| 
+          if types.include? info[:category]
+            descs_uris << "#{info[:category]}:::#{ambit_descriptor_algorithm_uri+id}" if info[:lib] == "cdk" && (!params[:descriptor] || id == params[:descriptor])
           end
         }
         if descs_uris.size == 0
@@ -203,9 +207,7 @@ module OpenTox
         end
         ambit_smiles_uri = OpenTox::RestClientWrapper.get(ambit_ds_uri + "/features", {:accept=> "text/uri-list"} ).chomp
 
-        # -C-a-l-c-u-l-a-t-e- -3-D- -f-o-r- -C-P-S-A-
         # Always calculate 3D! See http://goo.gl/Tk81j
-        #if types.include? "cpsa"
         ambit_ds_mopac_uri = OpenTox::RestClientWrapper.post(ambit_mopac_model_uri, {:dataset_uri => ambit_ds_uri}, {:accept => "text/uri-list"} ) 
         LOGGER.debug "MOPAC dataset: #{ambit_ds_mopac_uri }"
         #end
