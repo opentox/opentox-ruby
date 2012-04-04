@@ -19,7 +19,11 @@ module OpenTox
 
       ds = OpenTox::Dataset.find(params[:dataset_uri])
       compounds = ds.compounds.collect
-
+      task_weights = {"joelib"=> 10, "openbabel"=> 1, "cdk"=> 89 }
+      task_weights.keys.each { |lib| task_weights.delete(lib) if (params[:lib] && (!params[:lib].split(",").include?(lib)))}
+      task_sum = Float task_weights.values.sum
+      task_weights.keys.each { |lib| task_weights[lib] /= task_sum }
+      
       jl_master=nil
       cdk_master=nil
       ob_master=nil
@@ -28,23 +32,23 @@ module OpenTox
       # # # openbabel (via ruby bindings)
       if !params[:lib] || params[:lib].split(",").include?("openbabel")
         ob_master, ob_ids, ob_names = get_ob_descriptors( { :compounds => compounds, :pc_type => params[:pc_type], :descriptor => params[:descriptor] } ) 
+        params[:task].progress(task_weights["openbabel"]*100.floor) if params[:task]
       end
 
 
       # # # joelib (via rjb)
-      #step= (1.0/types.size * 100).floor
       if !params[:lib] || params[:lib].split(",").include?("joelib")
         jl_master, jl_ids, jl_names = get_jl_descriptors( { :compounds => compounds, :rjb => params[:rjb], :pc_type => params[:pc_type], :descriptor => params[:descriptor] } ) 
+        params[:task].progress(task_weights["joelib"]*100.floor) if params[:task]
       end
-      #params[:task].progress(step) if params[:task]
 
 
       # # # cdk (via REST)
       if !params[:lib] || params[:lib].split(",").include?("cdk")
-        #ambit_result_uri, smiles_to_inchi = get_cdk_descriptors( { :compounds => compounds, :pc_type => params[:pc_type], :task => params[:task], :step => step, :descriptor => params[:descriptor] } )
-        ambit_result_uri, smiles_to_inchi, cdk_ids, cdk_names = get_cdk_descriptors( { :compounds => compounds, :pc_type => params[:pc_type], :task => params[:task], :descriptor => params[:descriptor] } )
+        ambit_result_uri, smiles_to_inchi, cdk_ids, cdk_names = get_cdk_descriptors( { :compounds => compounds, :pc_type => params[:pc_type], :task => params[:task], :step => task_weights["cdk"], :descriptor => params[:descriptor] } )
         #LOGGER.debug "Ambit result uri for #{params.inspect}: '#{ambit_result_uri.to_yaml}'"
         cdk_master, cdk_ids, ambit_ids, cdk_names = load_ds_csv(ambit_result_uri, smiles_to_inchi, cdk_ids, cdk_names)
+        params[:task].progress(task_weights["cdk"]*100.floor) if params[:task]
       end
 
       # # # fuse CSVs ("master" structures)
@@ -283,13 +287,18 @@ module OpenTox
     end
 
     # Calculate CDK physico-chemical descriptors via Ambit -- DO NOT OVERLOAD Ambit.
-    # @param[Hash] required: :compounds, :pc_type, :task, optional: :descriptor
+    # @param[Hash] required: :compounds, :pc_type, :task, :step optional: :descriptor
     # @return[Array] array of Ambit result uri, piecewise (1st: base, 2nd: SMILES, 3rd+: features, hash smiles to inchi, array of field descriptions
     def self.get_cdk_descriptors(params)
 
       ambit_result_uri = [] # 1st pos: base uri, then features
       smiles_to_inchi = {}
-
+      task_weights = {"electronic"=> 4, "topological"=> 19, "constitutional"=> 12, "geometrical"=> 3, "hybrid"=> 2, "cpsa"=> 1 }
+      task_weights.keys.each { |pc_type| task_weights.delete(pc_type) if (params[:pc_type] && (!params[:pc_type].split(",").include?(pc_type)))}
+      task_sum = Float task_weights.values.sum
+      task_weights.keys.each { |pc_type| task_weights[pc_type] /= task_sum }
+      task_weights.keys.each { |pc_type| task_weights[pc_type] *= params[:step] }
+      
 
       # extract wanted descriptors from config file and parameters
       keysfile = File.join(ENV['HOME'], ".opentox", "config", "pc_descriptors.yaml")
@@ -338,7 +347,8 @@ module OpenTox
         current_cat = ""
         ids.each_with_index do |id, i|
           old_cat = current_cat; current_cat = pc_descriptors[id][:pc_type]
-          #params[:task].progress(params[:task].metadata[OT.percentageCompleted] + params[:step]) if params[:task] && params[:step] && old_cat != current_cat && old_cat != ""
+          LOGGER.debug "----- AM #{old_cat}"
+          params[:task].progress(params[:task].metadata[OT.percentageCompleted] + task_weights[old_cat]) if params[:task] && params[:step] && old_cat != current_cat && old_cat != ""
           algorithm = Algorithm::Generic.new(@ambit_descriptor_algorithm_uri+id)
           result_uri = algorithm.run({:dataset_uri => ambit_ds_uri})
           ambit_result_uri << result_uri.split("?")[1] + "&"
