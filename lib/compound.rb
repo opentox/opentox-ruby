@@ -240,8 +240,9 @@ module OpenTox
     # @param [Array] Array of feature names
     # @param [String] Feature dataset uri
     # @param [String] Comma separated pc types
+    # @param [String] Comma separated lib
     # @return [Hash] Hash with feature name as key and value as value
-		def lookup(feature_array,feature_dataset_uri,pc_type)
+		def lookup(feature_array,feature_dataset_uri,pc_type,lib)
       ds = OpenTox::Dataset.find(feature_dataset_uri)
 
       #entry = ds.data_entries[self.uri]
@@ -252,18 +253,15 @@ module OpenTox
           break
         end
       }
-
       LOGGER.debug "#{entry.size} entries in feature ds for query." unless entry.nil?
-
       if entry.nil?
-        temp_ds = OpenTox::Dataset.create; temp_ds.add_compound(self.uri)
-        uri = RestClientWrapper.post(temp_ds.save + "/pcdesc", {:pc_type => pc_type})
+        temp_ds = OpenTox::Dataset.create; temp_ds.add_compound(self.uri); temp_uri = temp_ds.save
+        uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-algorithm"], "/pc"), {:dataset_uri => temp_uri, :pc_type => pc_type, :lib => lib})
         ds = OpenTox::Dataset.find(uri)
         entry = ds.data_entries[self.uri]
         ds.delete
         temp_ds.delete
       end
-
       features = entry.keys
       features.each { |feature| 
         new_feature = File.join(feature_dataset_uri, "feature", feature.split("/").last) 

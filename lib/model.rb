@@ -261,7 +261,8 @@ module OpenTox
                                     :compound => @compound, 
                                     :features => @features, 
                                     :feature_dataset_uri => @metadata[OT.featureDataset],
-                                    :pc_type => self.parameter(\"pc_type\")
+                                    :pc_type => self.parameter(\"pc_type\"),
+                                    :lib => self.parameter(\"lib\")
                                     })")
           
           # Adding fingerprint of query compound with features and values(p_value*nr_hits)

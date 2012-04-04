@@ -546,7 +546,7 @@ module OpenTox
       # @param [Hash] required keys: compound, features, feature_dataset_uri, pc_type
       # @return [Hash] Hash with matching Smarts and number of hits 
       def self.lookup(params)
-        params[:compound].lookup(params[:features], params[:feature_dataset_uri],params[:pc_type])
+        params[:compound].lookup(params[:features], params[:feature_dataset_uri],params[:pc_type], params[:lib])
       end  
     end
 

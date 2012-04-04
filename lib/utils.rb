@@ -84,10 +84,6 @@ module OpenTox
         parser.dataset = ds
         ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"),false,true)
 
-        ds.features.each { |k,v| 
-          LOGGER.debug "#{k}: #{v.to_yaml}"
-        }
-
         # # # add feature metadata
         ambit_ids && ambit_ids.each_with_index { |id,idx|
           raise "Feature not found" if ! ds.features[File.join(ds.uri, "feature", id.to_s)]
@@ -371,7 +367,7 @@ module OpenTox
       if ambit_result_uri.size > 0
         (1...ambit_result_uri.size).collect { |idx|
           curr_uri = ambit_result_uri[0] + ambit_result_uri[idx]
-          LOGGER.debug "Requesting #{curr_uri}"
+          #LOGGER.debug "Requesting #{curr_uri}"
           csv_data = CSV.parse( OpenTox::RestClientWrapper.get(curr_uri, {:accept => "text/csv"}) )
           if csv_data[0] && csv_data[0].size>1
             if master.nil? # This is the smiles entry
