@@ -256,7 +256,7 @@ module OpenTox
       LOGGER.debug "#{entry.size} entries in feature ds for query." unless entry.nil?
       if entry.nil?
         temp_ds = OpenTox::Dataset.create; temp_ds.add_compound(self.uri); temp_uri = temp_ds.save
-        uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-algorithm"], "/pc"), {:dataset_uri => temp_uri, :pc_type => pc_type, :lib => lib})
+        uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-algorithm"], "/pc/AllDescriptors"), {:dataset_uri => temp_uri, :pc_type => pc_type, :lib => lib})
         ds = OpenTox::Dataset.find(uri)
         entry = ds.data_entries[self.uri]
         ds.delete
