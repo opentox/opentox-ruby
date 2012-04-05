@@ -395,19 +395,26 @@ module OpenTox
 
       def warnings
 
-        info = ''
+        info = '<br>'
         @feature_types.each do |feature,types|
+          @dataset.add_feature_metadata(feature,{RDF.type => []})
           if types.uniq.size == 0
-            type = "helper#MissingFeature" # TODO: Fit to OT ontology!
-          elsif types.uniq.size > 1
-            type = OT.NumericFeature
+            @dataset.add_feature_metadata(
+              feature, {RDF.type => ( @dataset.features[feature][RDF.type] << "helper#MissingFeature" ) } # TODO: Fit to OT ontology!
+            )
+            info += "'#{@dataset.feature_name(feature)}' detected as 'MissingFeature'<br>"
           else
-            type = types.first
+            info += "'#{@dataset.feature_name(feature)}' detected as "
+            types.uniq.each { |t|
+              @dataset.add_feature_metadata(
+                feature, {RDF.type => @dataset.features[feature][RDF.type] << t} 
+              )
+              info += "'#{t.split('#').last}', "
+            }
+            info.chop!.chop!
+            info += "<br>"
           end
-          @dataset.add_feature_metadata(feature,{RDF.type => [type]})
-          info += "'#{@dataset.feature_name(feature)}' detected as '#{type.split('#').last}'<br>" if type
         end
-
         @dataset.metadata[OT.Info] = info 
 
         warnings = ''
@@ -469,12 +476,14 @@ module OpenTox
           unless @duplicate_feature_indices.include? i
 
             value = row[i]
-            #LOGGER.warn "Missing values for #{id}" if value.size == 0 # String is empty
             feature = @features[feature_idx]
   
             type = feature_type(value) # May be NIL
-            type = OT.NominalFeature unless (type.nil? || regression_features[i])
             @feature_types[feature] << type if type
+            # Add nominal type if #distinct values le @max_class_values
+            if type == OT.NumericFeature
+              @feature_types[feature] << OT.NominalFeature unless regression_features[i]
+            end
   
             val = nil
             case type
