@@ -20,10 +20,12 @@ module OpenTox
 
       ds = OpenTox::Dataset.find(params[:dataset_uri])
       compounds = ds.compounds.collect
-      task_weights = {"joelib"=> 10, "openbabel"=> 1, "cdk"=> 89 }
-      task_weights.keys.each { |lib| task_weights.delete(lib) if (params[:lib] && (!params[:lib].split(",").include?(lib)))}
+      task_weights = {"joelib"=> 20, "openbabel"=> 1, "cdk"=> 50 }
+      task_weights.keys.each { |step| task_weights.delete(step) if (params[:lib] && (!params[:lib].split(",").include?(step)))}
+      task_weights["load"] = 10
       task_sum = Float task_weights.values.sum
-      task_weights.keys.each { |lib| task_weights[lib] /= task_sum }
+      task_weights.keys.each { |step| task_weights[step] /= task_sum }
+      task_weights.keys.each { |step| task_weights[step] = (task_weights[step]*100).floor }
       
       jl_master=nil
       cdk_master=nil
@@ -33,14 +35,14 @@ module OpenTox
       # # # openbabel (via ruby bindings)
       if !params[:lib] || params[:lib].split(",").include?("openbabel")
         ob_master, ob_ids = get_ob_descriptors( { :compounds => compounds, :pc_type => params[:pc_type], :descriptor => params[:descriptor] } ) 
-        params[:task].progress(task_weights["openbabel"]*100.floor) if params[:task]
+        params[:task].progress(params[:task].metadata[OT.percentageCompleted] + task_weights["openbabel"]) if params[:task]
       end
 
 
       # # # joelib (via rjb)
       if !params[:lib] || params[:lib].split(",").include?("joelib")
         jl_master, jl_ids = get_jl_descriptors( { :compounds => compounds, :rjb => params[:rjb], :pc_type => params[:pc_type], :descriptor => params[:descriptor] } ) 
-        params[:task].progress(task_weights["joelib"]*100.floor) if params[:task]
+        params[:task].progress(params[:task].metadata[OT.percentageCompleted] + task_weights["joelib"]) if params[:task]
       end
 
 
@@ -49,14 +51,14 @@ module OpenTox
         ambit_result_uri, smiles_to_inchi, cdk_ids = get_cdk_descriptors( { :compounds => compounds, :pc_type => params[:pc_type], :task => params[:task], :step => task_weights["cdk"], :descriptor => params[:descriptor] } )
         #LOGGER.debug "Ambit result uri for #{params.inspect}: '#{ambit_result_uri.to_yaml}'"
         cdk_master, cdk_ids, ambit_ids = load_ds_csv(ambit_result_uri, smiles_to_inchi, cdk_ids )
-        params[:task].progress(task_weights["cdk"]*100.floor) if params[:task]
+        params[:task].progress(params[:task].metadata[OT.percentageCompleted] + task_weights["load"]) if params[:task]
       end
 
       # # # fuse CSVs ("master" structures)
       if jl_master && cdk_master
         nr_cols = (jl_master[0].size)-1
         LOGGER.debug "Merging #{nr_cols} new columns"
-        cdk_master.each {|row| nr_cols.times { row.push(nil) }  } # Adds empty columns to all rows
+        cdk_master.each {|row| nr_cols.times { row.push(nil) }  }
         jl_master.each do |row|
           temp = cdk_master.assoc(row[0]) # Finds the appropriate line in master
           ((-1*nr_cols)..-1).collect.each { |idx|
@@ -93,21 +95,21 @@ module OpenTox
         pc_descriptors = YAML::load_file(@keysfile)
         ambit_ids && ambit_ids.each_with_index { |id,idx|
           raise "Feature not found" if ! ds.features[File.join(ds.uri, "feature", id.to_s)]
-          ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{DC.description => pc_descriptors[cdk_ids[idx]][:name]})
+          ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{DC.description => "#{pc_descriptors[cdk_ids[idx]][:name]} [#{pc_descriptors[cdk_ids[idx]][:pc_type]}, #{pc_descriptors[cdk_ids[idx]][:lib]}]"})
           ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{DC.creator => @ambit_descriptor_algorithm_uri + cdk_ids[idx]})
           ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{OT.hasSource => params[:dataset_uri]})
         }
-        ob_ids && ob_ids.each_with_index { |id,idx|
+        ob_ids && ob_ids.each { |id|
           raise "Feature not found" if ! ds.features[File.join(ds.uri, "feature", id.to_s)]
-          ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{DC.description => pc_descriptors[id][:name]})
+          ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{DC.description => "#{pc_descriptors[id][:name]} [#{pc_descriptors[id][:pc_type]}, #{pc_descriptors[id][:lib]}]"})
           creator_uri = ds.uri.gsub(/\/dataset\/.*/, "/algorithm/pc")
           creator_uri += "/#{id}" if params[:add_uri]
           ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{DC.creator => creator_uri})
           ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{OT.hasSource => params[:dataset_uri]})
         }
-        jl_ids && jl_ids.each_with_index { |id,idx|
+        jl_ids && jl_ids.each { |id|
           raise "Feature not found" if ! ds.features[File.join(ds.uri, "feature", id.to_s)]
-          ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{DC.description => pc_descriptors[id][:name]})
+          ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{DC.description => "#{pc_descriptors[id][:name]} [#{pc_descriptors[id][:pc_type]}, #{pc_descriptors[id][:lib]}]"})
           creator_uri = ds.uri.gsub(/\/dataset\/.*/, "/algorithm/pc")
           creator_uri += "/#{id}" if params[:add_uri]
           ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{DC.creator => creator_uri})
@@ -336,12 +338,13 @@ module OpenTox
         current_cat = ""
         ids.each_with_index do |id, i|
           old_cat = current_cat; current_cat = pc_descriptors[id][:pc_type]
-          params[:task].progress(params[:task].metadata[OT.percentageCompleted] + task_weights[old_cat]) if params[:task] && params[:step] && old_cat != current_cat && old_cat != ""
+          params[:task].progress(params[:task].metadata[OT.percentageCompleted] + task_weights[old_cat]) if params[:task] && old_cat != current_cat && old_cat != ""
           algorithm = Algorithm::Generic.new(@ambit_descriptor_algorithm_uri+id)
           result_uri = algorithm.run({:dataset_uri => ambit_ds_uri})
           ambit_result_uri << result_uri.split("?")[1] + "&"
           LOGGER.debug "Ambit (#{ids.size}): #{i+1}"
         end
+        params[:task].progress(params[:task].metadata[OT.percentageCompleted] + task_weights[current_cat]) if params[:task]
         #LOGGER.debug "Ambit result: #{ambit_result_uri.join('')}"
       end
 
