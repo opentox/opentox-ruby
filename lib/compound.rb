@@ -204,7 +204,7 @@ module OpenTox
       entry = nil 
       ds.data_entries.each { |c_uri, values| 
         if c_uri.split('/compound/').last == self.to_inchi
-          entry = ds.data_entries[self.uri]
+          entry = ds.data_entries[c_uri]
           break
         end
       }
