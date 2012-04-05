@@ -242,14 +242,13 @@ module OpenTox
     # @param [String] Comma separated pc types
     # @param [String] Comma separated lib
     # @return [Hash] Hash with feature name as key and value as value
-		def lookup(feature_array,feature_dataset_uri,pc_type,lib)
-      ds = OpenTox::Dataset.find(feature_dataset_uri)
-
+		def lookup(feature_array,feature_dataset_uri,pc_type,lib,subjectid=nil)
+      ds = OpenTox::Dataset.find(feature_dataset_uri,subjectid)
       #entry = ds.data_entries[self.uri]
       entry = nil 
       ds.data_entries.each { |c_uri, values| 
         if c_uri.split('/compound/').last == self.to_inchi
-          entry = ds.data_entries[self.uri]
+          entry = ds.data_entries[c_uri]
           break
         end
       }
