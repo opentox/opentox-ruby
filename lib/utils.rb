@@ -85,11 +85,14 @@ module OpenTox
       end
 
       if master
-        parser = OpenTox::Parser::Spreadsheets.new
-        ds = OpenTox::Dataset.new
-        ds.save
-        parser.dataset = ds
-        ds = parser.load_csv(master.collect{|r| r.join(",")}.join("\n"),false,true)
+
+        LOGGER.debug  master.collect { |row| row.join(",") }.join("\n")
+        
+        ds = OpenTox::Dataset.find ( 
+          OpenTox::RestClientWrapper.post(
+            File.join(CONFIG[:services]["opentox-dataset"]), master.collect { |row| row.join(",") }.join("\n"), {:content_type => "text/csv"}
+          )
+        ) 
 
         # # # add feature metadata
         pc_descriptors = YAML::load_file(@keysfile)
