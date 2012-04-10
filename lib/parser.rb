@@ -502,9 +502,9 @@ module OpenTox
   
             if val != nil 
               @dataset.add(compound.uri, feature, val)
-              if type != OT.NumericFeature
+              if @feature_types[feature].include? OT.NominalFeature
                 @dataset.features[feature][OT.acceptValue] = [] unless @dataset.features[feature][OT.acceptValue]
-                @dataset.features[feature][OT.acceptValue] << val.to_s unless @dataset.features[feature][OT.acceptValue].include?(val.to_s)
+                @dataset.features[feature][OT.acceptValue] << val unless @dataset.features[feature][OT.acceptValue].include?(val)
               end
             end
 
