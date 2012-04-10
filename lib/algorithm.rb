@@ -69,7 +69,7 @@ module OpenTox
         end
       end
 
-      def add_fminer_data(fminer_instance, params, value_map)
+      def add_fminer_data(fminer_instance, value_map)
 
         id = 1 # fminer start id is not 0
         @training_dataset.data_entries.each do |compound,entry|
@@ -84,7 +84,6 @@ module OpenTox
             next
           end
 
-          value_map=params[:value_map] unless params[:value_map].nil?
           entry.each do |feature,values|
             if feature == @prediction_feature.uri
               values.each do |value|
@@ -92,7 +91,7 @@ module OpenTox
                   LOGGER.warn "No #{feature} activity for #{compound.to_s}."
                 else
                   if @prediction_feature.feature_type == "classification"
-                    activity= value_map.invert[value.to_s].to_i # activities are mapped to 1..n
+                    activity= value_map.invert[value].to_i # activities are mapped to 1..n
                     @db_class_sizes[activity-1].nil? ? @db_class_sizes[activity-1]=1 : @db_class_sizes[activity-1]+=1 # AM effect
                   elsif @prediction_feature.feature_type == "regression"
                     activity= value.to_f 
