@@ -405,12 +405,16 @@ module OpenTox
             info += "'#{@dataset.feature_name(feature)}' detected as 'MissingFeature'<br>"
           else
             info += "'#{@dataset.feature_name(feature)}' detected as "
+            types_arr = []
             types.uniq.each { |t|
-              @dataset.add_feature_metadata(
-                feature, {RDF.type => @dataset.features[feature][RDF.type] << t} 
-              )
+              types_arr << t
               info += "'#{t.split('#').last}', "
             }
+
+            @dataset.add_feature_metadata(
+              feature, {RDF.type => types_arr.sort} # nominal should be first for downward compatibility
+            )
+
             info.chop!.chop!
             info += "<br>"
           end
