@@ -454,6 +454,14 @@ module OpenTox
       end
     end
 
+    def value_map(prediction_feature_uri)
+      training_classes = accept_values(prediction_feature_uri).sort
+      value_map=Hash.new 
+      training_classes.each_with_index { |c,i| value_map[i+1] = c }
+      value_map
+    end
+
+
     private
     # Copy a dataset (rewrites URI)
     def copy(dataset)
@@ -503,6 +511,7 @@ module OpenTox
     def neighbors(compound)
       @data_entries[compound.uri].collect{|f,v| @features[f] if f.match(/neighbor/)}.compact if @data_entries[compound.uri]
     end
+
 
 #    def errors(compound)
 #      features = @data_entries[compound.uri].keys
