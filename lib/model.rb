@@ -249,11 +249,6 @@ module OpenTox
           } )
         end
 
-        if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "regression"
-          all_activities = [] 
-          all_activities = @activities.values.flatten.collect! { |i| i.to_f }
-        end
-
         unless database_activity(subjectid) # adds database activity to @prediction_dataset
 
           # Calculation of needed values for query compound

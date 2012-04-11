@@ -197,7 +197,12 @@ module OpenTox
       accept_values
     end
 
-    # Detect feature type(s) in the dataset
+    # Detect feature type (reduced to one across all features)
+    # Classification takes precedence over regression
+    # DEPRECATED -- 
+    #   HAS NO SENSE FOR DATASETS WITH MORE THAN 1 FEATURE
+    #   FEATURES CAN HAVE MULTIPLE TYPES
+    # Replacement: see feature_types()
     # @return [String] `classification", "regression", "mixed" or unknown`
     def feature_type(subjectid=nil)
       load_features(subjectid)
@@ -209,6 +214,24 @@ module OpenTox
       else
         "unknown"
       end
+    end
+
+
+    # Detect feature types. A feature can have multiple types.
+    # Returns types hashed by feature URI, with missing features omitted.
+    # Example (YAML):
+    #   http://toxcreate3.in-silico.ch:8082/dataset/152/feature/nHal: 
+    #   - http://www.opentox.org/api/1.1#NumericFeature
+    #   - http://www.opentox.org/api/1.1#NominalFeature
+    #   ...
+    #
+    # @return [Hash] Keys: feature URIs, Values: Array of types
+    def feature_types(subjectid=nil)
+      load_features(subjectid)
+        @features.inject({}){ |h,(f,metadata)| 
+          h[f]=metadata[RDF.type] unless metadata[RDF.type][0].include? "MissingFeature" 
+          h
+        }
     end
 =begin
 =end
