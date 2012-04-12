@@ -490,8 +490,10 @@ module OpenTox
 
           @cmpds = []; @fps = []; @acts = []; @n_prop = []; @q_prop = []
           
-          @model.fingerprints.each { |fp|
-            cmpd = fp[0]; fp = fp[1]
+          # Major BUG! Must loop over @model.compounds, hash is unordered!
+          # @model.fingerprints.each 
+          @model.compounds.each { |cmpd|
+            fp = @model.fingerprints[cmpd]
             if @model.activities[cmpd] # row good
               acts = @model.activities[cmpd]; @acts += acts
               LOGGER.debug "#{acts.size} activities for '#{cmpd}'" if acts.size > 1
