@@ -86,8 +86,6 @@ module OpenTox
 
       if master
 
-        LOGGER.debug  master.collect { |row| row.join(",") }.join("\n")
-        
         ds = OpenTox::Dataset.find( 
           OpenTox::RestClientWrapper.post(
             File.join(CONFIG[:services]["opentox-dataset"]), master.collect { |row| row.join(",") }.join("\n"), {:content_type => "text/csv"}
