@@ -103,7 +103,7 @@ module OpenTox
       include Model
 
 
-      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :subjectid, :value_map, :compound_fingerprints, :feature_calculation_algorithm, :neighbors
+      attr_accessor :compound, :prediction_dataset, :features, :effects, :activities, :p_values, :fingerprints, :feature_calculation_algorithm, :similarity_algorithm, :prediction_algorithm, :subjectid, :value_map, :compound_fingerprints, :feature_calculation_algorithm, :neighbors, :compounds
       def initialize(uri=nil)
 
         if uri
@@ -169,12 +169,13 @@ module OpenTox
         lazar.prediction_algorithm = hash["prediction_algorithm"] if hash["prediction_algorithm"]
         lazar.subjectid = hash["subjectid"] if hash["subjectid"]
         lazar.value_map = hash["value_map"] if hash["value_map"]
+        lazar.compounds = hash["compounds"] if hash["compounds"]
 
         lazar
       end
 
       def to_json
-        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :subjectid => @subjectid, :value_map => @value_map})
+        Yajl::Encoder.encode({:uri => @uri,:metadata => @metadata, :compound => @compound, :prediction_dataset => @prediction_dataset, :features => @features, :effects => @effects, :activities => @activities, :p_values => @p_values, :fingerprints => @fingerprints, :feature_calculation_algorithm => @feature_calculation_algorithm, :similarity_algorithm => @similarity_algorithm, :prediction_algorithm => @prediction_algorithm, :subjectid => @subjectid, :value_map => @value_map, :compounds => @compounds})
       end
 
       def run( params, accept_header=nil, waiting_task=nil )
@@ -314,6 +315,16 @@ module OpenTox
                 @prediction_dataset.add @compound.uri, feature_uri, true
                 f+=1
               end
+            elsif @feature_calculation_algorithm == "Substructure.lookup"
+              f = 0
+              @compound_features.each do |feature, value|
+                features[feature] = feature
+                @prediction_dataset.add_feature(feature, {
+                  RDF.type => [OT.NumericFeature]
+                })
+                @prediction_dataset.add @compound.uri, feature, value
+                f+=1
+              end
             else
               @compound_features.each do |feature|
                 features[feature] = feature
@@ -337,15 +348,26 @@ module OpenTox
                 else
                   feature_uri = feature
                 end
-                @prediction_dataset.add neighbor[:compound], feature_uri, true
+                if @feature_calculation_algorithm == "Substructure.lookup"
+                  @prediction_dataset.add neighbor[:compound], feature_uri, @fingerprints[neighbor[:compound]][feature_uri]
+                else
+                  @prediction_dataset.add neighbor[:compound], feature_uri, true
+                end
+
                 unless features.has_key? feature
                   features[feature] = feature_uri
-                  @prediction_dataset.add_feature(feature_uri, {
-                    RDF.type => [OT.Substructure],
-                    OT.smarts => feature,
-                    OT.pValue => @p_values[feature],
-                    OT.effect => @effects[feature]
-                  })
+                  if @feature_calculation_algorithm == "Substructure.lookup"
+                    @prediction_dataset.add_feature(feature_uri, {
+                      RDF.type => [OT.NumericFeature]
+                    })
+                  else
+                    @prediction_dataset.add_feature(feature_uri, {
+                      RDF.type => [OT.Substructure],
+                      OT.smarts => feature,
+                      OT.pValue => @p_values[feature],
+                      OT.effect => @effects[feature]
+                    })
+                  end
                   f+=1
                 end
               end
