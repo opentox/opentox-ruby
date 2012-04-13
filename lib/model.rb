@@ -319,6 +319,16 @@ module OpenTox
                 @prediction_dataset.add @compound.uri, feature_uri, true
                 f+=1
               end
+            elsif @feature_calculation_algorithm == "Substructure.lookup"
+              f = 0
+              @compound_features.each do |feature, value|
+                features[feature] = feature
+                @prediction_dataset.add_feature(feature, {
+                  RDF.type => [OT.NumericFeature]
+                })
+                @prediction_dataset.add @compound.uri, feature, value
+                f+=1
+              end
             else
               @compound_features.each do |feature|
                 features[feature] = feature
@@ -342,15 +352,26 @@ module OpenTox
                 else
                   feature_uri = feature
                 end
-                @prediction_dataset.add neighbor[:compound], feature_uri, true
+                if @feature_calculation_algorithm == "Substructure.lookup"
+                  @prediction_dataset.add neighbor[:compound], feature_uri, @fingerprints[neighbor[:compound]][feature_uri]
+                else
+                  @prediction_dataset.add neighbor[:compound], feature_uri, true
+                end
+
                 unless features.has_key? feature
                   features[feature] = feature_uri
-                  @prediction_dataset.add_feature(feature_uri, {
-                    RDF.type => [OT.Substructure],
-                    OT.smarts => feature,
-                    OT.pValue => @p_values[feature],
-                    OT.effect => @effects[feature]
-                  })
+                  if @feature_calculation_algorithm == "Substructure.lookup"
+                    @prediction_dataset.add_feature(feature_uri, {
+                      RDF.type => [OT.NumericFeature]
+                    })
+                  else
+                    @prediction_dataset.add_feature(feature_uri, {
+                      RDF.type => [OT.Substructure],
+                      OT.smarts => feature,
+                      OT.pValue => @p_values[feature],
+                      OT.effect => @effects[feature]
+                    })
+                  end
                   f+=1
                 end
               end
