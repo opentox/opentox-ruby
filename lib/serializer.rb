@@ -459,21 +459,32 @@ module OpenTox
       def initialize(dataset)
         @rows = []
         @rows << ["SMILES"]
+
         features = dataset.features.keys
 
+        # prepare for subgraphs
+        have_substructures = features.collect{ |id| dataset.features[id][RDF.type].include? OT.Substructure}.compact.uniq
+        if have_substructures.size == 1 && have_substructures[0] 
+          features_smarts = features.collect{ |id| "'" + dataset.features[id][OT.smarts] + "'" }
+          dataset.complete_data_entries
+        end
+      
+        # gather missing features
         delete_features = []
-        features.each{ |fn|
-          dataset.features[fn][RDF.type].each { |typestr|
+        features.each{ |id|
+          dataset.features[id][RDF.type].each { |typestr|
             if typestr.include? "MissingFeature"
-              delete_features << fn 
+              delete_features << id 
             end
           }
         }
-        features = features - delete_features
 
-        @rows.first << features
+        features = features - delete_features
+        features_smarts && @rows.first << features_smarts || @rows.first << features
+
         @rows.first.flatten!
-        dataset.data_entries.each do |compound,entries|
+        dataset.compounds.each do |compound|
+          entries=dataset.data_entries[compound]
           cmpd = Compound.new(compound)
           smiles = cmpd.to_smiles
           inchi = URI.encode_www_form_component(cmpd.to_inchi)

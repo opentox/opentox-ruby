@@ -119,7 +119,7 @@ module OpenTox
 
         ds.save
       else
-        raise "No descriptors matching your criteria found."
+        raise OpenTox::BadRequestError.new "No descriptors matching your criteria found."
       end
 
     end

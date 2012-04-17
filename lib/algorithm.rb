@@ -56,9 +56,15 @@ module OpenTox
 
       def check_params(params,per_mil,subjectid=nil)
         raise OpenTox::NotFoundError.new "Please submit a dataset_uri." unless params[:dataset_uri] and  !params[:dataset_uri].nil?
-        raise OpenTox::NotFoundError.new "Please submit a prediction_feature." unless params[:prediction_feature] and  !params[:prediction_feature].nil?
-        @prediction_feature = OpenTox::Feature.find params[:prediction_feature], subjectid
         @training_dataset = OpenTox::Dataset.find "#{params[:dataset_uri]}", subjectid
+
+        unless params[:prediction_feature] # try to read prediction_feature from dataset
+          raise OpenTox::NotFoundError.new "Please provide a prediction_feature parameter" unless @training_dataset.features.size == 1
+          prediction_feature = OpenTox::Feature.find(@training_dataset.features.keys.first,@subjectid)
+          params[:prediction_feature] = prediction_feature.uri
+        end
+        @prediction_feature = OpenTox::Feature.find params[:prediction_feature], subjectid
+
         raise OpenTox::NotFoundError.new "No feature #{params[:prediction_feature]} in dataset #{params[:dataset_uri]}" unless @training_dataset.features and @training_dataset.features.include?(params[:prediction_feature])
 
         unless params[:min_frequency].nil? 
