@@ -246,8 +246,9 @@ module OpenTox
       ds = OpenTox::Dataset.find(feature_dataset_uri,subjectid)
       #entry = ds.data_entries[self.uri]
       entry = nil 
-      ds.data_entries.each { |c_uri, values| 
-        if c_uri.split('/compound/').last == self.to_inchi
+      ds.data_entries.each { |c_uri, values|
+        compound = OpenTox::Compound.new(c_uri)
+        if compound.to_inchi == self.to_inchi # Compare compounds by InChI
           entry = ds.data_entries[c_uri]
           break
         end

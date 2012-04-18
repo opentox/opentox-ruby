@@ -78,7 +78,7 @@ module OpenTox
       def add_fminer_data(fminer_instance, value_map)
 
         id = 1 # fminer start id is not 0
-        @training_dataset.data_entries.each do |compound,entry|
+        @training_dataset.data_entries.each do |compound,entry| #order of compounds does not influence result
           begin
             smiles = OpenTox::Compound.smiles(compound.to_s)
           rescue
