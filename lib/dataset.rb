@@ -339,11 +339,14 @@ module OpenTox
     end
 
     # Complete feature values by adding zeroes
-    def complete_data_entries
+    # @param [Hash] key: compound, value: duplicate sizes
+    def complete_data_entries(compound_sizes)
       all_features = @features.keys
       @data_entries.each { |c, e|
         (Set.new(all_features.collect)).subtract(Set.new e.keys).to_a.each { |f|
-          self.add(c,f,0)
+          compound_sizes[c].times { 
+            self.add(c,f,0) 
+          }
         }
       }
     end
