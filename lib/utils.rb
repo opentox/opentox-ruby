@@ -359,7 +359,7 @@ module OpenTox
     # @param[Hash] keys: SMILES, values: InChIs
     # @param[Array] field descriptions, one for each feature
     # @return[Array] CSV, array of field ids, array of field descriptions
-    def self.load_ds_csv(ambit_result_uri, smiles_to_inchi, single_ids)
+    def self.load_ds_csv(ambit_result_uri, smiles_to_inchi, single_ids, subjectid=nil)
       
       master=nil
       ids=[]
@@ -369,7 +369,7 @@ module OpenTox
         (1...ambit_result_uri.size).collect { |idx|
           curr_uri = ambit_result_uri[0] + ambit_result_uri[idx]
           #LOGGER.debug "Requesting #{curr_uri}"
-          csv_data = CSV.parse( OpenTox::RestClientWrapper.get(curr_uri, {:accept => "text/csv"}) )
+          csv_data = CSV.parse( OpenTox::RestClientWrapper.get(curr_uri, {:accept => "text/csv", :subjectid => subjectid}) )
           if csv_data[0] && csv_data[0].size>1
             if master.nil? # This is the smiles entry
               (1...csv_data.size).each{ |idx| csv_data[idx][1] = smiles_to_inchi[csv_data[idx][1]] }

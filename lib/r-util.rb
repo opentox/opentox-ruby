@@ -8,6 +8,18 @@ PACKAGE_DIR = package_dir
 
 require "tempfile"
 
+class Array
+  
+  def check_uniq
+    hash = {}
+    self.each do |x|
+      raise "duplicate #{x}" if hash[x]
+      hash[x] = true
+    end
+  end
+  
+end
+
 module OpenTox
   
   class RUtil
@@ -75,12 +87,10 @@ module OpenTox
     end
 
     # embedds feature values of two datasets into 2D and plots it
-    # fast_plot = true -> PCA, fast_plot = false -> SMACOF (iterative optimisation method) 
     #        
     def feature_value_plot(files, dataset_uri1, dataset_uri2, dataset_name1, dataset_name2,
-        features=nil, fast_plot=true, subjectid=nil, waiting_task=nil)
+        features=nil, subjectid=nil, waiting_task=nil)
         
-      raise "r-package smacof missing" if fast_plot==false and !package_installed?("smacof")
       LOGGER.debug("r-util> create feature value plot")
       d1 = OpenTox::Dataset.find(dataset_uri1,subjectid)
       d2 = OpenTox::Dataset.find(dataset_uri2,subjectid)
@@ -102,17 +112,13 @@ module OpenTox
       @r.eval "split <- c(rep(0,nrow(#{df1})),rep(1,nrow(#{df2})))"
       @r.names = [dataset_name1, dataset_name2]
       LOGGER.debug("r-util> - convert data to 2d")
-      @r.eval "df.2d <- plot_pre_process(df, method='#{(fast_plot ? "pca" : "smacof")}')"
+      #@r.eval "save.image(\"/tmp/image.R\")"
+      @r.eval "df.2d <- plot_pre_process(df, method='sammon')"
       waiting_task.progress(75) if waiting_task
       
-      if fast_plot
-        info = "main='PCA-Embedding of #{features.size} features',xlab='PC1',ylab='PC2'"
-      else
-        info = "main='SMACOF-Embedding of #{features.size} features',xlab='x',ylab='y'"
-      end
       LOGGER.debug("r-util> - plot data")
       plot_to_files(files) do |file|
-        @r.eval "plot_split( df.2d, split, names, #{info})"
+        @r.eval "plot_split( df.2d, split, names, main='Sammon embedding of #{features.size} features',xlab='x',ylab='y')"
       end
     end
     
@@ -170,19 +176,68 @@ module OpenTox
       end
     end
     
-    # stratified splits a dataset into two dataset the feature values
+    # stratified splits a dataset into two dataset according to the feature values
     # all features are taken into account unless <split_features> is given
-    def stratified_split( dataset, missing_values="NA", pct=0.3, subjectid=nil, seed=42, split_features=nil )
+    # returns two datases
+    def stratified_split( dataset, metadata={}, missing_values="NA", pct=0.3, subjectid=nil, seed=42, split_features=nil )
+      stratified_split_internal( dataset, metadata, missing_values, nil, pct, subjectid, seed, split_features )
+    end
+    
+    # stratified splits a dataset into k datasets according the feature values
+    # all features are taken into account unless <split_features> is given
+    # returns two arrays of datasets
+    def stratified_k_fold_split( dataset, metadata={}, missing_values="NA", num_folds=10, subjectid=nil, seed=42, split_features=nil )
+      stratified_split_internal( dataset, metadata, missing_values, num_folds, nil, subjectid, seed, split_features )
+    end    
+    
+    private
+    def stratified_split_internal( dataset, metadata={}, missing_values="NA", num_folds=nil, pct=nil, subjectid=nil, seed=42, split_features=nil )
+      raise "internal error" if num_folds!=nil and pct!=nil
+      k_fold_split = num_folds!=nil
+      if k_fold_split
+        raise "num_folds not a fixnum: #{num_folds}" unless num_folds.is_a?(Fixnum)
+      else
+        raise "pct is not a numeric: #{pct}" unless pct.is_a?(Numeric)
+      end
       raise "not a loaded ot-dataset" unless dataset.is_a?(OpenTox::Dataset) and dataset.compounds.size>0 and dataset.features.size>0
+      raise "missing_values=#{missing_values}" unless missing_values.is_a?(String) or missing_values==0
+      raise "subjectid=#{subjectid}" unless subjectid==nil or subjectid.is_a?(String)          
       LOGGER.debug("r-util> apply stratified split to #{dataset.uri}")
       
-      df = dataset_to_dataframe( dataset, missing_values, subjectid, split_features )
+      df = dataset_to_dataframe( dataset, missing_values, subjectid)
       @r.eval "set.seed(#{seed})"
-      @r.eval "split <- stratified_split(#{df}, ratio=#{pct})"
-      split = @r.pull 'split'
-      split = split.collect{|s| 1-s.to_i} # reverse 1s and 0s, as 1 means selected, but 0 will be first set
-      split_to_datasets( df, split, subjectid )
+      str_split_features = ""
+      if split_features
+        @r.split_features = split_features if split_features
+        str_split_features = "colnames=split_features"
+      end
+      @r.eval "save.image(\"/tmp/image.R\")"
+      
+      if k_fold_split
+        @r.eval "split <- stratified_k_fold_split(#{df}, num_folds=#{num_folds}, #{str_split_features})"
+        split = @r.pull 'split'
+        train = []
+        test = []
+        num_folds.times do |f|
+          datasetname = 'dataset fold '+(f+1).to_s+' of '+num_folds.to_s           
+          metadata[DC.title] = "training "+datasetname 
+          train << split_to_dataset( df, split, metadata, subjectid ){ |i| i!=(f+1) }
+          metadata[DC.title] = "test "+datasetname
+          test << split_to_dataset( df, split, metadata, subjectid ){ |i| i==(f+1) }
+        end
+        return train, test
+      else
+        puts "split <- stratified_split(#{df}, ratio=#{pct}, #{str_split_features})"
+        @r.eval "split <- stratified_split(#{df}, ratio=#{pct}, #{str_split_features})"
+        split = @r.pull 'split'
+        metadata[DC.title] = "Training dataset split of "+dataset.uri
+        train = split_to_dataset( df, split, metadata, subjectid ){ |i| i==1 }
+        metadata[DC.title] = "Test dataset split of "+dataset.uri
+        test = split_to_dataset( df, split, metadata, subjectid ){ |i| i==0 }
+        return train, test
+      end
     end
+    public
     
     # dataset should be loaded completely (use Dataset.find)
     # takes duplicates into account
@@ -212,9 +267,13 @@ module OpenTox
         features = dataset.features.keys.sort
       end
       compounds = []
+      compound_names = []
       dataset.compounds.each do |c|
+        count = 0
         num_compounds[c].times do |i|
           compounds << c
+          compound_names << "#{c}$#{count}"
+          count+=1
         end
       end
 
@@ -238,7 +297,7 @@ module OpenTox
         end
       end  
       df_name = "df_#{dataset.uri.split("/")[-1].split("?")[0]}"
-      assign_dataframe(df_name,d_values,compounds,features)
+      assign_dataframe(df_name,d_values,compound_names,features)
       
       # set dataframe column types accordingly
       f_count = 1 #R starts at 1
@@ -264,16 +323,18 @@ module OpenTox
     
     # converts a dataframe into a dataset (a new dataset is created at the dataset webservice)
     # this is only possible if a superset of the dataframe was created by dataset_to_dataframe (metadata and URIs!)
-    def dataframe_to_dataset( df, subjectid=nil )
-      dataframe_to_dataset_indices( df, subjectid, nil)
+    def dataframe_to_dataset( df, metadata={}, subjectid=nil )
+      dataframe_to_dataset_indices( df, metadata, subjectid, nil)
     end
     
     private
-    def dataframe_to_dataset_indices( df, subjectid=nil, compound_indices=nil )
+    def dataframe_to_dataset_indices( df, metadata={}, subjectid=nil, compound_indices=nil )
       raise unless @@feats[df].size>0
-      values, compounds, features = pull_dataframe(df)
+      values, compound_names, features = pull_dataframe(df)
+      compounds = compound_names.collect{|c| c.split("$")[0]}
       features.each{|f| raise unless @@feats[df][f]}
       dataset = OpenTox::Dataset.create(CONFIG[:services]["opentox-dataset"],subjectid)
+      dataset.add_metadata(metadata)
       LOGGER.debug "r-util> convert dataframe to dataset #{dataset.uri}"
       compounds.size.times{|i| dataset.add_compound(compounds[i]) if compound_indices==nil or compound_indices.include?(i)}
       features.each{|f| dataset.add_feature(f,@@feats[df][f])}
@@ -290,16 +351,12 @@ module OpenTox
       dataset
     end    
     
-    def split_to_datasets( df, split, subjectid=nil )
-      sets = []
-      (split.min.to_i .. split.max.to_i).each do |i|
-        indices = []
-        split.size.times{|j| indices<<j if split[j]==i}
-        dataset = dataframe_to_dataset_indices( df, subjectid, indices )
-        LOGGER.debug("r-util> split into #{dataset.uri}, c:#{dataset.compounds.size}, f:#{dataset.features.size}")
-        sets << dataset
-      end
-      sets
+    def split_to_dataset( df, split, metadata={}, subjectid=nil )
+      indices = []
+      split.size.times{|i| indices<<i if yield(split[i]) }
+      dataset = dataframe_to_dataset_indices( df, metadata, subjectid, indices )
+      LOGGER.debug("r-util> split into #{dataset.uri}, c:#{dataset.compounds.size}, f:#{dataset.features.size}")
+      dataset
     end
     
     def pull_dataframe(df)
@@ -323,6 +380,8 @@ module OpenTox
     end
     
     def assign_dataframe(df,input,rownames,colnames)
+      rownames.check_uniq if rownames
+      colnames.check_uniq if colnames
       tmp = File.join(Dir.tmpdir,Time.new.to_f.to_s+"_"+rand(10000).to_s+".csv")
       file = File.new(tmp, 'w')
       input.each{|i| file.puts(i.collect{|e| "\"#{e}\""}.join("#")+"\n")}  

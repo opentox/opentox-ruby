@@ -1,4 +1,13 @@
 
+round_it <- function( x )
+{
+  if(isTRUE((x - floor(x))>=0.5))
+    ceiling(x)
+  else
+    floor(x)
+}
+
+
 nominal_to_binary <- function( data )
 {
   result = NULL
@@ -41,9 +50,13 @@ nominal_to_binary <- function( data )
   result
 }
 
-process_data <- function( data )
+process_data <- function( data, colnames=NULL )
 {
   data.num <- as.data.frame(data)
+  if (!is.null(colnames))
+  {
+    data.num = subset(data.num, select = colnames)
+  }
   if (!is.numeric(data.num))
   {
     data.num = nominal_to_binary(data.num)
@@ -72,14 +85,15 @@ cluster <- function( data, min=10, max=15 )
   cbind(s$partition[,m])
 }
 
-stratified_split <- function( data, ratio=0.3, method="cluster" )
+stratified_split <- function( data, ratio=0.3, method="cluster", colnames=NULL )
 {
-    data.processed = as.matrix(process_data( data ))
+    data.processed = as.matrix(process_data( data, colnames ))
+    print(paste("split using #features: ",ncol(data.processed)))
     if (method == "samplecube")
     {
       require("sampling")
       # adjust ratio to make samplecube return exact number of samples
-      ratio = round(nrow(data.processed)*ratio)/nrow(data.processed)
+      ratio = round_it(nrow(data.processed)*ratio)/nrow(data.processed)
       pik = rep(ratio,times=nrow(data.processed))
       data.strat = cbind(pik,data.processed)
       samplecube(data.strat,pik,order=2,comment=F)
@@ -101,10 +115,11 @@ stratified_split <- function( data, ratio=0.3, method="cluster" )
       stop("unknown method")
 }
 
-stratified_k_fold_split <- function( data, num_folds=10, method="cluster" )
+stratified_k_fold_split <- function( data, num_folds=10, method="cluster", colnames=NULL )
 {
   print(paste(num_folds,"-fold-split, data-size",nrow(data)))
-  data.processed = as.matrix(process_data( data ))
+  data.processed = as.matrix(process_data( data, colnames ))
+  print(paste("split using #features: ",ncol(data.processed)))
   if (method == "samplecube")
   {
     folds = rep(0, times=nrow(data))
@@ -133,7 +148,7 @@ stratified_k_fold_split <- function( data, num_folds=10, method="cluster" )
   {
     require("TunePareto")
     cl = cluster(data.processed)
-    res = generateCVRuns(cl,ntimes=1,nfold=3)
+    res = generateCVRuns(cl,ntimes=1,nfold=num_folds)
     folds = rep(0, times=nrow(data))
     for (i in 1:num_folds)
       for(j in 1:length(res[[1]][[i]]))
@@ -142,6 +157,50 @@ stratified_k_fold_split <- function( data, num_folds=10, method="cluster" )
   }
   else
     stop("unknown method")
+}
+
+duplicate_indices <- function( data ) {
+  indices = 1:nrow(data) 
+  z = data
+  duplicate_index = anyDuplicated(z) 
+  while(duplicate_index) {
+    duplicate_to_index = anyDuplicated(z[1:duplicate_index,],fromLast=T)
+    #print(paste(duplicate_index,'is dupl to',duplicate_to_index))
+    indices[duplicate_index] <- duplicate_to_index
+    z[duplicate_index,] <- paste('123$§%',duplicate_index)
+    duplicate_index = anyDuplicated(z) 
+  } 
+  indices 
+}
+
+add_duplicates <- function( data, dup_indices ) { 
+  result = data[1,]
+  for(i in 2:length(dup_indices)) { 
+    row = data[rownames(data)==dup_indices[i],]
+    if(length(row)==0)
+       stop(paste('index ',i,' dup-index ',dup_indices[i],'not found in data'))
+    result = rbind(result, row) 
+  } 
+  rownames(result)<-NULL 
+  result 
+}
+
+sammon_duplicates <- function( data, ... ) { 
+  di <- duplicate_indices(data)
+  print(di)
+  u <- unique(data) 
+  print(paste('unique data points',nrow(u),'of',nrow(data)))
+  if(nrow(u) <= 4) stop("number of unqiue datapoints <= 4")
+  points_unique <- sammon(dist(u), ...)$points
+  if (nrow(u)<nrow(data))
+  {
+    points <- add_duplicates(points_unique, di) 
+    points 
+  }
+  else
+  {
+    points_unique
+  }
 }
 
 plot_pre_process <- function( data, method="pca" )
@@ -157,6 +216,11 @@ plot_pre_process <- function( data, method="pca" )
     require("smacof")
     data.emb <- smacofSym(dist(data.processed, method = "euclidean"), ndim=2, verbose=T)
     data.emb$conf
+  }
+  else if (method == "sammon")
+  {
+    require("MASS")
+    sammon_duplicates(data.processed, k=2)
   }
   else
     stop("unknown method")

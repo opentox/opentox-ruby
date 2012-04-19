@@ -259,7 +259,7 @@ module OpenTox
         uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-algorithm"], "/pc/AllDescriptors"), {:dataset_uri => temp_uri, :pc_type => pc_type, :lib => lib})
         ds = OpenTox::Dataset.find(uri)
         entry = ds.data_entries[self.uri]
-        ds.delete
+        ds.delete(subjectid)
         temp_ds.delete
       end
       features = entry.keys

@@ -536,6 +536,7 @@ module OpenTox
       def initialize
         @data = {}
         @activity_errors = []
+        @max_class_values = 3
       end
 
       def feature_values(feature)

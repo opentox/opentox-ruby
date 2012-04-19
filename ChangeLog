@@ -1,3 +1,11 @@
+v3.1.0 2012-02-24
+		* utils.rb: added for special routines (e.g. descriptor calculation)
+		* task.rb: Polling with increasing interval
+		* parser.rb: CSV up and download fixed
+		* transform.rb: routines to create machine learning data matrices
+		* algorithm.rb: SVM parameter grid search, cos similarity as algorithm,
+		gauss() removed
+
 v3.0.1 2011-10-19
     * feature: model registration to ontology service
     * ontology lib gets endpoints from ontology service
