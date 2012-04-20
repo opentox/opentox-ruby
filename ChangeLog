@@ -1,13 +1,17 @@
+2012-04-20
+	* Support for joelib and openbabel descriptors in a completely unified interface with CDK (Ambit)
+	* Features can have multiple types (nominal and numeric), PC descriptors have detailed meta data
+	* Myriads of bugfixes to CSV download code (e.g. missing descriptors, handling of duplicates)
+
 v3.1.0 2012-02-24
-		* utils.rb: added for special routines (e.g. descriptor calculation)
-		* task.rb: Polling with increasing interval
-		* parser.rb: CSV up and download fixed
-		* transform.rb: routines to create machine learning data matrices
-		* algorithm.rb: SVM parameter grid search, cos similarity as algorithm,
-		gauss() removed
+	* utils.rb: added for special routines (e.g. descriptor calculation)
+	* task.rb: Polling with increasing interval
+	* parser.rb: CSV up and download fixed
+	* transform.rb: routines to create machine learning data matrices
+	* algorithm.rb: SVM parameter grid search, cos similarity as algorithm,	gauss() removed
 
 v3.0.1 2011-10-19
-    * feature: model registration to ontology service
-    * ontology lib gets endpoints from ontology service
+	* feature: model registration to ontology service
+	* ontology lib gets endpoints from ontology service
 v3.0.0 2011-09-23
-    * datasets stored as json (with Yajl) to improve performance
+	* datasets stored as json (with Yajl) to improve performance
