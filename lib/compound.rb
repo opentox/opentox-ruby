@@ -3,6 +3,7 @@
 
 module OpenTox
 
+  require "rexml/document"
   # Ruby wrapper for OpenTox Compound Webservices (http://opentox.org/dev/apis/api-1.2/structure).
 	class Compound 
 
@@ -130,6 +131,47 @@ module OpenTox
         "not available"
       end
 		end
+    
+    
+    # Get all known compound names sorted by classification. Relies on an external service for name lookups.
+    # @example
+    #   names = compound.to_names_hash
+    # @return [Hash] Classification => Name Array
+		def to_names_hash
+      begin
+        xml = RestClientWrapper.get("#{@@cactus_uri}#{@inchi}/names/xml")
+        xmldoc = REXML::Document.new(xml)
+        data = {}
+        
+        xmldoc.root.elements[1].elements.each{|e|
+          if data.has_key?(e.attribute("classification").value) == false
+             data[e.attribute("classification").value] = [e.text]
+          else
+             data[e.attribute("classification").value].push(e.text)
+          end
+        }
+        data
+      rescue
+        "not available"
+      end
+		end
+
+    # Get all known compound names sorted by classification. Relies on an external service for name lookups.
+    # @example
+    #   names = compound.to_names_hash
+    # @return [Hash] Classification => Name Array
+    def to_ambit_names_hash
+      begin
+        ds = OpenTox::Dataset.new
+        ds.save
+        ds.load_rdfxml(RestClientWrapper.get("http://apps.ideaconsult.net:8080/ambit2/query/compound/search/names?type=smiles&property=&search=#{@inchi}"))
+        ds.save
+        ds.uri
+      rescue
+        "not available"
+      end
+    end
+
 
 		# Match a smarts string
     # @example
@@ -197,25 +239,28 @@ module OpenTox
     # Lookup numerical values, returns hash with feature name as key and value as value 
     # @param [Array] Array of feature names
     # @param [String] Feature dataset uri
+    # @param [String] Comma separated pc types
+    # @param [String] Comma separated lib
     # @return [Hash] Hash with feature name as key and value as value
-    def lookup(feature_array,feature_dataset_uri,pc_type,subjectid=nil)
+		def lookup(feature_array,feature_dataset_uri,pc_type,lib,subjectid=nil)
       ds = OpenTox::Dataset.find(feature_dataset_uri,subjectid)
       #entry = ds.data_entries[self.uri]
       entry = nil 
-      ds.data_entries.each { |c_uri, values| 
-        if c_uri.split('/compound/').last == self.to_inchi
-          entry = ds.data_entries[self.uri]
+      ds.data_entries.each { |c_uri, values|
+        compound = OpenTox::Compound.new(c_uri)
+        if compound.to_inchi == self.to_inchi # Compare compounds by InChI
+          entry = ds.data_entries[c_uri]
           break
         end
       }
       LOGGER.debug "#{entry.size} entries in feature ds for query." unless entry.nil?
-
       if entry.nil?
-        uri, smiles_to_inchi = OpenTox::Algorithm.get_pc_descriptors({:compounds => [self.uri], :pc_type => pc_type})
-        uri = OpenTox::Algorithm.load_ds_csv(uri, smiles_to_inchi, subjectid)
-        ds = OpenTox::Dataset.find(uri,subjectid)
+        temp_ds = OpenTox::Dataset.create; temp_ds.add_compound(self.uri); temp_uri = temp_ds.save
+        uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-algorithm"], "/pc/AllDescriptors"), {:dataset_uri => temp_uri, :pc_type => pc_type, :lib => lib})
+        ds = OpenTox::Dataset.find(uri)
         entry = ds.data_entries[self.uri]
         ds.delete(subjectid)
+        temp_ds.delete
       end
       features = entry.keys
       features.each { |feature| 
@@ -224,7 +269,6 @@ module OpenTox
         entry.delete(feature) unless feature == new_feature # e.g. when loading from ambit
       }
       #res = feature_array.collect {|v| entry[v]}
-      #LOGGER.debug "----- am #{entry.to_yaml}"
       entry
 		end
 

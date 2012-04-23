@@ -349,8 +349,11 @@ module OpenTox
 
       # Load CSV string (format specification: http://toxcreate.org/help)
       # @param [String] csv CSV representation of the dataset
+      # @param [Boolean] drop_missing Whether completely missing rows should be droppped
+      # @param [Boolean] all_numeric Whether all features should be treated as numeric
+      # @param [Boolean] del_nominal All nominal features will be removed
       # @return [OpenTox::Dataset] Dataset object with CSV data
-      def load_csv(csv, drop_missing=false)
+      def load_csv(csv, drop_missing=false, all_numeric=false)
         row = 0
         input = csv.split("\n")
         headers = split_row(input.shift)
@@ -362,7 +365,7 @@ module OpenTox
           row = split_row(row)
           value_maps = detect_new_values(row, value_maps)
           value_maps.each_with_index { |vm,j|
-            if vm.size > @max_class_values # max @max_class_values classes.
+            if (vm.size > @max_class_values) || all_numeric # max @max_class_values classes.
               regression_features[j]=true 
             else
               regression_features[j]=false
@@ -392,22 +395,30 @@ module OpenTox
 
       def warnings
 
-        info = ''
+        info = '<br>'
         @feature_types.each do |feature,types|
+          @dataset.add_feature_metadata(feature,{RDF.type => []})
           if types.uniq.size == 0
-            type = "helper#MissingFeature"
-          elsif types.uniq.size > 1
-            type = OT.NumericFeature
+            @dataset.add_feature_metadata(
+              feature, {RDF.type => ( @dataset.features[feature][RDF.type] << "helper#MissingFeature" ) } # TODO: Fit to OT ontology!
+            )
+            info += "'#{@dataset.feature_name(feature)}' detected as 'MissingFeature'<br>"
           else
-            type = types.first
+            info += "'#{@dataset.feature_name(feature)}' detected as "
+            types_arr = []
+            types.uniq.each { |t|
+              types_arr << t
+              info += "'#{t.split('#').last}', "
+            }
+
+            @dataset.add_feature_metadata(
+              feature, {RDF.type => types_arr.sort} # nominal should be first for downward compatibility
+            )
+
+            info.chop!.chop!
+            info += "<br>"
           end
-          @dataset.add_feature_metadata(feature,{RDF.type => [type]})
-          info += "\"#{@dataset.feature_name(feature)}\" detected as #{type.split('#').last}." if type
-
-          # TODO: rewrite feature values
-          # TODO if value.to_f == 0 @activity_errors << "#{id} Zero values not allowed for regression datasets - entry ignored."
         end
-
         @dataset.metadata[OT.Info] = info 
 
         warnings = ''
@@ -469,28 +480,31 @@ module OpenTox
           unless @duplicate_feature_indices.include? i
 
             value = row[i]
-            #LOGGER.warn "Missing values for #{id}" if value.size == 0 # String is empty
             feature = @features[feature_idx]
   
             type = feature_type(value) # May be NIL
-            type = OT.NominalFeature unless (type.nil? || regression_features[i])
             @feature_types[feature] << type if type
+            # Add nominal type if #distinct values le @max_class_values
+            if type == OT.NumericFeature
+              @feature_types[feature] << OT.NominalFeature unless regression_features[i]
+            end
   
             val = nil
             case type
             when OT.NumericFeature
               val = value.to_f
+              val = nil if val.infinite?
             when OT.NominalFeature
               val = value.to_s
             end
 
             feature_idx += 1
   
-            if val != nil
+            if val != nil 
               @dataset.add(compound.uri, feature, val)
-              if type != OT.NumericFeature
+              if @feature_types[feature].include? OT.NominalFeature
                 @dataset.features[feature][OT.acceptValue] = [] unless @dataset.features[feature][OT.acceptValue]
-                @dataset.features[feature][OT.acceptValue] << val.to_s unless @dataset.features[feature][OT.acceptValue].include?(val.to_s)
+                @dataset.features[feature][OT.acceptValue] << val unless @dataset.features[feature][OT.acceptValue].include?(val)
               end
             end
 
@@ -654,7 +668,7 @@ module OpenTox
           obmol.get_data.each { |d| row[d.get_attribute] = d.get_value if properties.include?(d.get_attribute) }
           table.data[compound.uri] = row
         end
-        
+
         # find and remove ignored_features
         @activity_errors = table.clean_features
         table.add_to_dataset @dataset

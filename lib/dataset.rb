@@ -197,7 +197,12 @@ module OpenTox
       accept_values
     end
 
-    # Detect feature type(s) in the dataset
+    # Detect feature type (reduced to one across all features)
+    # Classification takes precedence over regression
+    # DEPRECATED -- 
+    #   HAS NO SENSE FOR DATASETS WITH MORE THAN 1 FEATURE
+    #   FEATURES CAN HAVE MULTIPLE TYPES
+    # Replacement: see feature_types()
     # @return [String] `classification", "regression", "mixed" or unknown`
     def feature_type(subjectid=nil)
       load_features(subjectid)
@@ -209,6 +214,24 @@ module OpenTox
       else
         "unknown"
       end
+    end
+
+
+    # Detect feature types. A feature can have multiple types.
+    # Returns types hashed by feature URI, with missing features omitted.
+    # Example (YAML):
+    #   http://toxcreate3.in-silico.ch:8082/dataset/152/feature/nHal: 
+    #   - http://www.opentox.org/api/1.1#NumericFeature
+    #   - http://www.opentox.org/api/1.1#NominalFeature
+    #   ...
+    #
+    # @return [Hash] Keys: feature URIs, Values: Array of types
+    def feature_types(subjectid=nil)
+      load_features(subjectid)
+        @features.inject({}){ |h,(f,metadata)| 
+          h[f]=metadata[RDF.type] unless metadata[RDF.type][0].include? "MissingFeature" 
+          h
+        }
     end
 =begin
 =end
@@ -316,11 +339,14 @@ module OpenTox
     end
 
     # Complete feature values by adding zeroes
-    def complete_data_entries
+    # @param [Hash] key: compound, value: duplicate sizes
+    def complete_data_entries(compound_sizes)
       all_features = @features.keys
       @data_entries.each { |c, e|
         (Set.new(all_features.collect)).subtract(Set.new e.keys).to_a.each { |f|
-          self.add(c,f,0)
+          compound_sizes[c].times { 
+            self.add(c,f,0) 
+          }
         }
       }
     end
@@ -454,6 +480,14 @@ module OpenTox
       end
     end
 
+    def value_map(prediction_feature_uri)
+      training_classes = accept_values(prediction_feature_uri).sort
+      value_map=Hash.new 
+      training_classes.each_with_index { |c,i| value_map[i+1] = c }
+      value_map
+    end
+
+
     private
     # Copy a dataset (rewrites URI)
     def copy(dataset)
@@ -503,6 +537,7 @@ module OpenTox
     def neighbors(compound)
       @data_entries[compound.uri].collect{|f,v| @features[f] if f.match(/neighbor/)}.compact if @data_entries[compound.uri]
     end
+
 
 #    def errors(compound)
 #      features = @data_entries[compound.uri].keys

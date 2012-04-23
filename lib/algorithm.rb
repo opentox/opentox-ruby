@@ -56,9 +56,15 @@ module OpenTox
 
       def check_params(params,per_mil,subjectid=nil)
         raise OpenTox::NotFoundError.new "Please submit a dataset_uri." unless params[:dataset_uri] and  !params[:dataset_uri].nil?
-        raise OpenTox::NotFoundError.new "Please submit a prediction_feature." unless params[:prediction_feature] and  !params[:prediction_feature].nil?
-        @prediction_feature = OpenTox::Feature.find params[:prediction_feature], subjectid
         @training_dataset = OpenTox::Dataset.find "#{params[:dataset_uri]}", subjectid
+
+        unless params[:prediction_feature] # try to read prediction_feature from dataset
+          raise OpenTox::NotFoundError.new "Please provide a prediction_feature parameter" unless @training_dataset.features.size == 1
+          prediction_feature = OpenTox::Feature.find(@training_dataset.features.keys.first,@subjectid)
+          params[:prediction_feature] = prediction_feature.uri
+        end
+        @prediction_feature = OpenTox::Feature.find params[:prediction_feature], subjectid
+
         raise OpenTox::NotFoundError.new "No feature #{params[:prediction_feature]} in dataset #{params[:dataset_uri]}" unless @training_dataset.features and @training_dataset.features.include?(params[:prediction_feature])
 
         unless params[:min_frequency].nil? 
@@ -69,10 +75,10 @@ module OpenTox
         end
       end
 
-      def add_fminer_data(fminer_instance, params, value_map)
+      def add_fminer_data(fminer_instance, value_map)
 
         id = 1 # fminer start id is not 0
-        @training_dataset.data_entries.each do |compound,entry|
+        @training_dataset.data_entries.each do |compound,entry| #order of compounds does not influence result
           begin
             smiles = OpenTox::Compound.smiles(compound.to_s)
           rescue
@@ -84,7 +90,6 @@ module OpenTox
             next
           end
 
-          value_map=params[:value_map] unless params[:value_map].nil?
           entry.each do |feature,values|
             if feature == @prediction_feature.uri
               values.each do |value|
@@ -92,7 +97,7 @@ module OpenTox
                   LOGGER.warn "No #{feature} activity for #{compound.to_s}."
                 else
                   if @prediction_feature.feature_type == "classification"
-                    activity= value_map.invert[value.to_s].to_i # activities are mapped to 1..n
+                    activity= value_map.invert[value].to_i # activities are mapped to 1..n
                     @db_class_sizes[activity-1].nil? ? @db_class_sizes[activity-1]=1 : @db_class_sizes[activity-1]+=1 # AM effect
                   elsif @prediction_feature.feature_type == "regression"
                     activity= value.to_f 
@@ -477,10 +482,22 @@ module OpenTox
           # assumes a data matrix 'features' and a vector 'y' of target values
           row.names(features)=NULL
           
+          # features with all values missing removed
+          na_col = names ( which ( apply ( features, 2, function(x) all ( is.na ( x ) ) ) ) )
+          features = features[,!names(features) %in% na_col]
+
+          # features with infinite values removed
+          inf_col = names ( which ( apply ( features, 2, function(x) any ( is.infinite ( x ) ) ) ) )
+          features = features[,!names(features) %in% inf_col]
+
+          # features with zero variance removed
+          zero_var = names ( which ( apply ( features, 2, function(x) var(x, na.rm=T) ) == 0 ) )
+          features = features[,!names(features) %in% zero_var]
+          
           pp = NULL
           if (del_missing) {
             # needed if rows should be removed
-            na_ids = apply(features,1,function(x)any(is.na(x)))
+            na_ids = apply ( features,1,function(x) any ( is.na ( x ) ) )
             features = features[!na_ids,]
             y = y[!na_ids]
             pp = preProcess(features, method=c("scale", "center"))
@@ -490,15 +507,21 @@ module OpenTox
           }
           features = predict(pp, features)
           
+          # features with nan values removed (sometimes preProcess return NaN values)
+          nan_col = names ( which ( apply ( features, 2, function(x) any ( is.nan ( x ) ) ) ) )
+          features = features[,!names(features) %in% nan_col]
+         
           # determine subsets
-          subsets = dim(features)[2]*c(0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
-          subsets = c(2,3,4,5,7,10,subsets)
+          subsets = dim(features)[2]*c(0.3, 0.32, 0.34, 0.36, 0.38, 0.4, 0.42, 0.44, 0.46, 0.48, 0.5, 0.52, 0.54, 0.56, 0.58, 0.6, 0.62, 0.64, 0.66, 0.68, 0.7)
+          #subsets = dim(features)[2]*c(0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
+          #subsets = c(2,3,4,5,7,10,subsets)
+          #subsets = c(2,3,4,5,7,10,13,16,19,22,25,28,30)
           subsets = unique(sort(round(subsets))) 
           subsets = subsets[subsets<=dim(features)[2]]
           subsets = subsets[subsets>1] 
-          
+         
           # Recursive feature elimination
-          rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, number=50), sizes=subsets)
+          rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, number=150), sizes=subsets)
           
           # read existing dataset and select most useful features
           csv=feats[,c("SMILES", rfProfile$optVariables)]
@@ -528,7 +551,7 @@ module OpenTox
       # @param [Hash] required keys: compound, features, feature_dataset_uri, pc_type
       # @return [Hash] Hash with matching Smarts and number of hits 
       def self.lookup(params)
-        params[:compound].lookup(params[:features], params[:feature_dataset_uri],params[:pc_type],params[:subjectid])
+        params[:compound].lookup(params[:features], params[:feature_dataset_uri],params[:pc_type], params[:lib],params[:subjectid])
       end  
     end
 
