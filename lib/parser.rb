@@ -357,6 +357,7 @@ module OpenTox
         row = 0
         input = csv.split("\n")
         headers = split_row(input.shift)
+        headers.collect! {|header| header.to_s.gsub!("/","_")}
         add_features(headers)
         value_maps = Array.new
         regression_features=Array.new
