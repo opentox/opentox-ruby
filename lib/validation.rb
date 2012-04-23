@@ -19,8 +19,9 @@ module OpenTox
     def self.list( params={} )
       filter_string = ""
       params.each do |k,v|
-        filter_string = "?" if filter_string.length==0 
-        filter_string += k.to_s+"="+v
+        filter_string += (filter_string.length==0 ? "?" : "&")
+        v = v.to_s.gsub(/;/, "%3b") if v.to_s =~ /;/
+        filter_string += k.to_s+"="+v.to_s
       end
       (OpenTox::RestClientWrapper.get(CONFIG[:services]["opentox-validation"]+filter_string).split("\n"))
     end
@@ -156,8 +157,9 @@ module OpenTox
     def self.list( params={} )
       filter_string = ""
       params.each do |k,v|
-        filter_string = "?" if filter_string.length==0 
-        filter_string += k.to_s+"="+v
+        filter_string += (filter_string.length==0 ? "?" : "&")
+        v = v.to_s.gsub(/;/, "%3b") if v.to_s =~ /;/
+        filter_string += k.to_s+"="+v.to_s
       end
       (OpenTox::RestClientWrapper.get(File.join(CONFIG[:services]["opentox-validation"],"crossvalidation")+filter_string).split("\n"))
     end
