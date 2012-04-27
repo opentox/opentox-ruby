@@ -211,7 +211,7 @@ module OpenTox
         @r.split_features = split_features if split_features
         str_split_features = "colnames=split_features"
       end
-      @r.eval "save.image(\"/tmp/image.R\")"
+      #@r.eval "save.image(\"/tmp/image.R\")"
       
       if k_fold_split
         @r.eval "split <- stratified_k_fold_split(#{df}, num_folds=#{num_folds}, #{str_split_features})"
