@@ -400,7 +400,7 @@ module OpenTox
         index_smi = master[0].index("SMILES")
         master.map {|i| i.delete_at(index_smi)} if index_smi
         master[0][0] = "SMILES" 
-        ambit_ids=master[0].collect
+        ambit_ids=master[0].collect {|header| header.to_s.gsub(/[\/.\\\(\)\{\}\[\]]/,"_")}
         ambit_ids.shift
       end
        
