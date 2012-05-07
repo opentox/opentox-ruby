@@ -75,7 +75,7 @@ module OpenTox
         end
       end
 
-      def add_fminer_data(fminer_instance, value_map, prepare_backend=true)
+      def add_fminer_data(fminer_instance, value_map)
 
 
         # detect nr duplicates per compound
@@ -119,8 +119,8 @@ module OpenTox
                     activity= values[i].to_f 
                   end
                   begin
-                    fminer_instance.AddCompound(smiles,id) if prepare_backend
-                    fminer_instance.AddActivity(activity, id) if prepare_backend
+                    fminer_instance.AddCompound(smiles,id) if fminer_instance
+                    fminer_instance.AddActivity(activity, id) if fminer_instance 
                     @all_activities[id]=activity # DV: insert global information
                     @compounds[id] = compound
                     @smi[id] = smiles
@@ -579,3 +579,26 @@ module OpenTox
     end
   end
 end
+
+class Array
+  # collect method extended for parallel processing.
+  # Note: assign return value as: ans = arr.pcollect(n) { |obj| ... }
+  # @param n the number of processes to spawn (default: unlimited)
+  def pcollect(n = nil)
+    nproc = 0
+    result = collect do |*a|
+      r, w = IO.pipe
+      fork do
+        r.close
+        w.write( Marshal.dump( yield(*a) ) )
+      end
+      if n and (nproc+=1) >= n
+        Process.wait ; nproc -= 1
+      end
+      [ w.close, r ].last
+    end
+    Process.waitall
+    result.collect{|r| Marshal.load [ r.read, r.close ].first}
+  end
+end
+
