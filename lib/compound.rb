@@ -17,16 +17,20 @@ module OpenTox
     # @return [Compound] Compound
 		def initialize(uri=nil)
       @uri = uri
-      case @uri
-      when /InChI/ # shortcut for IST services
-        @inchi = @uri.sub(/^.*InChI/, 'InChI')
+      if (@uri =~ URI::regexp) || @uri.nil?
+        case @uri
+        when /InChI/ # shortcut for IST services
+          @inchi = @uri.sub(/^.*InChI/, 'InChI')
+        else
+          @inchi = RestClientWrapper.get(@uri, :accept => 'chemical/x-inchi').to_s.chomp if @uri
+        end
+        
+        if @uri and @inchi.to_s.size==0
+          LOGGER.warn "REMOVE ABMIT HACK: no inchi for compound "+@uri.to_s+", load via smiles"
+          @inchi = Compound.smiles2inchi(Compound.smiles(@uri))
+        end
       else
-        @inchi = RestClientWrapper.get(@uri, :accept => 'chemical/x-inchi').to_s.chomp if @uri
-      end
-      
-      if @uri and @inchi.to_s.size==0
-        LOGGER.warn "REMOVE ABMIT HACK: no inchi for compound "+@uri.to_s+", load via smiles"
-        @inchi = Compound.smiles2inchi(Compound.smiles(@uri))
+        raise "Not able to create compound with uri: #{@uri}"
       end
     end
     
