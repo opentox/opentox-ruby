@@ -527,7 +527,25 @@ module OpenTox
     end
 
     def descriptors(compound)
-      @data_entries[compound.uri].collect{|f,v| @features[f] if f.match(/descriptor/)}.compact if @data_entries[compound.uri]
+      if @data_entries[compound.uri] 
+        pc_features = {}
+        features = []
+        @data_entries[compound.uri].collect{|f,v| 
+          if f.match(/descriptor/)
+            features << @features[f] if f.match(/descriptor/)
+          else 
+            unless @features[f][RDF::type].nil?
+              pc_features[f] = v if @features[f][RDF::type].join.include? "Numeric"
+            end
+          end
+        }
+
+        if pc_features.empty?
+          features.compact
+        else
+          pc_features
+        end
+      end
     end
 
     def measured_activities(compound)
