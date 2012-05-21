@@ -96,7 +96,7 @@ module OpenTox
         @training_dataset.compounds.each do |compound|
           entry=@training_dataset.data_entries[compound]
           begin
-            smiles = OpenTox::Compound.smiles(compound.to_s)
+            smiles = OpenTox::Compound.new(compound).to_smiles
           rescue
             LOGGER.warn "No resource for #{compound.to_s}"
             next
