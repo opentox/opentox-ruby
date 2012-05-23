@@ -68,10 +68,36 @@ module OpenTox
         raise OpenTox::NotFoundError.new "No feature #{params[:prediction_feature]} in dataset #{params[:dataset_uri]}" unless @training_dataset.features and @training_dataset.features.include?(params[:prediction_feature])
 
         unless params[:min_frequency].nil? 
-          @minfreq=params[:min_frequency].to_i
-          raise "Minimum frequency must be a number >0!" unless @minfreq>0
-        else
-          @minfreq=OpenTox::Algorithm.min_frequency(@training_dataset,per_mil) # AM sugg. 8-10 per mil for BBRC, 50 per mil for LAST
+          # check for percentage
+          if params[:min_frequency].include? "pc"
+            per_mil=params[:min_frequency].gsub(/pc/,"")
+            if OpenTox::Algorithm.numeric? per_mil
+              per_mil = per_mil.to_i * 10
+            else
+              bad_request=true
+            end
+          # check for per-mil
+          elsif params[:min_frequency].include? "pm"
+            per_mil=params[:min_frequency].gsub(/pm/,"")
+            if OpenTox::Algorithm.numeric? per_mil
+              per_mil = per_mil.to_i
+            else
+              bad_request=true
+            end
+          # set minfreq directly
+          else
+            if OpenTox::Algorithm.numeric? params[:min_frequency]
+              @minfreq=params[:min_frequency].to_i
+              LOGGER.debug "min_frequency #{@minfreq}"
+            else
+              bad_request=true
+            end
+          end
+          raise OpenTox::BadRequestError.new "Minimum frequency must be integer [n], or a percentage [n]pc, or a per-mil [n]pm , with n greater 0" if bad_request
+          if @minfreq.nil?
+            @minfreq=OpenTox::Algorithm.min_frequency(@training_dataset,per_mil)
+            LOGGER.debug "min_frequency #{@minfreq} (input was #{per_mil} per-mil)"
+          end
         end
       end
 
@@ -478,7 +504,7 @@ module OpenTox
         @r.del_missing = params[:del_missing] == true ? 1 : 0
         r_result_file = params[:fds_csv_file].sub("rfe_", "rfe_R_")
         @r.f_fds_r = r_result_file.to_s
-        
+
         # need packs 'randomForest', 'RANN'
         @r.eval <<-EOR
           suppressPackageStartupMessages(library('caret'))
@@ -487,17 +513,17 @@ module OpenTox
           suppressPackageStartupMessages(library('doMC'))
           registerDoMC()
           set.seed(1)
-          
+
           acts = read.csv(ds_csv_file, check.names=F)
           feats = read.csv(fds_csv_file, check.names=F)
           ds = merge(acts, feats, by="SMILES") # duplicates features for duplicate SMILES :-)
-          
+
           features = ds[,(dim(acts)[2]+1):(dim(ds)[2])]
           y = ds[,which(names(ds) == prediction_feature)] 
-          
+
           # assumes a data matrix 'features' and a vector 'y' of target values
           row.names(features)=NULL
-          
+
           # features with all values missing removed
           na_col = names ( which ( apply ( features, 2, function(x) all ( is.na ( x ) ) ) ) )
           features = features[,!names(features) %in% na_col]
@@ -509,7 +535,7 @@ module OpenTox
           # features with zero variance removed
           zero_var = names ( which ( apply ( features, 2, function(x) var(x, na.rm=T) ) == 0 ) )
           features = features[,!names(features) %in% zero_var]
-          
+
           pp = NULL
           if (del_missing) {
             # needed if rows should be removed
@@ -522,11 +548,11 @@ module OpenTox
             pp = preProcess(features, method=c("scale", "center", "knnImpute"))
           }
           features = predict(pp, features)
-          
+
           # features with nan values removed (sometimes preProcess return NaN values)
           nan_col = names ( which ( apply ( features, 2, function(x) any ( is.nan ( x ) ) ) ) )
           features = features[,!names(features) %in% nan_col]
-         
+
           # determine subsets
           subsets = dim(features)[2]*c(0.3, 0.32, 0.34, 0.36, 0.38, 0.4, 0.42, 0.44, 0.46, 0.48, 0.5, 0.52, 0.54, 0.56, 0.58, 0.6, 0.62, 0.64, 0.66, 0.68, 0.7)
           #subsets = dim(features)[2]*c(0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
@@ -535,10 +561,10 @@ module OpenTox
           subsets = unique(sort(round(subsets))) 
           subsets = subsets[subsets<=dim(features)[2]]
           subsets = subsets[subsets>1] 
-         
+
           # Recursive feature elimination
           rfProfile = rfe( x=features, y=y, rfeControl=rfeControl(functions=rfFuncs, number=150), sizes=subsets)
-          
+
           # read existing dataset and select most useful features
           csv=feats[,c("SMILES", rfProfile$optVariables)]
           write.csv(x=csv,file=f_fds_r, row.names=F, quote=F, na='')
