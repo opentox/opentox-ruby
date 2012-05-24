@@ -1,5 +1,5 @@
 
-OT_LOGO = File.join(CONFIG[:services]["opentox-validation"],"resources/ot-logo.png")
+OT_LOGO = "/" + CONFIG[:services]["opentox-validation"].split("/").last + "/resources/ot-logo.png"
 
 class String
   
