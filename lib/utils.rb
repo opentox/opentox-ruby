@@ -467,8 +467,8 @@ module OpenTox
     end
 
 
-    # Effect calculation for classification
-    # @param [Array] Array of occurrences per class in the form of Enumerables.
+    # Effect calculation for classification. It is assumed that the elements of the arrays match each other pairwise
+    # @param [Array] Array of occurrences per class (in the form of Enumerables).
     # @param [Array] Array of database instance counts per class.
     def self.effect(occurrences, db_instances)
       max=0

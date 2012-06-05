@@ -483,13 +483,15 @@ module OpenTox
         compound_sizes = {}
         dataset.compounds.each do |compound|
           entries=dataset.data_entries[compound]
-          entries.each do |feature, values|
-            compound_sizes[compound] || compound_sizes[compound] = []
-            compound_sizes[compound] << values.size
+          if entries
+            entries.each do |feature, values|
+              compound_sizes[compound] || compound_sizes[compound] = []
+              compound_sizes[compound] << values.size
+            end
+            compound_sizes[compound].uniq!
+            raise "Inappropriate data for CSV export for compound #{compound}" if compound_sizes[compound].size > 1
+            compound_sizes[compound] = compound_sizes[compound][0] # integer instead of array
           end
-          compound_sizes[compound].uniq!
-          raise "Inappropriate data for CSV export" if compound_sizes[compound].size > 1
-          compound_sizes[compound] = compound_sizes[compound][0] # integer instead of array
         end
  
         # substructures: complete data entries with zeroes of appropriate duplicates
@@ -501,23 +503,25 @@ module OpenTox
 
         dataset.compounds.each do |compound|
           entries=dataset.data_entries[compound]
-          cmpd = Compound.new(compound)
-          inchi = URI.encode_www_form_component(cmpd.to_inchi)
-
-          # allocate container
-          row_container = Array.new(compound_sizes[compound])
-          (0...row_container.size).each do |i|
-            row_container[i] = Array.new(@rows.first.size)
-          end
-
-          entries.each { |feature, values|
-            (0...compound_sizes[compound]).each { |i|
-              j = features.index(feature)+1
-              row_container[i][0] = inchi
-              row_container[i][j] = values[i]
+          if entries
+            cmpd = Compound.new(compound)
+            inchi = URI.encode_www_form_component(cmpd.to_inchi)
+  
+            # allocate container
+            row_container = Array.new(compound_sizes[compound])
+            (0...row_container.size).each do |i|
+              row_container[i] = Array.new(@rows.first.size)
+            end
+  
+            entries.each { |feature, values|
+              (0...compound_sizes[compound]).each { |i|
+                j = features.index(feature)+1
+                row_container[i][0] = inchi
+                row_container[i][j] = values[i]
+              }
             }
-          }
-          row_container.each { |r| @rows << r }
+            row_container.each { |r| @rows << r }
+          end
         end
       end
 
