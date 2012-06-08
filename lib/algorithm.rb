@@ -94,10 +94,10 @@ module OpenTox
             end
           end
           raise OpenTox::BadRequestError.new "Minimum frequency must be integer [n], or a percentage [n]pc, or a per-mil [n]pm , with n greater 0" if bad_request
-          if @minfreq.nil?
-            @minfreq=OpenTox::Algorithm.min_frequency(@training_dataset,per_mil)
-            LOGGER.debug "min_frequency #{@minfreq} (input was #{per_mil} per-mil)"
-          end
+        end
+        if @minfreq.nil?
+          @minfreq=OpenTox::Algorithm.min_frequency(@training_dataset,per_mil)
+          LOGGER.debug "min_frequency #{@minfreq} (input was #{per_mil} per-mil)"
         end
       end
 
@@ -110,7 +110,7 @@ module OpenTox
           entries=@training_dataset.data_entries[compound]
           entries.each do |feature, values|
             compound_sizes[compound] || compound_sizes[compound] = []
-            compound_sizes[compound] << values.size
+            compound_sizes[compound] << values.size unless values.size == 0
           end
           compound_sizes[compound].uniq!
           raise "Inappropriate data for fminer" if compound_sizes[compound].size > 1
