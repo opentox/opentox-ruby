@@ -63,7 +63,8 @@ module OpenTox
     def paired_ttest(array1, array2, significance_level=0.95)
       @r.assign "v1",array1
       @r.assign "v2",array2
-      @r.eval "ttest = t.test(as.numeric(v1),as.numeric(v2),paired=T)"
+      paired = array1.size==array2.size ? "T" : "F"
+      @r.eval "ttest = t.test(as.numeric(v1),as.numeric(v2),paired=#{paired})"
       t = @r.pull "ttest$statistic"
       p = @r.pull "ttest$p.value"
       if (1-significance_level > p)
@@ -73,15 +74,61 @@ module OpenTox
       end
     end
     
+    def pvalue(array1, array2)
+      @r.assign "v1",array1
+      @r.assign "v2",array2
+      @r.eval "ttest = t.test(as.numeric(v1),as.numeric(v2))"
+      @r.pull "ttest$p.value"
+    end
+        
+    
+    def ttest(array1, value2, significance_level=0.95)
+      @r.assign "v1",array1
+      @r.eval "ttest = t.test(as.numeric(v1),conf.level=#{significance_level})"
+      min = @r.pull "ttest$conf.int[1]"
+      max = @r.pull "ttest$conf.int[2]"
+      if value2 <= min
+        1
+      elsif value2 >= max
+        -1
+      else
+        0
+      end
+    end
+    
+    
     # example: 
     # files = ["/tmp/box.svg","/tmp/box.png"]
     # data = [ [ :method, [4,4,5,5,4,3,2] ], [ :method2, [1,2,3,4,5,4,6] ], [ :asdf, [9,1,8,0,7,1,6] ] ]
     # boxplot(files, data, "comparison1" )
     #
-    def boxplot(files, data, title="")
-      LOGGER.debug("r-util> create boxplot")
+    def boxplot(files, data, title="", hline=nil)
+      LOGGER.debug("r-util> create boxplot "+data.inspect)
+      raise "no hashes, to keep order" if data.is_a?(Hash)
+      max = -1
+      min = 100000
+      data.size.times do |i|
+        values = data[i][1]
+        max = [max,values.size].max
+        min = [min,values.size].min
+        data[i] = [data[i][0]+"(#{values.size})",data[i][1]]
+      end
+      if min != max
+        times = max/min.to_f
+        raise "box-plot values do not have equal size #{min} <-> #{max}" if times.floor != times.ceil
+        data.size.times do |i|
+          m = data[i][0]
+          values = data[i][1]
+          data[i] = [ m, values*times.to_i ] if values.size<max
+        end
+        min = 100000
+        data.each do |m,values|
+          max = [max,values.size].max
+          min = [min,values.size].min
+        end
+      end
       assign_dataframe("boxdata",data.collect{|e| e[1]}.transpose,nil,data.collect{|e| e[0].to_s})
-      plot_to_files(files) do |file|
+      plot_to_files(files, hline) do |file|
         @r.eval "boxplot(boxdata,main='#{title}',col=rep(2:#{data.size+1}))"
       end
     end
@@ -179,8 +226,8 @@ module OpenTox
     # stratified splits a dataset into two dataset according to the feature values
     # all features are taken into account unless <split_features> is given
     # returns two datases
-    def stratified_split( dataset, metadata={}, missing_values="NA", pct=0.3, subjectid=nil, seed=42, split_features=nil )
-      stratified_split_internal( dataset, metadata, missing_values, nil, pct, subjectid, seed, split_features )
+    def stratified_split( dataset, metadata={}, missing_values="NA", pct=0.3, subjectid=nil, seed=42, split_features=nil, anti_stratification=false )
+      stratified_split_internal( dataset, metadata, missing_values, nil, pct, subjectid, seed, split_features, anti_stratification )
     end
     
     # stratified splits a dataset into k datasets according the feature values
@@ -191,7 +238,7 @@ module OpenTox
     end    
     
     private
-    def stratified_split_internal( dataset, metadata={}, missing_values="NA", num_folds=nil, pct=nil, subjectid=nil, seed=42, split_features=nil )
+    def stratified_split_internal( dataset, metadata={}, missing_values="NA", num_folds=nil, pct=nil, subjectid=nil, seed=42, split_features=nil, anti_stratification=false )
       raise "internal error" if num_folds!=nil and pct!=nil
       k_fold_split = num_folds!=nil
       if k_fold_split
@@ -227,9 +274,11 @@ module OpenTox
         end
         return train, test
       else
-        puts "split <- stratified_split(#{df}, ratio=#{pct}, #{str_split_features})"
-        @r.eval "split <- stratified_split(#{df}, ratio=#{pct}, #{str_split_features})"
+        anti = anti_stratification ? "anti_" : ""
+        puts "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features})"
+        @r.eval "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features})"
         split = @r.pull 'split'
+        puts "XXXXXXXXXXXX "+split.class.to_s
         metadata[DC.title] = "Training dataset split of "+dataset.uri
         train = split_to_dataset( df, split, metadata, subjectid ){ |i| i==1 }
         metadata[DC.title] = "Test dataset split of "+dataset.uri
@@ -393,7 +442,7 @@ module OpenTox
       begin File.delete(tmp); rescue; end
     end
     
-    def plot_to_files(files)
+    def plot_to_files(files,hline=nil)
       files.each do |file|
         if file=~/(?i)\.svg/
           @r.eval("svg('#{file}',10,8)")
@@ -403,6 +452,7 @@ module OpenTox
           raise "invalid format: "+file.to_s
         end
         yield file
+        @r.eval("abline(h=#{hline}, col = \"gray60\")") unless hline==nil
         LOGGER.debug "r-util> plotted to #{file}"
         @r.eval("dev.off()")
       end

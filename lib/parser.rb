@@ -386,6 +386,7 @@ module OpenTox
           if (drop_missing && drop) 
             @format_errors << "Row #{i} not added" 
           end
+          puts i
         }
         warnings
         @dataset

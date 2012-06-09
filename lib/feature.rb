@@ -18,7 +18,7 @@ module OpenTox
       feature.subjectid = subjectid
       feature
     end
-
+    
     # provides feature type, possible types are "regression" or "classification"
     # @return [String] feature type, unknown if OT.isA property is unknown/ not set
     def feature_type

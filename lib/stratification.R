@@ -115,6 +115,52 @@ stratified_split <- function( data, ratio=0.3, method="cluster", colnames=NULL )
       stop("unknown method")
 }
 
+anti_stratified_split <- function( data, ratio=0.3, colnames=NULL)
+{
+  if (ratio > 0.5)
+  {
+    ratio = 1-ratio
+    swap = TRUE
+  }
+  else
+    swap = FALSE
+  data.processed = as.matrix(process_data( data, colnames ))
+  print(paste("anti-split using #features: ",ncol(data.processed)))
+  num_c = floor(1/ratio)
+  cl = cluster(data.processed, num_c, num_c)
+  #print(cl)
+  idx = -1
+  min = 1000000
+  num = round_it(nrow(data)*ratio)
+  for(j in 1:max(cl))
+  {
+    cl_size = length(subset(cl, cl==j))
+    if (cl_size<min && cl_size>=num)
+    {
+      idx = j
+      min = cl_size
+    }
+  }
+  split <- array(1:nrow(data))
+  count = 0
+  for(j in 1:nrow(data))
+  {
+     if (count<num && cl[j]==idx)
+     {
+       split[j] = 1
+       count=count+1
+     }
+     else
+       split[j] = 0
+     
+  } 
+  if (swap)
+    for(j in 1:nrow(data))
+      split[j] = 1-split[j]
+  #print(split)
+  as.vector(split)
+}
+
 stratified_k_fold_split <- function( data, num_folds=10, method="cluster", colnames=NULL )
 {
   print(paste(num_folds,"-fold-split, data-size",nrow(data)))
@@ -254,7 +300,8 @@ plot_split <- function( data, split, names=NULL, ... )
 #data<-rbind(data,c)
 #data=iris
 #split = stratified_k_fold_split(data, num_folds=3)
-#split = stratified_split(data, ratio=0.33, method="cluster")
+#split = stratified_split(data, ratio=0.75)
+#print(split)
 #print(sum(split))
 #plot_split(plot_pre_process(data),split,c("training","test"))
 

@@ -463,7 +463,7 @@ module OpenTox
         features = dataset.features.keys
 
         # prepare for subgraphs
-        have_substructures = features.collect{ |id| dataset.features[id][RDF.type].include? OT.Substructure}.compact.uniq
+        have_substructures = features.collect{ |id| dataset.features[id][RDF.type] and dataset.features[id][RDF.type].include?(OT.Substructure) }.compact.uniq
         if have_substructures.size == 1 && have_substructures[0] 
           features_smarts = features.collect{ |id| "'" + dataset.features[id][OT.smarts] + "'" }
         end
@@ -475,7 +475,7 @@ module OpenTox
             if typestr.include? "MissingFeature"
               delete_features << id 
             end
-          }
+          } if dataset.features[id][RDF.type]
         }
         features = features - delete_features
 
@@ -502,7 +502,7 @@ module OpenTox
         dataset.compounds.each do |compound|
           entries=dataset.data_entries[compound]
           cmpd = Compound.new(compound)
-          inchi = URI.encode_www_form_component(cmpd.to_inchi)
+          inchi = cmpd.to_smiles() #URI.encode_www_form_component(cmpd.to_inchi)
 
           # allocate container
           row_container = Array.new(compound_sizes[compound])
