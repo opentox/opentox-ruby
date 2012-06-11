@@ -11,7 +11,7 @@ TMP_DIR = File.join(basedir, "tmp")
 LOG_DIR = File.join(basedir, "log")
 
 if File.exist?(config_file)
-	CONFIG = YAML.load_file(config_file)
+	CONFIG = YAML.load_file(config_file) unless defined?(CONFIG)
   raise "could not load config, config file: "+config_file.to_s unless CONFIG
 else
 	FileUtils.mkdir_p TMP_DIR

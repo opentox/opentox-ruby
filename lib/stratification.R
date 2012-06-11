@@ -143,7 +143,7 @@ anti_stratified_split <- function( data, ratio=0.3, colnames=NULL)
   }
   split <- array(1:nrow(data))
   count = 0
-  for(j in 1:nrow(data))
+  for(j in sample(array(nrow(data))))
   {
      if (count<num && cl[j]==idx)
      {
@@ -300,6 +300,7 @@ plot_split <- function( data, split, names=NULL, ... )
 #data<-rbind(data,c)
 #data=iris
 #split = stratified_k_fold_split(data, num_folds=3)
+#split = anti_stratified_split(data, ratio=0.75)
 #split = stratified_split(data, ratio=0.75)
 #print(split)
 #print(sum(split))

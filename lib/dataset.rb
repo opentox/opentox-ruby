@@ -412,12 +412,47 @@ module OpenTox
     # @param [optional,Array] compounds2, if specified only this compounds of dataset2 are used
     # example: if you want no features from dataset2, give empty array as features2
     def self.merge( dataset1, dataset2, metadata, subjectid=nil, features1=nil, features2=nil, compounds1=nil, compounds2=nil )
+#      features_selected = (features1!=nil or features2!=nil)
       features1 = dataset1.features.keys unless features1
       features2 = dataset2.features.keys unless features2
+#      compounds_selected = (compounds1!=nil or compounds2!=nil)
       compounds1 = dataset1.compounds unless compounds1
       compounds2 = dataset2.compounds unless compounds2
       data_combined = OpenTox::Dataset.create(CONFIG[:services]["opentox-dataset"],subjectid)
       LOGGER.debug("merging datasets #{dataset1.uri} and #{dataset2.uri} to #{data_combined.uri}")
+      
+#      if (compounds2.size*features2.size > compounds1.size*features1.size)
+#        tmp_c = compounds1
+#        tmp_f = features1
+#        tmp_d = dataset1
+#        compounds1 = compounds2
+#        features1 = features2
+#        dataset1 = dataset2
+#        compounds2 = tmp_c
+#        features2 = tmp_f
+#        dataset2 = tmp_d
+#      end
+#      # merge hash
+#      entries = dataset1.data_entries.merge(dataset2.data_entries)
+#      # delete compounds
+#      (entries.keys - [compounds1 + compounds2]).each{|c| entries.delete(c)} if compounds_selected
+#      # delete features
+#      if features_selected
+#        feats = [features1 + features2]
+#        entries.each do |c,f|
+#          (f.keys - feats).each{|feat| f.delete(feat)}  
+#        end
+#      end
+#      # compounds that occur in both datasets, have been overwritten by merge (are equal to dataset2 values) 
+#      [compounds1 & compounds2].each do |c|
+#        features1.each do |f|
+#          dataset1.data_entries[c][f].each do |v|
+#            entries[c][f] = v
+#          end if dataset1.data_entries[c] and dataset1.data_entries[c][f]
+#        end
+#      end
+#      data_combined.data_entries = entries
+      
       [[dataset1, features1, compounds1], [dataset2, features2, compounds2]].each do |dataset,features,compounds|
         compounds.each{|c| data_combined.add_compound(c)}
         features.each do |f|
@@ -431,12 +466,18 @@ module OpenTox
           end
         end
       end
+        
       metadata = {} unless metadata
       metadata[OT.hasSource] = "Merge from #{dataset1.uri} and #{dataset2.uri}" unless metadata[OT.hasSource]
       data_combined.add_metadata(metadata)
       data_combined.save(subjectid)
       data_combined
     end
+    
+#    def data_entries=(entries)
+#      @data_entries = entries
+#    end
+    
     
     # Save dataset at the dataset service 
     # - creates a new dataset if uri is not set
