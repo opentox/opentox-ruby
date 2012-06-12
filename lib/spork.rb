@@ -36,12 +36,12 @@ module Spork
   # :no_detach => true if you want to keep the child process under the parent control. usually you do NOT want this
   def self.spork(options={})
     logger = options[:logger]
-    logger.debug "spork> parent PID = #{Process.pid}" if logger
+    #logger.debug "spork> parent PID = #{Process.pid}" if logger
     
     child = fork do
       begin
         start = Time.now
-        logger.debug "spork> child PID = #{Process.pid}" if logger
+        #logger.debug "spork> child PID = #{Process.pid}" if logger
 
         # set the nice priority if needed
         Process.setpriority(Process::PRIO_PROCESS, 0, options[:priority]) if options[:priority]
@@ -56,7 +56,7 @@ module Spork
         #raise ex
         logger.error "spork> Exception in child[#{Process.pid}] - #{ex.class}: #{ex.message}" if logger
       ensure
-        logger.info "spork> child[#{Process.pid}] took #{Time.now - start} sec" if logger
+        #logger.info "spork> child[#{Process.pid}] took #{Time.now - start} sec" if logger
         # this form of exit doesn't call at_exit handlers
         exit!(0)
       end

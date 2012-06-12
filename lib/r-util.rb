@@ -326,6 +326,8 @@ module OpenTox
         end
       end
 
+      #LOGGER.debug "converting to array"
+      
       # values into 2D array, then to dataframe
       d_values = []
       dataset.compounds.each do |c|
@@ -345,14 +347,24 @@ module OpenTox
           d_values << c_values
         end
       end  
+      
+      #LOGGER.debug "assigning"
+      
       df_name = "df_#{dataset.uri.split("/")[-1].split("?")[0]}"
       assign_dataframe(df_name,d_values,compound_names,features)
+      
+      #LOGGER.debug "setting types"
       
       # set dataframe column types accordingly
       f_count = 1 #R starts at 1
       features.each do |f|
-        feat = OpenTox::Feature.find(f,subjectid)
-        nominal = feat.metadata[RDF.type].to_a.flatten.include?(OT.NominalFeature)
+        type = dataset.features[f][RDF.type]
+        unless type
+          LOGGER.debug "derive feature type by rest-call"
+          feat = OpenTox::Feature.find(f,subjectid)
+          type = feat.metadata[RDF.type]
+        end
+        nominal = type.to_a.flatten.include?(OT.NominalFeature)
         if nominal
           @r.eval "#{df_name}[,#{f_count}] <- as.character(#{df_name}[,#{f_count}])"
         else
@@ -388,8 +400,13 @@ module OpenTox
       compounds.size.times{|i| dataset.add_compound(compounds[i]) if compound_indices==nil or compound_indices.include?(i)}
       features.each{|f| dataset.add_feature(f,@@feats[df][f])}
       features.size.times do |c|
-        feat = OpenTox::Feature.find(features[c],subjectid)
-        nominal = feat.metadata[RDF.type].to_a.flatten.include?(OT.NominalFeature)
+        type = @@feats[df][features[c]][RDF.type]
+        unless type
+          LOGGER.debug "derive feature type by rest-call"
+          feat = OpenTox::Feature.find(features[c],subjectid)
+          type = feat.metadata[RDF.type]
+        end
+        nominal = type.to_a.flatten.include?(OT.NominalFeature)
         compounds.size.times do |r|
           if compound_indices==nil or compound_indices.include?(r)
             dataset.add(compounds[r],features[c],nominal ? values[r][c] : values[r][c].to_f) if values[r][c]!="NA"

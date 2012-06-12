@@ -306,7 +306,7 @@ module OpenTox
     def self.check_policy(uri, subjectid)
       return true unless uri and subjectid
       token_valid = OpenTox::Authorization.is_token_valid(subjectid)      
-      LOGGER.debug "OpenTox::Authorization.check_policy with uri: #{uri}, subjectid: #{subjectid} is valid: #{token_valid}"
+      #LOGGER.debug "OpenTox::Authorization.check_policy with uri: #{uri}, subjectid: #{subjectid} is valid: #{token_valid}"
       # check if subjectid is valid
       unless token_valid
         # abort if invalid

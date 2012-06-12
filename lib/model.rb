@@ -16,7 +16,7 @@ module OpenTox
           accept_header = 'application/rdf+xml'
         end
       end
-      LOGGER.info "running model "+@uri.to_s+", params: "+params.inspect+", accept: "+accept_header.to_s
+      LOGGER.debug "running model "+@uri.to_s+", params: "+params.inspect+", accept: "+accept_header.to_s
       RestClientWrapper.post(@uri,params,{:accept => accept_header},waiting_task).to_s
     end
 

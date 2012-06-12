@@ -72,7 +72,7 @@ module OpenTox
         end
       end  
       task.pid = task_pid
-      LOGGER.debug "Started task: "+task.uri.to_s
+      #LOGGER.debug "Started task: "+task.uri.to_s
       task
     end  
   
@@ -248,7 +248,7 @@ module OpenTox
       due_to_time = Time.new + DEFAULT_TASK_MAX_DURATION
       start_time = Time.new
       dur = 0
-      LOGGER.debug "start waiting for task "+@uri.to_s+" at: "+Time.new.to_s+", waiting at least until "+due_to_time.to_s
+      LOGGER.debug "start waiting for task "+@uri.to_s.chomp+" at: "+Time.new.to_s+", waiting at least until "+due_to_time.to_s
       
       load_metadata # for extremely fast tasks
       check_state
@@ -265,7 +265,7 @@ module OpenTox
         end
       end
       waiting_task.waiting_for(nil) if waiting_task
-      LOGGER.debug "Task '"+@metadata[OT.hasStatus].to_s+"': "+@uri.to_s+", Result: "+@metadata[OT.resultURI].to_s
+      LOGGER.debug "Task '"+@metadata[OT.hasStatus].to_s+"': "+@uri.to_s.chomp+", Result: "+@metadata[OT.resultURI].to_s
     end
     
     # updates percentageCompleted value (can only be increased)
