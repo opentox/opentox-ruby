@@ -282,7 +282,7 @@ module OpenTox
         metadata[DC.title] = "Training dataset split of "+dataset.uri
         train = split_to_dataset( df, split, metadata, subjectid ){ |i| i==1 }
         metadata[DC.title] = "Test dataset split of "+dataset.uri
-        test = split_to_dataset( df, split, metadata, subjectid ){ |i| i==0 }
+        test = split_to_dataset( df, split, metadata, subjectid, missing_values ){ |i| i==0 }
         return train, test
       end
     end
@@ -292,7 +292,7 @@ module OpenTox
     # takes duplicates into account
     # replaces missing values with param <missing_value>
     # returns dataframe-variable-name in R
-    def dataset_to_dataframe( dataset, missing_value="NA", subjectid=nil, features=nil )
+    def dataset_to_dataframe( dataset, missing_values="NA", subjectid=nil, features=nil )
       LOGGER.debug "r-util> convert dataset to dataframe #{dataset.uri}"
       
       # count duplicates
@@ -341,7 +341,7 @@ module OpenTox
               raise "wtf" if i>0
               v = ""
             end
-            v = missing_value if v.size()==0
+            v = missing_values if v.size()==0
             c_values << v
           end
           d_values << c_values
@@ -360,7 +360,7 @@ module OpenTox
       features.each do |f|
         type = dataset.features[f][RDF.type]
         unless type
-          LOGGER.debug "derive feature type by rest-call"
+          LOGGER.debug "r-util> derive feature type by rest-call"
           feat = OpenTox::Feature.find(f,subjectid)
           type = feat.metadata[RDF.type]
         end
@@ -384,13 +384,15 @@ module OpenTox
     
     # converts a dataframe into a dataset (a new dataset is created at the dataset webservice)
     # this is only possible if a superset of the dataframe was created by dataset_to_dataframe (metadata and URIs!)
-    def dataframe_to_dataset( df, metadata={}, subjectid=nil )
-      dataframe_to_dataset_indices( df, metadata, subjectid, nil)
+    def dataframe_to_dataset( df, metadata={}, subjectid=nil, missing_values="NA" )
+      dataframe_to_dataset_indices( df, metadata, subjectid, nil, missing_values )
     end
     
     private
-    def dataframe_to_dataset_indices( df, metadata={}, subjectid=nil, compound_indices=nil )
+    def dataframe_to_dataset_indices( df, metadata={}, subjectid=nil, compound_indices=nil, missing_values="NA" )
       raise unless @@feats[df].size>0
+
+      missing_value_regexp = Regexp.new("^#{missing_values.to_s=="0" ? "(0.0|0)" : missing_values.to_s}$")
       values, compound_names, features = pull_dataframe(df)
       compounds = compound_names.collect{|c| c.split("$")[0]}
       features.each{|f| raise unless @@feats[df][f]}
@@ -400,16 +402,19 @@ module OpenTox
       compounds.size.times{|i| dataset.add_compound(compounds[i]) if compound_indices==nil or compound_indices.include?(i)}
       features.each{|f| dataset.add_feature(f,@@feats[df][f])}
       features.size.times do |c|
+        LOGGER.debug "r-util> dataframe to dataset - feature #{c+1} / #{features.size}" if 
+          c%25==0 && (features.size*compounds.size)>100000
         type = @@feats[df][features[c]][RDF.type]
         unless type
-          LOGGER.debug "derive feature type by rest-call"
+          LOGGER.debug "r-util> derive feature type by rest-call"
           feat = OpenTox::Feature.find(features[c],subjectid)
           type = feat.metadata[RDF.type]
         end
         nominal = type.to_a.flatten.include?(OT.NominalFeature)
         compounds.size.times do |r|
           if compound_indices==nil or compound_indices.include?(r)
-            dataset.add(compounds[r],features[c],nominal ? values[r][c] : values[r][c].to_f) if values[r][c]!="NA"
+            dataset.add(compounds[r],features[c],nominal ? values[r][c] : values[r][c].to_f, true) if 
+              values[r][c]!="NA" and !(values[r][c] =~ missing_value_regexp)
           end 
         end
       end
@@ -417,10 +422,10 @@ module OpenTox
       dataset
     end    
     
-    def split_to_dataset( df, split, metadata={}, subjectid=nil )
+    def split_to_dataset( df, split, metadata={}, subjectid=nil, missing_values="NA" )
       indices = []
       split.size.times{|i| indices<<i if yield(split[i]) }
-      dataset = dataframe_to_dataset_indices( df, metadata, subjectid, indices )
+      dataset = dataframe_to_dataset_indices( df, metadata, subjectid, indices, missing_values )
       LOGGER.debug("r-util> split into #{dataset.uri}, c:#{dataset.compounds.size}, f:#{dataset.features.size}")
       dataset
     end

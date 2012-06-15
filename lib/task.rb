@@ -63,7 +63,7 @@ module OpenTox
         LOGGER.debug "Task #{task.uri} started #{Time.now}"
         begin
           result = yield task
-          LOGGER.debug "Task #{task.uri} done #{Time.now} -> "+result.to_s
+          LOGGER.debug "Task #{task.uri} done #{Time.now} -> #{result.to_s.gsub("\n"," \\n ")}"
           task.completed(result)
         rescue => error
           LOGGER.error "task failed: "+error.class.to_s+": "+error.message
@@ -265,7 +265,7 @@ module OpenTox
         end
       end
       waiting_task.waiting_for(nil) if waiting_task
-      LOGGER.debug "Task '"+@metadata[OT.hasStatus].to_s+"': "+@uri.to_s.chomp+", Result: "+@metadata[OT.resultURI].to_s
+      LOGGER.debug "Task '"+@metadata[OT.hasStatus].to_s+"': "+@uri.to_s.chomp+", Result: #{@metadata[OT.resultURI].to_s.gsub("\n"," \\n ")}"
     end
     
     # updates percentageCompleted value (can only be increased)

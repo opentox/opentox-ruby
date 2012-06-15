@@ -315,9 +315,11 @@ module OpenTox
     # @param [String] compound Compound URI
     # @param [String] feature Compound URI
     # @param [Boolean,Float] value Feature value
-    def add (compound,feature,value)
-      @compounds << compound unless @compounds.include? compound
-      @features[feature] = {}  unless @features[feature]
+    def add (compound,feature,value,skip_compound_feature_check=false)
+      unless skip_compound_feature_check
+        @compounds << compound unless @compounds.include? compound
+        @features[feature] = {}  unless @features[feature]
+      end
       @data_entries[compound] = {} unless @data_entries[compound]
       @data_entries[compound][feature] = [] unless @data_entries[compound][feature]
       @data_entries[compound][feature] << value if value!=nil
@@ -374,23 +376,21 @@ module OpenTox
       LOGGER.debug "split dataset using "+compounds.size.to_s+"/"+@compounds.size.to_s+" compounds"
       raise "no new compounds selected" unless compounds and compounds.size>0
       dataset = OpenTox::Dataset.create(CONFIG[:services]["opentox-dataset"],subjectid)
-      if features.size==0
-        compounds.each{ |c| dataset.add_compound(c) }
-      else
-        compounds.each do |c|
-          features.each do |f|
-            if @data_entries[c]==nil or @data_entries[c][f]==nil
-              dataset.add(c,f,nil)
-            else
-              @data_entries[c][f].each do |v|
-                dataset.add(c,f,v)
-              end
+      compounds.each{ |c| dataset.add_compound(c) }
+      compounds.each do |c|
+        features.each do |f|
+          if @data_entries[c]==nil or @data_entries[c][f]==nil
+            dataset.add(c,f,nil,true)
+          else
+            @data_entries[c][f].each do |v|
+              dataset.add(c,f,v,true)
             end
           end
         end
       end
       # set feature metadata in new dataset accordingly (including accept values)      
       features.each do |f|
+        dataset.features[f] = {}
         self.features[f].each do |k,v|
           dataset.features[f][k] = v
         end
@@ -461,7 +461,7 @@ module OpenTox
           data_combined.add_feature(f,m)
           compounds.each do |c|
             dataset.data_entries[c][f].each do |v|
-              data_combined.add(c,f,v)
+              data_combined.add(c,f,v,true)
             end if dataset.data_entries[c] and dataset.data_entries[c][f]
           end
         end
