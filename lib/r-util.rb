@@ -340,10 +340,10 @@ module OpenTox
       features.each{|f| dataset.add_feature(f,@@feats[df][f])}
       features.size.times do |c|
         feat = OpenTox::Feature.find(features[c],subjectid)
-        nominal = feat.metadata[RDF.type].to_a.flatten.include?(OT.NominalFeature)
+        numeric = feat.metadata[RDF.type].to_a.flatten.include?(OT.NumericFeature)
         compounds.size.times do |r|
           if compound_indices==nil or compound_indices.include?(r)
-            dataset.add(compounds[r],features[c],nominal ? values[r][c] : values[r][c].to_f) if values[r][c]!="NA"
+            dataset.add(compounds[r],features[c],numeric ? values[r][c].to_f : values[r][c]) if values[r][c]!="NA"
           end 
         end
       end
