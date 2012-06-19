@@ -45,6 +45,7 @@ begin
     gem.add_dependency "ruby-plot", "=0.6.1"
     gem.add_dependency "gsl", "=1.14.7"
     gem.add_dependency "statsample", "=1.1.0"
+    gem.add_dependency "redis", "=2.2.2"
 
     gem.add_development_dependency 'jeweler'
     gem.files =  FileList["[A-Z]*", "{bin,generators,lib,test}/**/*", 'lib/jeweler/templates/.gitignore']
