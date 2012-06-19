@@ -102,7 +102,7 @@ module OpenTox
     # data = [ [ :method, [4,4,5,5,4,3,2] ], [ :method2, [1,2,3,4,5,4,6] ], [ :asdf, [9,1,8,0,7,1,6] ] ]
     # boxplot(files, data, "comparison1" )
     #
-    def boxplot(files, data, title="", hline=nil)
+    def boxplot(files, data, title="", hline=nil, param="")
       LOGGER.debug("r-util> create boxplot "+data.inspect)
       raise "no hashes, to keep order" if data.is_a?(Hash)
       max = -1
@@ -128,8 +128,9 @@ module OpenTox
         end
       end
       assign_dataframe("boxdata",data.collect{|e| e[1]}.transpose,nil,data.collect{|e| e[0].to_s})
+      param_str = (param!=nil and param.size>0) ? ",#{param}" : ""
       plot_to_files(files, hline) do |file|
-        @r.eval "boxplot(boxdata,main='#{title}',col=rep(2:#{data.size+1}))"
+        @r.eval "boxplot(boxdata,main='#{title}',col=rep(2:#{data.size+1})#{param_str})"
       end
     end
 
@@ -388,12 +389,14 @@ module OpenTox
       dataframe_to_dataset_indices( df, metadata, subjectid, nil, missing_values )
     end
     
+    NEW = false
+    
     private
     def dataframe_to_dataset_indices( df, metadata={}, subjectid=nil, compound_indices=nil, missing_values="NA" )
       raise unless @@feats[df].size>0
 
-      missing_value_regexp = Regexp.new("^#{missing_values.to_s=="0" ? "(0.0|0)" : missing_values.to_s}$")
-      values, compound_names, features = pull_dataframe(df)
+      missing_value_regexp = Regexp.new("^#{missing_values.to_s=="0" ? "(0.0|0)" : missing_values.to_s}$") unless NEW
+      values, compound_names, features = pull_dataframe(df,missing_values)
       compounds = compound_names.collect{|c| c.split("$")[0]}
       features.each{|f| raise unless @@feats[df][f]}
       dataset = OpenTox::Dataset.create(CONFIG[:services]["opentox-dataset"],subjectid)
@@ -414,7 +417,7 @@ module OpenTox
         compounds.size.times do |r|
           if compound_indices==nil or compound_indices.include?(r)
             dataset.add(compounds[r],features[c],nominal ? values[r][c] : values[r][c].to_f, true) if 
-              values[r][c]!="NA" and !(values[r][c] =~ missing_value_regexp)
+              ((NEW and values[r][c]!=nil) or (values[r][c]!="NA" and !(values[r][c] =~ missing_value_regexp)))
           end 
         end
       end
@@ -430,7 +433,8 @@ module OpenTox
       dataset
     end
     
-    def pull_dataframe(df)
+    def pull_dataframe(df,missing_values="NA")
+      missing_value_regexp = Regexp.new("^#{missing_values.to_s=="0" ? "(0.0|0)" : missing_values.to_s}$") if NEW
       tmp = File.join(Dir.tmpdir,Time.new.to_f.to_s+"_"+rand(10000).to_s+".csv")
       @r.eval "write.table(#{df},file='#{tmp}',sep='#')"
       res = []; compounds = []; features = []
@@ -441,9 +445,15 @@ module OpenTox
            features = row.chomp.split("#").collect{|e| e.gsub("\"","")}
            first = false
         else
-           vals = row.chomp.split("#").collect{|e| e.gsub("\"","")}
-           compounds << vals[0]
-           res << vals[1..-1]
+           if NEW
+             vals = row.chomp.gsub(missing_value_regexp,"").split("#").collect{|e| e.gsub("\"","")}
+             compounds << vals[0]
+             res << vals[1..-1].collect{|s| s=="" ? nil : s}
+           else
+             vals = row.chomp.split("#").collect{|e| e.gsub("\"","")}
+             compounds << vals[0]
+             res << vals[1..-1]
+           end
         end
       end
       begin File.delete(tmp); rescue; end
