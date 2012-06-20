@@ -261,7 +261,7 @@ module OpenTox
       if entry.nil?
         temp_ds = OpenTox::Dataset.create(CONFIG[:services]["opentox-dataset"],subjectid); temp_ds.add_compound(self.uri); temp_uri = temp_ds.save(subjectid)
         uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-algorithm"], "/pc/AllDescriptors"), {:dataset_uri => temp_uri, :pc_type => pc_type, :lib => lib, :subjectid => subjectid})
-        ds = OpenTox::Dataset.find(uri)
+        ds = OpenTox::Dataset.find(uri, subjectid)
         entry = ds.data_entries[self.uri]
         ds.delete(subjectid)
         temp_ds.delete(subjectid)
