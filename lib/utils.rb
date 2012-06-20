@@ -14,11 +14,11 @@ module OpenTox
     include OpenTox
 
     # Calculate physico-chemical descriptors.
-    # @param[Hash] required: :dataset_uri, :pc_type, :rjb, :task, :add_uri, optional: :descriptor, :lib
+    # @param[Hash] required: :dataset_uri, :pc_type, :rjb, :task, :add_uri, optional: :descriptor, :lib, :subjectid
     # @return[String] dataset uri
     def self.pc_descriptors(params)
 
-      ds = OpenTox::Dataset.find(params[:dataset_uri])
+      ds = OpenTox::Dataset.find(params[:dataset_uri],params[:subjectid])
       compounds = ds.compounds.collect
       task_weights = {"joelib"=> 20, "openbabel"=> 1, "cdk"=> 50 }
       task_weights.keys.each { |step| task_weights.delete(step) if (params[:lib] && (!params[:lib].split(",").include?(step)))}
@@ -88,8 +88,8 @@ module OpenTox
 
         ds = OpenTox::Dataset.find( 
           OpenTox::RestClientWrapper.post(
-            File.join(CONFIG[:services]["opentox-dataset"]), master.collect { |row| row.join(",") }.join("\n"), {:content_type => "text/csv"}
-          )
+            File.join(CONFIG[:services]["opentox-dataset"]), master.collect { |row| row.join(",") }.join("\n"), {:content_type => "text/csv", :subjectid => params[:subjectid]}
+          ),params[:subjectid]
         ) 
 
         # # # add feature metadata
@@ -117,7 +117,7 @@ module OpenTox
           ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{OT.hasSource => params[:dataset_uri]})
         }
 
-        ds.save
+        ds.save(params[:subjectid])
       else
         raise OpenTox::BadRequestError.new "No descriptors matching your criteria found."
       end
