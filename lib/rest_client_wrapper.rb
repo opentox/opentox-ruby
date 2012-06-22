@@ -70,6 +70,17 @@ module OpenTox
       
       begin
         #LOGGER.debug "RestCall: "+rest_call.to_s+" "+uri.to_s+" "+headers.inspect+" "+payload.inspect
+        LOGGER.debug "dv ----- #{uri}"
+        LOGGER.debug "dv ----- #{}"
+        if uri.include?(`hostname`.strip)
+          RestClient.proxy = nil
+          LOGGER.debug "dv ---- local: '#{RestClient.proxy}'"
+        else
+          #RestClient.proxy = ENV['http_proxy']
+          RestClient.proxy = nil
+          LOGGER.debug "dv ---- extern: '#{RestClient.proxy}'"
+        end
+        
         resource = RestClient::Resource.new(uri,{:timeout => 600})
         if rest_call=="post" || rest_call=="put"
           result = resource.send(rest_call, payload, headers)
