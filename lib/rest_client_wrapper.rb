@@ -76,8 +76,8 @@ module OpenTox
           RestClient.proxy = nil
           LOGGER.debug "dv ---- local: '#{RestClient.proxy}'"
         else
-          #RestClient.proxy = ENV['http_proxy']
-          RestClient.proxy = nil
+          RestClient.proxy = ENV['http_proxy']
+          #RestClient.proxy = nil
           LOGGER.debug "dv ---- extern: '#{RestClient.proxy}'"
         end
         
