@@ -319,7 +319,11 @@ module OpenTox
       unless skip_compound_feature_check
         @compounds << compound unless @compounds.include? compound
         @features[feature] = {}  unless @features[feature]
-      end
+     #else
+     #  raise "compound missing #{compound}"  unless @compounds.include?(compound)
+     #  raise "feature missing #{feature} : #{@features[feature]}" unless @features.has_key?(feature) and @features[feature]!=nil 
+     end
+      
       @data_entries[compound] = {} unless @data_entries[compound]
       @data_entries[compound][feature] = [] unless @data_entries[compound][feature]
       @data_entries[compound][feature] << value if value!=nil
@@ -337,7 +341,7 @@ module OpenTox
     # @param [String] feature Feature URI
     # @param [Hash] metadata Hash with feature metadata
     def add_feature(feature,metadata={})
-      @features[feature] = metadata
+      @features[feature] = (metadata==nil ? {} : metadata)
     end
 
     # Complete feature values by adding zeroes

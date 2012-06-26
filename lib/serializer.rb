@@ -465,7 +465,7 @@ module OpenTox
         # prepare for subgraphs
         have_substructures = features.collect{ |id| dataset.features[id][RDF.type] and dataset.features[id][RDF.type].include?(OT.Substructure) }.compact.uniq
         if have_substructures.size == 1 && have_substructures[0] 
-          features_smarts = features.collect{ |id| "'" + dataset.features[id][OT.smarts] + "'" }
+          features_smarts = features.collect{ |id| "'" + dataset.features[id][OT.smarts].to_s + "'" }
         end
       
         # gather missing features

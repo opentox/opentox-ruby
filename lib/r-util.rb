@@ -7,6 +7,7 @@ package_dir = package_dir.join("/")
 PACKAGE_DIR = package_dir
 
 require "tempfile"
+require "statsample"
 
 class Array
   
@@ -17,7 +18,7 @@ class Array
       hash[x] = true
     end
   end
-  
+    
 end
 
 module OpenTox
@@ -107,10 +108,21 @@ module OpenTox
       raise "no hashes, to keep order" if data.is_a?(Hash)
       max = -1
       min = 100000
+      max_median = -1
+      min_median = 100000
+      max_median_idx = -1
+      min_median_idx = -1
       data.size.times do |i|
         values = data[i][1]
         max = [max,values.size].max
         min = [min,values.size].min
+        med = values.to_scale.median
+        #puts "#{data[i][0]} median: #{med}"
+        #puts data[i][1].inspect
+        max_median = [max_median,med].max
+        max_median_idx = i if max_median==med
+        min_median = [min_median,med].min
+        min_median_idx = i if min_median==med
         data[i] = [data[i][0]+"(#{values.size})",data[i][1]]
       end
       if min != max
@@ -128,8 +140,17 @@ module OpenTox
         end
       end
       assign_dataframe("boxdata",data.collect{|e| e[1]}.transpose,nil,data.collect{|e| e[0].to_s})
+      #@r.eval "print('median')"
+      #data.size.times.each do |i|
+      #  @r.eval "print(median(boxdata[,#{i+1}]))"
+      #  @r.eval "print(boxdata[,#{i+1}])"
+      #end 
       param_str = (param!=nil and param.size>0) ? ",#{param}" : ""
-      plot_to_files(files, hline) do |file|
+      hlines = []
+      hlines << [hline,"'gray60'"] if hline
+      hlines << [max_median,2+max_median_idx] 
+      hlines << [min_median,2+min_median_idx]
+      plot_to_files(files, hlines) do |file|
         @r.eval "boxplot(boxdata,main='#{title}',col=rep(2:#{data.size+1})#{param_str})"
       end
     end
@@ -137,7 +158,7 @@ module OpenTox
     # embedds feature values of two datasets into 2D and plots it
     #        
     def feature_value_plot(files, dataset_uri1, dataset_uri2, dataset_name1, dataset_name2,
-        features=nil, subjectid=nil, waiting_task=nil)
+        features=nil, subjectid=nil, waiting_task=nil, direct_plot=false, title=nil)
         
       LOGGER.debug("r-util> create feature value plot")
       d1 = OpenTox::Dataset.find(dataset_uri1,subjectid)
@@ -161,12 +182,19 @@ module OpenTox
       @r.names = [dataset_name1, dataset_name2]
       LOGGER.debug("r-util> - convert data to 2d")
       #@r.eval "save.image(\"/tmp/image.R\")"
-      @r.eval "df.2d <- plot_pre_process(df, method='sammon')"
+      
+      if (direct_plot)
+        raise unless features.size==2
+        @r.eval "df.2d <- df"
+      else
+        @r.eval "df.2d <- plot_pre_process(df, method='sammon')"
+      end
       waiting_task.progress(75) if waiting_task
       
+      title = "Sammon embedding of #{features.size} features" unless title
       LOGGER.debug("r-util> - plot data")
       plot_to_files(files) do |file|
-        @r.eval "plot_split( df.2d, split, names, main='Sammon embedding of #{features.size} features',xlab='x',ylab='y')"
+        @r.eval "plot_split( df.2d, split, names, main='#{title}',xlab='x',ylab='y')"
       end
     end
     
@@ -239,7 +267,7 @@ module OpenTox
     end    
     
     private
-    def stratified_split_internal( dataset, metadata={}, missing_values="NA", num_folds=nil, pct=nil, subjectid=nil, seed=42, split_features=nil, anti_stratification=false )
+    def stratified_split_internal( dataset, metadata={}, missing_values="NA", num_folds=nil, pct=nil, subjectid=nil, seed=42, split_features=nil, stratification="super" )
       raise "internal error" if num_folds!=nil and pct!=nil
       k_fold_split = num_folds!=nil
       if k_fold_split
@@ -259,7 +287,7 @@ module OpenTox
         @r.split_features = split_features if split_features
         str_split_features = "colnames=split_features"
       end
-      @r.eval "save.image(\"/tmp/image.R\")"
+      #@r.eval "save.image(\"/tmp/image.R\")"
       
       if k_fold_split
         @r.eval "split <- stratified_k_fold_split(#{df}, num_folds=#{num_folds}, #{str_split_features})"
@@ -275,11 +303,22 @@ module OpenTox
         end
         return train, test
       else
-        anti = anti_stratification ? "anti_" : ""
-        puts "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features})"
-        @r.eval "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features})"
+        raise unless stratification=~/^(super|super4|anti)$/
+        anti = ""
+        super_method = ""
+        preprocess = ""
+        case stratification
+        when "anti"
+          anti = "anti_"
+        when "super"
+          super_method = ", method='cluster_knn'"
+        when "super4"
+          super_method = ", method='cluster_hierarchical'"
+          preprocess = ", preprocess='pca'"
+        end
+        puts "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features} #{super_method} #{preprocess})"
+        @r.eval "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features} #{super_method} #{preprocess})"
         split = @r.pull 'split'
-        puts "XXXXXXXXXXXX "+split.class.to_s
         metadata[DC.title] = "Training dataset split of "+dataset.uri
         train = split_to_dataset( df, split, metadata, subjectid ){ |i| i==1 }
         metadata[DC.title] = "Test dataset split of "+dataset.uri
@@ -359,14 +398,18 @@ module OpenTox
       # set dataframe column types accordingly
       f_count = 1 #R starts at 1
       features.each do |f|
-        type = dataset.features[f][RDF.type]
-        unless type
-          LOGGER.debug "r-util> derive feature type by rest-call"
-          feat = OpenTox::Feature.find(f,subjectid)
-          type = feat.metadata[RDF.type]
+        if f=~/\/feature\/bbrc\//
+          numeric=true
+        else
+          type = dataset.features[f][RDF.type]
+          unless type
+            LOGGER.debug "r-util> derive feature type by rest-call"
+            feat = OpenTox::Feature.find(f,subjectid)
+            type = feat.metadata[RDF.type]
+          end
+          numeric = type.to_a.flatten.include?(OT.NumericFeature)
         end
-        nominal = type.to_a.flatten.include?(OT.NominalFeature)
-        if nominal
+        unless numeric
           @r.eval "#{df_name}[,#{f_count}] <- as.character(#{df_name}[,#{f_count}])"
         else
           @r.eval "#{df_name}[,#{f_count}] <- as.numeric(#{df_name}[,#{f_count}])"
@@ -374,6 +417,7 @@ module OpenTox
         f_count += 1
       end
       #@r.eval "head(#{df_name})"
+      #@r.eval "save.image(\"/tmp/image.R\")"
       
       # store compounds, and features (including metainformation)
       @@feats[df_name] = {}
@@ -407,16 +451,20 @@ module OpenTox
       features.size.times do |c|
         LOGGER.debug "r-util> dataframe to dataset - feature #{c+1} / #{features.size}" if 
           c%25==0 && (features.size*compounds.size)>100000
-        type = @@feats[df][features[c]][RDF.type]
-        unless type
-          LOGGER.debug "r-util> derive feature type by rest-call"
-          feat = OpenTox::Feature.find(features[c],subjectid)
-          type = feat.metadata[RDF.type]
+        if features[c]=~/\/feature\/bbrc\//
+          numeric=true
+        else
+          type = @@feats[df][features[c]][RDF.type]
+          unless type
+            LOGGER.debug "r-util> derive feature type by rest-call"
+            feat = OpenTox::Feature.find(features[c],subjectid)
+            type = feat.metadata[RDF.type]
+          end
+          numeric = type.to_a.flatten.include?(OT.NumericFeature)
         end
-        nominal = type.to_a.flatten.include?(OT.NominalFeature)
         compounds.size.times do |r|
           if compound_indices==nil or compound_indices.include?(r)
-            dataset.add(compounds[r],features[c],nominal ? values[r][c] : values[r][c].to_f, true) if 
+            dataset.add(compounds[r],features[c],numeric ? values[r][c].to_f : values[r][c], true) if 
               ((NEW and values[r][c]!=nil) or (values[r][c]!="NA" and !(values[r][c] =~ missing_value_regexp)))
           end 
         end
@@ -474,17 +522,27 @@ module OpenTox
       begin File.delete(tmp); rescue; end
     end
     
-    def plot_to_files(files,hline=nil)
+    @svg_plot_width = 14
+    @svg_plot_height = 10
+    
+    public
+    def set_svg_plot_size(width,height)
+      @svg_plot_width = width
+      @svg_plot_height = height
+    end
+    
+    private
+    def plot_to_files(files,hlines=nil)
       files.each do |file|
         if file=~/(?i)\.svg/
-          @r.eval("svg('#{file}',10,8)")
+          @r.eval("svg('#{file}',#{@svg_plot_width},#{@svg_plot_height})")
         elsif file=~/(?i)\.png/
           @r.eval("png('#{file}')")
         else
           raise "invalid format: "+file.to_s
         end
         yield file
-        @r.eval("abline(h=#{hline}, col = \"gray60\")") unless hline==nil
+        hlines.each{|hline,col| @r.eval("abline(h=#{hline}, col = #{col}, lty=2)")} if hlines
         LOGGER.debug "r-util> plotted to #{file}"
         @r.eval("dev.off()")
       end
