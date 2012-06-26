@@ -31,7 +31,7 @@ module OpenTox
       @r = RinRuby.new(true,false) unless defined?(@r) and @r
       @r.eval ".libPaths('#{PACKAGE_DIR}')"
       @r_packages = @r.pull "installed.packages()[,1]"
-      ["sampling","gam","vegan"].each{|l| install_package(l)} #"caret", "smacof", "TunePareto"
+      ["sampling","gam","vegan","dynamicTreeCut"].each{|l| install_package(l)} #"caret", "smacof", "TunePareto"
       @r.eval "source('#{File.join(Gem.loaded_specs['opentox-ruby'].full_gem_path,'lib/stratification.R')}')"
     end
     
