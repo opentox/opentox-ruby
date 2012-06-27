@@ -274,6 +274,7 @@ module OpenTox
     def progress(pct)
       #puts "task := "+pct.to_s
       raise "no numeric >= 0 and <= 100 : '"+pct.to_s+"'" unless pct.is_a?(Numeric) and pct>=0 and pct<=100
+      raise "error, percentage completed is nil, #{@metadata.to_yaml}" if @metadata[OT.percentageCompleted]==nil 
       if (pct > @metadata[OT.percentageCompleted] + 0.0001)
         RestClientWrapper.put(File.join(@uri,'Running'),{:percentageCompleted => pct})
         load_metadata
