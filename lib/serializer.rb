@@ -505,7 +505,7 @@ module OpenTox
         }
 
         # serialize to csv
-        @rows += dataset.compounds.collect do |compound|
+        dataset.compounds.each do |compound|
           entries=dataset.data_entries[compound]
           if entries
             inchi = URI.encode_www_form_component(Compound.new(compound).to_inchi)
@@ -530,7 +530,7 @@ module OpenTox
                 row.collect! { |x| x ? x : 0 } 
               }
             end
-            row_container
+            row_container.each { |row| @rows << row }
 
           end
         end
