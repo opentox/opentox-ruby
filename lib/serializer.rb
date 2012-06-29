@@ -493,34 +493,45 @@ module OpenTox
             compound_sizes[compound] = compound_sizes[compound][0] # integer instead of array
           end
         end
- 
-        # substructures: complete data entries with zeroes of appropriate duplicates
-        features_smarts && dataset.complete_data_entries(compound_sizes)
 
         # get headers
         features_smarts && @rows.first << features_smarts || @rows.first << features
         @rows.first.flatten!
 
-        dataset.compounds.each do |compound|
+        # feature positions pre-calculated
+        feature_positions = features.inject({}) { |h,f| 
+          h.merge!({f => features.index(f)+1}) # +1 due to ID
+          h
+        }
+
+        # serialize to csv
+        @rows += dataset.compounds.collect do |compound|
           entries=dataset.data_entries[compound]
           if entries
-            cmpd = Compound.new(compound)
-            inchi = URI.encode_www_form_component(cmpd.to_inchi)
+            inchi = URI.encode_www_form_component(Compound.new(compound).to_inchi)
   
             # allocate container
             row_container = Array.new(compound_sizes[compound])
             (0...row_container.size).each do |i|
               row_container[i] = Array.new(@rows.first.size)
+              row_container[i][0] = inchi
             end
-  
+
+            # fill entries
             entries.each { |feature, values|
               (0...compound_sizes[compound]).each { |i|
-                j = features.index(feature)+1
-                row_container[i][0] = inchi
-                row_container[i][j] = values[i]
+                row_container[i][feature_positions[feature]] = values[i]
               }
             }
-            row_container.each { |r| @rows << r }
+
+            # fill zeroes for subgraphs
+            if (features_smarts)
+              row_container.collect! { |row|
+                row.collect! { |x| x ? x : 0 } 
+              }
+            end
+            row_container
+
           end
         end
       end
