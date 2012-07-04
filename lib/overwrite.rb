@@ -9,11 +9,20 @@ before {
   # stupid internet explorer does not ask for text/html, add this manually 
   request.env['HTTP_ACCEPT'] += ";text/html" if request.env["HTTP_USER_AGENT"]=~/MSIE/
   request.env['HTTP_ACCEPT']=request.params["media"] if request.params["media"]
-
-  params.delete(:splat)
-  params.delete(:captures) 
 }
 
+
+class Ohm::Model
+  def self.find(p)
+    if (p!=nil)
+      p.delete(:captures)
+      p.delete(:splat)
+    end
+    super p
+  end
+end   
+
+  
 # Error handling
 # Errors are logged as error and formated according to acccept-header
 # Non OpenTox::Errors (defined in error.rb) are handled as internal error (500), stacktrace is logged
