@@ -61,11 +61,11 @@ module OpenTox
     # <0 -> array1 << array2
     # 0  -> no significant difference
     # >0 -> array2 >> array1
-    def paired_ttest(array1, array2, significance_level=0.95)
+    def ttest(array1, array2, paired, significance_level=0.95)
       @r.assign "v1",array1
       @r.assign "v2",array2
-      paired = array1.size==array2.size ? "T" : "F"
-      @r.eval "ttest = t.test(as.numeric(v1),as.numeric(v2),paired=#{paired})"
+      raise if paired && array1.size!=array2.size
+      @r.eval "ttest = t.test(as.numeric(v1),as.numeric(v2),paired=#{paired ? "T" : "F"})"
       t = @r.pull "ttest$statistic"
       p = @r.pull "ttest$p.value"
       if (1-significance_level > p)
@@ -83,7 +83,7 @@ module OpenTox
     end
         
     
-    def ttest(array1, value2, significance_level=0.95)
+    def ttest_single_value(array1, value2, significance_level=0.95)
       @r.assign "v1",array1
       @r.eval "ttest = t.test(as.numeric(v1),conf.level=#{significance_level})"
       min = @r.pull "ttest$conf.int[1]"
@@ -151,7 +151,7 @@ module OpenTox
       hlines << [max_median,2+max_median_idx] 
       hlines << [min_median,2+min_median_idx]
       plot_to_files(files, hlines) do |file|
-        @r.eval "boxplot(boxdata,main='#{title}',col=rep(2:#{data.size+1})#{param_str})"
+        @r.eval "superboxplot(boxdata,main='#{title}',col=rep(2:#{data.size+1})#{param_str})"
       end
     end
 
@@ -522,20 +522,20 @@ module OpenTox
       begin File.delete(tmp); rescue; end
     end
     
-    @svg_plot_width = 14
-    @svg_plot_height = 10
-    
+    @@svg_plot_width = 12
+    @@svg_plot_height = 8
+        
     public
     def set_svg_plot_size(width,height)
-      @svg_plot_width = width
-      @svg_plot_height = height
+      @@svg_plot_width = width
+      @@svg_plot_height = height
     end
     
     private
     def plot_to_files(files,hlines=nil)
       files.each do |file|
         if file=~/(?i)\.svg/
-          @r.eval("svg('#{file}',#{@svg_plot_width},#{@svg_plot_height})")
+          @r.eval("svg('#{file}',#{@@svg_plot_width},#{@@svg_plot_height})")
         elsif file=~/(?i)\.png/
           @r.eval("png('#{file}')")
         else

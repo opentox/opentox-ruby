@@ -373,7 +373,8 @@ module OpenTox
           }
         }
 
-        input.each_with_index { |row, i| 
+        first_data_row = true
+        input.each_with_index { |row, i|
           drop=false
           row = split_row(row)
           raise "Entry has size #{row.size}, different from headers (#{headers.size})" if row.size != headers.size
@@ -382,7 +383,10 @@ module OpenTox
             drop=true
             drop_missing=true if (row.count("") == row.size-1) 
           end
-          add_values(row, regression_features) unless (drop_missing && drop)
+          unless (drop_missing && drop)
+            add_values(row, regression_features, first_data_row)
+            first_data_row = false
+          end 
           if (drop_missing && drop) 
             @format_errors << "Row #{i} not added" 
           end
@@ -458,7 +462,7 @@ module OpenTox
       # @param Array A row split up as an array
       # @param Array Indicator for regression for each field
       # @param Array Indices for duplicate features
-      def add_values(row, regression_features)
+      def add_values(row, regression_features, add_features=true)
 
         id = row.shift
         case id
@@ -475,6 +479,8 @@ module OpenTox
         @duplicates[compound.inchi] = [] unless @duplicates[compound.inchi]
         @duplicates[compound.inchi] << id+", "+row.join(", ")
 
+        @dataset.add_compound(compound.uri)
+  
         feature_idx = 0
         row.each_index do |i|
 
@@ -502,7 +508,8 @@ module OpenTox
             feature_idx += 1
   
             if val != nil 
-              @dataset.add(compound.uri, feature, val)
+              @dataset.add_feature(feature) if add_features
+              @dataset.add(compound.uri, feature, val, true)
               if @feature_types[feature].include? OT.NominalFeature
                 @dataset.features[feature][OT.acceptValue] = [] unless @dataset.features[feature][OT.acceptValue]
                 @dataset.features[feature][OT.acceptValue] << val unless @dataset.features[feature][OT.acceptValue].include?(val)
