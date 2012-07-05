@@ -16,14 +16,14 @@ module OpenTox
     # returns a filtered list of validation uris
     # @param [Hash,optional] params, validation-params to filter the uris (could be model, training_dataset, ..)  
     # @return [Array]    
-    def self.list( params={} )
+    def self.list( params={}, validation_service=CONFIG[:services]["opentox-validation"] )
       filter_string = ""
       params.each do |k,v|
         filter_string += (filter_string.length==0 ? "?" : "&")
         v = v.to_s.gsub(/;/, "%3b") if v.to_s =~ /;/
         filter_string += k.to_s+"="+v.to_s
       end
-      (OpenTox::RestClientWrapper.get(CONFIG[:services]["opentox-validation"]+filter_string).split("\n"))
+      (OpenTox::RestClientWrapper.get(validation_service+filter_string).split("\n"))
     end
     
     # creates a training test split validation, waits until it finishes, may take some time
@@ -31,9 +31,9 @@ module OpenTox
     # @param [String,optional] subjectid
     # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @return [OpenTox::Validation]
-    def self.create_training_test_split( params, subjectid=nil, waiting_task=nil )
+    def self.create_training_test_split( params, subjectid=nil, waiting_task=nil, validation_service=CONFIG[:services]["opentox-validation"] )
       params[:subjectid] = subjectid if subjectid
-      uri = OpenTox::RestClientWrapper.post( File.join(CONFIG[:services]["opentox-validation"],"training_test_split"),
+      uri = OpenTox::RestClientWrapper.post( File.join(validation_service,"training_test_split"),
         params,{:content_type => "text/uri-list"},waiting_task )
       Validation.new(uri)
     end
@@ -43,9 +43,9 @@ module OpenTox
     # @param [String,optional] subjectid
     # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @return [OpenTox::Validation]
-    def self.create_training_test_validation( params, subjectid=nil, waiting_task=nil )
+    def self.create_training_test_validation( params, subjectid=nil, waiting_task=nil, validation_service=CONFIG[:services]["opentox-validation"] )
       params[:subjectid] = subjectid if subjectid
-      uri = OpenTox::RestClientWrapper.post( File.join(CONFIG[:services]["opentox-validation"],"training_test_validation"),
+      uri = OpenTox::RestClientWrapper.post( File.join(validation_service,"training_test_validation"),
         params,{:content_type => "text/uri-list"},waiting_task )
       Validation.new(uri)
     end
@@ -55,9 +55,9 @@ module OpenTox
     # @param [String,optional] subjectid
     # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @return [OpenTox::Validation]
-    def self.create_bootstrapping_validation( params, subjectid=nil, waiting_task=nil )
+    def self.create_bootstrapping_validation( params, subjectid=nil, waiting_task=nil, validation_service=CONFIG[:services]["opentox-validation"] )
       params[:subjectid] = subjectid if subjectid
-      uri = OpenTox::RestClientWrapper.post( File.join(CONFIG[:services]["opentox-validation"],"bootstrapping"),
+      uri = OpenTox::RestClientWrapper.post( File.join(validation_service,"bootstrapping"),
         params,{:content_type => "text/uri-list"},waiting_task )
       Validation.new(uri)
     end
@@ -154,14 +154,14 @@ module OpenTox
     # returns a filtered list of crossvalidation uris
     # @param [Hash,optional] params, crossvalidation-params to filter the uris (could be algorithm, dataset, ..)  
     # @return [Array]    
-    def self.list( params={} )
+    def self.list( params={}, validation_service=CONFIG[:services]["opentox-validation"] )
       filter_string = ""
       params.each do |k,v|
         filter_string += (filter_string.length==0 ? "?" : "&")
         v = v.to_s.gsub(/;/, "%3b") if v.to_s =~ /;/
         filter_string += k.to_s+"="+v.to_s
       end
-      (OpenTox::RestClientWrapper.get(File.join(CONFIG[:services]["opentox-validation"],"crossvalidation")+filter_string).split("\n"))
+      (OpenTox::RestClientWrapper.get(File.join(validation_service,"crossvalidation")+filter_string).split("\n"))
     end
 		
     # creates a crossvalidations, waits until it finishes, may take some time
@@ -169,9 +169,9 @@ module OpenTox
     # @param [String,optional] subjectid
     # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @return [OpenTox::Crossvalidation]
-    def self.create( params, subjectid=nil, waiting_task=nil )
+    def self.create( params, subjectid=nil, waiting_task=nil, validation_service=CONFIG[:services]["opentox-validation"] )
       params[:subjectid] = subjectid if subjectid
-      uri = OpenTox::RestClientWrapper.post( File.join(CONFIG[:services]["opentox-validation"],"crossvalidation"),
+      uri = OpenTox::RestClientWrapper.post( File.join(validation_service,"crossvalidation"),
         params,{:content_type => "text/uri-list"},waiting_task )
       Crossvalidation.new(uri)
     end
@@ -223,8 +223,8 @@ module OpenTox
     # @param [String] crossvalidation uri 
     # @param [String,optional] subjectid
     # @return [OpenTox::ValidationReport] nil if no report found
-    def self.find_for_validation( validation_uri, subjectid=nil )
-      uris = RestClientWrapper.get(File.join(CONFIG[:services]["opentox-validation"],
+    def self.find_for_validation( validation_uri, subjectid=nil, validation_service=CONFIG[:services]["opentox-validation"] )
+      uris = RestClientWrapper.get(File.join(validation_service,
         "/report/validation?validation="+validation_uri), {:subjectid => subjectid}).chomp.split("\n")
       uris.size==0 ? nil : ValidationReport.new(uris[-1])
     end
@@ -236,12 +236,12 @@ module OpenTox
     # @param [String,optional] subjectid
     # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @return [OpenTox::ValidationReport]
-    def self.create( validation_uri, params={}, subjectid=nil, waiting_task=nil )
+    def self.create( validation_uri, params={}, subjectid=nil, waiting_task=nil, validation_service=CONFIG[:services]["opentox-validation"] )
       params = {} if params==nil
       raise OpenTox::BadRequestError.new "params is no hash" unless params.is_a?(Hash)
       params[:validation_uris] = validation_uri
       params[:subjectid] = subjectid
-      uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-validation"],"/report/validation"),
+      uri = RestClientWrapper.post(File.join(validation_service,"/report/validation"),
         params, {}, waiting_task )
       ValidationReport.new(uri)
     end
@@ -266,8 +266,8 @@ module OpenTox
     # @param [String] crossvalidation uri 
     # @param [String,optional] subjectid
     # @return [OpenTox::CrossvalidationReport] nil if no report found
-    def self.find_for_crossvalidation( crossvalidation_uri, subjectid=nil )
-      uris = RestClientWrapper.get(File.join(CONFIG[:services]["opentox-validation"],
+    def self.find_for_crossvalidation( crossvalidation_uri, subjectid=nil, validation_service=CONFIG[:services]["opentox-validation"] )
+      uris = RestClientWrapper.get(File.join(validation_service,
         "/report/crossvalidation?crossvalidation="+crossvalidation_uri), {:subjectid => subjectid}).chomp.split("\n")
       uris.size==0 ? nil : CrossvalidationReport.new(uris[-1])
     end
@@ -277,8 +277,8 @@ module OpenTox
     # @param [String,optional] subjectid
     # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @return [OpenTox::CrossvalidationReport]
-    def self.create( crossvalidation_uri, subjectid=nil, waiting_task=nil )
-      uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-validation"],"/report/crossvalidation"),
+    def self.create( crossvalidation_uri, subjectid=nil, waiting_task=nil, validation_service=CONFIG[:services]["opentox-validation"] )
+      uri = RestClientWrapper.post(File.join(validation_service,"/report/crossvalidation"),
         { :validation_uris => crossvalidation_uri, :subjectid => subjectid }, {}, waiting_task )
       CrossvalidationReport.new(uri)
     end
@@ -303,8 +303,8 @@ module OpenTox
     # @param [String] crossvalidation uri 
     # @param [String,optional] subjectid
     # @return [OpenTox::AlgorithmComparisonReport] nil if no report found
-    def self.find_for_crossvalidation( crossvalidation_uri, subjectid=nil )
-      uris = RestClientWrapper.get(File.join(CONFIG[:services]["opentox-validation"],
+    def self.find_for_crossvalidation( crossvalidation_uri, subjectid=nil, validation_service=CONFIG[:services]["opentox-validation"] )
+      uris = RestClientWrapper.get(File.join(validation_service,
         "/report/algorithm_comparison?crossvalidation="+crossvalidation_uri), {:subjectid => subjectid}).chomp.split("\n")
       uris.size==0 ? nil : AlgorithmComparisonReport.new(uris[-1])
     end
@@ -319,7 +319,7 @@ module OpenTox
     # example for hash:
     # { :lazar-bbrc => [ http://host/validation/crossvalidation/x1, http://host/validation/crossvalidation/x2 ],
     #   :lazar-last => [ http://host/validation/crossvalidation/xy, http://host/validation/crossvalidation/xy ] }
-    def self.create( crossvalidation_uri_hash, params={}, subjectid=nil, waiting_task=nil )
+    def self.create( crossvalidation_uri_hash, params={}, subjectid=nil, waiting_task=nil, validation_service=CONFIG[:services]["opentox-validation"] )
       identifier = []
       validation_uris = []
       crossvalidation_uri_hash.each do |id, uris|
@@ -333,7 +333,7 @@ module OpenTox
       params[:validation_uris] = validation_uris.join(",")
       params[:identifier] = identifier.join(",")
       params[:subjectid] = subjectid
-      uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-validation"],"/report/algorithm_comparison"),
+      uri = RestClientWrapper.post(File.join(validation_service,"/report/algorithm_comparison"),
         params, {}, waiting_task )
       AlgorithmComparisonReport.new(uri)
     end
@@ -356,8 +356,8 @@ module OpenTox
     # @param [String] model_uri 
     # @param [String,optional] subjectid
     # @return [OpenTox::QMRFReport] nil if no report found
-    def self.find_for_model( model_uri, subjectid=nil )
-      uris = RestClientWrapper.get(File.join(CONFIG[:services]["opentox-validation"],
+    def self.find_for_model( model_uri, subjectid=nil, validation_service=CONFIG[:services]["opentox-validation"] )
+      uris = RestClientWrapper.get(File.join(validation_service,
         "/reach_report/qmrf?model="+model_uri), {:subjectid => subjectid}).chomp.split("\n")
       uris.size==0 ? nil : QMRFReport.new(uris[-1])
     end
@@ -367,8 +367,8 @@ module OpenTox
     # @param [String,optional] subjectid
     # @param [OpenTox::Task,optional] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @return [OpenTox::QMRFReport]
-    def self.create( model_uri, subjectid=nil, waiting_task=nil )
-      uri = RestClientWrapper.post(File.join(CONFIG[:services]["opentox-validation"],"/reach_report/qmrf"), 
+    def self.create( model_uri, subjectid=nil, waiting_task=nil, validation_service=CONFIG[:services]["opentox-validation"] )
+      uri = RestClientWrapper.post(File.join(validation_service,"/reach_report/qmrf"), 
         { :model_uri => model_uri, :subjectid => subjectid }, {}, waiting_task )
       QMRFReport.new(uri)
     end
