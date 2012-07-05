@@ -13,6 +13,7 @@ module OpenTox
       if (CONFIG[:json_hosts].include?(URI.parse(uri).host))
         feature.add_metadata YAML.load(RestClientWrapper.get(uri,{:accept => "application/x-yaml", :subjectid => subjectid}))
       else
+        raise "no rdf plz"
         feature.add_metadata  Parser::Owl::Dataset.new(uri).load_metadata
       end
       feature.subjectid = subjectid
