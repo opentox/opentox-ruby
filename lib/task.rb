@@ -72,7 +72,7 @@ module OpenTox
         end
       end  
       task.pid = task_pid
-      #LOGGER.debug "Started task: "+task.uri.to_s
+      #LOGGER.debug "Started task: "+task.uri.to_s+" "+task_pid.to_s
       task
     end  
   
@@ -239,6 +239,15 @@ module OpenTox
     end
 =end
 
+    private
+    def pid_found?
+      if metadata["PID"]
+        process = `ps -ef | grep #{metadata["PID"]}`
+        return process.chomp.size>0 && process=~/ruby/
+      end
+    end
+    
+    public
     # waits for a task, unless time exceeds or state is no longer running
     # @param [optional,OpenTox::Task] waiting_task (can be a OpenTox::Subtask as well), progress is updated accordingly
     # @param [optional,Numeric] dur seconds pausing before cheking again for completion
@@ -251,6 +260,7 @@ module OpenTox
       LOGGER.debug "start waiting for task "+@uri.to_s.chomp+" at: "+Time.new.to_s+", waiting at least until "+due_to_time.to_s
       
       load_metadata # for extremely fast tasks
+      pid_found_on_start = pid_found?
       check_state
       while self.running? or self.queued?
         sleep dur
@@ -262,6 +272,12 @@ module OpenTox
         check_state
         if (Time.new > due_to_time)
           raise "max wait time exceeded ("+DEFAULT_TASK_MAX_DURATION.to_s+"sec), task: '"+@uri.to_s+"'"
+        end
+        if pid_found_on_start and !(pid_found?) # the pid was found on startup, but not anymore
+          sleep 3 #make sure it has not just stopped and the task is not updated yet
+          load_metadata
+          check_state
+          raise "task process with PID #{metadata["PID"]} is not running any longer" if self.running? or self.queued?
         end
       end
       waiting_task.waiting_for(nil) if waiting_task
