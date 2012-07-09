@@ -403,6 +403,27 @@ module OpenTox
       dataset.save(subjectid)
       dataset
     end
+        
+    # creates a new dataset with only the features contained in features array
+    def filter(features)
+      data = OpenTox::Dataset.create
+      @compounds.each{|c| data.add_compound(c)}
+      features.each do |f|
+        raise "dataset\n#{@uri}\ndoes not contain feature\n#{f}\ninstead:\n#{@features.keys.join("\n")}" unless 
+          @features.keys.include?(f)
+        data.add_feature(f,@features[f])
+        @compounds.each do |c|
+          @data_entries[c][f].each do |v|
+            data.add(c,f,v,true)
+          end if @data_entries[c] and @data_entries[c][f]
+        end
+      end if features
+      metadata = {} unless metadata
+      metadata[OT.hasSource] = "Filtered dataset from #{@uri}" unless metadata[OT.hasSource]
+      data.add_metadata(metadata)      
+      data.save
+      data      
+    end
     
     # merges two dataset into a new dataset (by default uses all compounds and features)
     # precondition: both datasets are fully loaded
