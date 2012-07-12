@@ -427,7 +427,7 @@ module OpenTox
           prediction = acts[0]
         else
           #LOGGER.debug gram_matrix.to_yaml
-          @r = RinRuby.new(false,false) # global R instance leads to Socket errors after a large number of requests
+          @r = RinRuby.new(true,false) # global R instance leads to Socket errors after a large number of requests
           @r.eval "suppressPackageStartupMessages(library('caret'))" # requires R packages "caret" and "kernlab"
           @r.eval "suppressPackageStartupMessages(library('doMC'))" # requires R packages "multicore"
           @r.eval "registerDoMC()" # switch on parallel processing
@@ -447,7 +447,14 @@ module OpenTox
 
             # prepare data
             LOGGER.debug "Preparing R data ..."
-            @r.eval "if (class(y) == 'character') { y = factor(y); suppressPackageStartupMessages(library('class')) }" # For classification
+            @r.eval <<-EOR
+              weights=NULL
+              if (class(y) == 'character') { 
+                y = factor(y)
+                suppressPackageStartupMessages(library('class')) 
+                #weights=unlist(as.list(prop.table(table(y))))
+              }
+            EOR
 
             @r.eval <<-EOR
               rem = nearZeroVar(prop_matrix)
@@ -465,7 +472,17 @@ module OpenTox
             # model + support vectors
             LOGGER.debug "Creating R SVM model ..."
             train_success = @r.eval <<-EOR
-              model = train(prop_matrix,y,method="svmradial",tuneLength=8,trControl=trainControl(method="LGOCV",number=10),preProcess=c("center", "scale"))
+              # AM: TODO: evaluate class weight effect by altering:
+              # AM: comment in 'weights' above run and class.weights=weights vs. class.weights=1-weights
+              # AM: vs
+              # AM: comment out 'weights' above (status quo), thereby disabling weights
+              model = train(prop_matrix,y,
+                             method="svmradial",
+                             preProcess=c("center", "scale"),
+                             class.weights=weights,
+                             trControl=trainControl(method="LGOCV",number=10),
+                             tuneLength=8
+                           )
               perf = ifelse ( class(y)!='numeric', max(model$results$Accuracy), model$results[which.min(model$results$RMSE),]$Rsquared )
             EOR
 
