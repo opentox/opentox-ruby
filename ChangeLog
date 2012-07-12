@@ -1,3 +1,8 @@
+v4.0.0 2012-07-12
+  * fminer addition of compounds fixed
+  * improved performance for CSV download
+  * switch to opentox-ruby version 4.0.0
+
 2012-04-20
 	* Support for joelib and openbabel descriptors in a completely unified interface with CDK (Ambit)
 	* Features can have multiple types (nominal and numeric), PC descriptors have detailed meta data
