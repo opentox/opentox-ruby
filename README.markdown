@@ -38,4 +38,4 @@ This example shows how to create a lazar model and predict a compound, it assume
 Copyright
 ---------
 
-Copyright (c) 2009-2011 Christoph Helma, Martin Guetlein, Micha Rautenberg, Andreas Maunz, David Vorgrimmler, Denis Gebele. See LICENSE for details.
+Copyright (c) 2009-2012 Christoph Helma, Martin Guetlein, Micha Rautenberg, Andreas Maunz, David Vorgrimmler, Denis Gebele. See LICENSE for details.
