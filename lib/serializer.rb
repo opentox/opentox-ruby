@@ -459,32 +459,80 @@ module OpenTox
       def initialize(dataset)
         @rows = []
         @rows << ["SMILES"]
+
         features = dataset.features.keys
-        @rows.first << features
-        @rows.first.flatten!
-        dataset.data_entries.each do |compound,entries|
-          cmpd = Compound.new(compound)
-          smiles = cmpd.to_smiles
-          inchi = URI.encode_www_form_component(cmpd.to_inchi)
-          row_container = Array.new
-          row = Array.new(@rows.first.size)
-          row_container << row
-          #row[0] = smiles
-          row[0] = inchi
-          entries.each do |feature, values|
-            i = features.index(feature)+1
-            values.each do |value|
-              if row_container[0][i]
-                #LOGGER.debug "Feature '#{feature}' (nr '#{i}'): '#{value}'"
-                row_container << row_container.last.collect
-                row_container.last[i] = value
-                #LOGGER.debug "RC: #{row_container.to_yaml}"
-              else
-                row_container.each { |r| r[i] = value }
-              end
+
+        # prepare for subgraphs
+        have_substructures = features.collect{ |id| dataset.features[id][RDF.type].include? OT.Substructure}.compact.uniq
+        if have_substructures.size == 1 && have_substructures[0] 
+          features_smarts = features.collect{ |id| "'" + dataset.features[id][OT.smarts] + "'" }
+        end
+      
+        # gather missing features
+        delete_features = []
+        features.each{ |id|
+          dataset.features[id][RDF.type].each { |typestr|
+            if typestr.include? "MissingFeature"
+              delete_features << id 
             end
+          }
+        }
+        features = features - delete_features
+
+        # detect nr duplicates per compound
+        compound_sizes = {}
+        dataset.compounds.each do |compound|
+          entries=dataset.data_entries[compound]
+          if entries
+            entries.each do |feature, values|
+              compound_sizes[compound] || compound_sizes[compound] = []
+              compound_sizes[compound] << values.size
+            end
+            compound_sizes[compound].uniq!
+            raise "Inappropriate data for CSV export for compound #{compound}" if compound_sizes[compound].size > 1
+            compound_sizes[compound] = compound_sizes[compound][0] # integer instead of array
           end
-          row_container.each { |r| @rows << r }
+        end
+
+        # get headers
+        features_smarts && @rows.first << features_smarts || @rows.first << features
+        @rows.first.flatten!
+
+        # feature positions pre-calculated
+        feature_positions = features.inject({}) { |h,f| 
+          h.merge!({f => features.index(f)+1}) # +1 due to ID
+          h
+        }
+
+        # serialize to csv
+        dataset.compounds.each do |compound|
+          entries=dataset.data_entries[compound]
+          if entries
+            inchi = URI.encode_www_form_component(Compound.new(compound).to_inchi)
+  
+            # allocate container
+            row_container = Array.new(compound_sizes[compound])
+            (0...row_container.size).each do |i|
+              row_container[i] = Array.new(@rows.first.size)
+              row_container[i][0] = inchi
+            end
+
+            # fill entries
+            entries.each { |feature, values|
+              (0...compound_sizes[compound]).each { |i|
+                row_container[i][feature_positions[feature]] = values[i]
+              }
+            }
+
+            # fill zeroes for subgraphs
+            if (features_smarts)
+              row_container.collect! { |row|
+                row.collect! { |x| x ? x : 0 } 
+              }
+            end
+            row_container.each { |row| @rows << row }
+
+          end
         end
       end
 

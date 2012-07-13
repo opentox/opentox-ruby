@@ -396,7 +396,7 @@ module OpenTox
             @q_prop = gsl_q_prop_orig.row(0).to_a
           end
 
-          LOGGER.debug "F: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}"
+          LOGGER.debug "F: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}" if (@n_prop && @n_prop[0] && @q_prop)
           LOGGER.debug "Sims: #{@sims.size}, Acts: #{@acts.size}"
 
           @sims = [ gram_matrix, @sims ] 
@@ -490,8 +490,10 @@ module OpenTox
 
           @cmpds = []; @fps = []; @acts = []; @n_prop = []; @q_prop = []
           
-          @model.fingerprints.each { |fp|
-            cmpd = fp[0]; fp = fp[1]
+          # Major BUG! Must loop over @model.compounds, hash is unordered!
+          # @model.fingerprints.each 
+          @model.compounds.each { |cmpd|
+            fp = @model.fingerprints[cmpd]
             if @model.activities[cmpd] # row good
               acts = @model.activities[cmpd]; @acts += acts
               LOGGER.debug "#{acts.size} activities for '#{cmpd}'" if acts.size > 1
