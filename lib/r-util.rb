@@ -58,10 +58,40 @@ module OpenTox
       end
     end
     
+    
+    def ttest_matrix(arrays, paired, significance_level=0.95)
+    
+      LOGGER.info("perform ttest matrix")
+      result = []
+      arrays.size.times do |i|
+        result[i] = [] 
+        @r.assign "v#{i}",arrays[i]
+      end 
+      (arrays.size-1).times do |i|
+        (i+1..arrays.size-1).each do |j|
+          raise if paired && arrays[i].size!=arrays[j].size
+          @r.eval "ttest = t.test(as.numeric(v#{i}),as.numeric(v#{j}),paired=#{paired ? "T" : "F"})"
+          t = @r.pull "ttest$statistic"
+          p = @r.pull "ttest$p.value"
+          if (1-significance_level > p)
+            result[i][j]=true
+            result[j][i]=true
+          else
+            result[i][j]=false
+            result[j][i]=false
+          end            
+        end
+      end
+      result
+    end
+    
+    
+    
     # <0 -> array1 << array2
     # 0  -> no significant difference
     # >0 -> array2 >> array1
     def ttest(array1, array2, paired, significance_level=0.95)
+      LOGGER.info("perform ttest")
       @r.assign "v1",array1
       @r.assign "v2",array2
       raise if paired && array1.size!=array2.size
@@ -106,6 +136,7 @@ module OpenTox
     def boxplot(files, data, title="", hline=nil, param="")
       LOGGER.debug("r-util> create boxplot "+data.inspect)
       raise "no hashes, to keep order" if data.is_a?(Hash)
+      raise "boxplot: data is empty" if data.size==0
       max = -1
       min = 100000
       max_median = -1
@@ -158,7 +189,7 @@ module OpenTox
     # embedds feature values of two datasets into 2D and plots it
     #        
     def feature_value_plot(files, dataset_uri1, dataset_uri2, dataset_name1, dataset_name2,
-        features=nil, subjectid=nil, waiting_task=nil, direct_plot=false, title=nil)
+        features=nil, subjectid=nil, waiting_task=nil, direct_plot=false, title=nil, color_feature=nil )
         
       LOGGER.debug("r-util> create feature value plot")
       d1 = OpenTox::Dataset.find(dataset_uri1,subjectid)
@@ -178,23 +209,42 @@ module OpenTox
       waiting_task.progress(50) if waiting_task
       
       @r.eval "df <- rbind(#{df1},#{df2})"
-      @r.eval "split <- c(rep(0,nrow(#{df1})),rep(1,nrow(#{df2})))"
+      @r.eval "split <- c(rep(1,nrow(#{df1})),rep(0,nrow(#{df2})))"
       @r.names = [dataset_name1, dataset_name2]
       LOGGER.debug("r-util> - convert data to 2d")
       #@r.eval "save.image(\"/tmp/image.R\")"
       
+      if (color_feature)
+        color = []
+        [d1,d2].each do |d|
+          raise "no #{color_feature}, instead: #{d.features.keys.sort.inspect}" unless d.features.has_key?(color_feature)
+          d.compounds.each do |c|
+            color += d.data_entries[c][color_feature]
+          end
+        end
+        @r.assign "color",color
+      end
+      
       if (direct_plot)
         raise unless features.size==2
         @r.eval "df.2d <- df"
+        x = features[0].split("/")[-1]
+        y = features[1].split("/")[-1]
       else
         @r.eval "df.2d <- plot_pre_process(df, method='sammon')"
+        x = "x"
+        y = "y"
       end
       waiting_task.progress(75) if waiting_task
       
       title = "Sammon embedding of #{features.size} features" unless title
       LOGGER.debug("r-util> - plot data")
       plot_to_files(files) do |file|
-        @r.eval "plot_split( df.2d, split, names, main='#{title}',xlab='x',ylab='y')"
+        if (color_feature)
+          @r.eval "plot_split( df.2d, color_idx=color, circle_idx=split, main='#{title}',xlab='#{x}',ylab='#{y}')"
+        else
+          @r.eval "plot_split( df.2d, color_idx=split, main='#{title}',xlab='#{x}',ylab='#{y}')"
+        end
       end
     end
     
@@ -255,8 +305,10 @@ module OpenTox
     # stratified splits a dataset into two dataset according to the feature values
     # all features are taken into account unless <split_features> is given
     # returns two datases
-    def stratified_split( dataset, metadata={}, missing_values="NA", pct=0.3, subjectid=nil, seed=42, split_features=nil, anti_stratification=false )
-      stratified_split_internal( dataset, metadata, missing_values, nil, pct, subjectid, seed, split_features, anti_stratification )
+    def stratified_split( dataset, metadata={}, missing_values="NA", pct=0.3, subjectid=nil, 
+      seed=42, split_features=nil, anti_stratification=false, store_split_clusters=false )
+      stratified_split_internal( dataset, metadata, missing_values, nil, pct, subjectid, 
+        seed, split_features, anti_stratification, store_split_clusters )
     end
     
     # stratified splits a dataset into k datasets according the feature values
@@ -267,7 +319,8 @@ module OpenTox
     end    
     
     private
-    def stratified_split_internal( dataset, metadata={}, missing_values="NA", num_folds=nil, pct=nil, subjectid=nil, seed=42, split_features=nil, stratification="super" )
+    def stratified_split_internal( dataset, metadata={}, missing_values="NA", num_folds=nil, 
+        pct=nil, subjectid=nil, seed=42, split_features=nil, stratification="super", store_split_clusters=false )
       raise "internal error" if num_folds!=nil and pct!=nil
       k_fold_split = num_folds!=nil
       if k_fold_split
@@ -303,9 +356,10 @@ module OpenTox
         end
         return train, test
       else
-        raise unless stratification=~/^(super|super4|anti)$/
+        raise unless stratification=~/^(super|super4|super5|anti)$/
         anti = ""
         super_method = ""
+        super_method_2 = ""
         preprocess = ""
         case stratification
         when "anti"
@@ -315,14 +369,19 @@ module OpenTox
         when "super4"
           super_method = ", method='cluster_hierarchical'"
           preprocess = ", preprocess='pca'"
+        when "super5"
+          super_method = ", method='cluster_hierarchical'"
+          super_method_2 = ", method_2='explicit'"
+          preprocess = ", preprocess='pca'"
         end
-        puts "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features} #{super_method} #{preprocess})"
-        @r.eval "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features} #{super_method} #{preprocess})"
-        split = @r.pull 'split'
+        LOGGER.debug "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features} #{super_method} #{super_method_2} #{preprocess})"
+        @r.eval "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features} #{super_method} #{super_method_2} #{preprocess})"
+        split = @r.pull 'split$split'
+        cluster = (store_split_clusters ?  @r.pull('split$cluster') : nil)
         metadata[DC.title] = "Training dataset split of "+dataset.uri
-        train = split_to_dataset( df, split, metadata, subjectid ){ |i| i==1 }
+        train = split_to_dataset( df, split, metadata, subjectid, missing_values, cluster ){ |i| i==1 }
         metadata[DC.title] = "Test dataset split of "+dataset.uri
-        test = split_to_dataset( df, split, metadata, subjectid, missing_values ){ |i| i==0 }
+        test = split_to_dataset( df, split, metadata, subjectid, missing_values, cluster ){ |i| i==0 }
         return train, test
       end
     end
@@ -436,7 +495,7 @@ module OpenTox
     NEW = false
     
     private
-    def dataframe_to_dataset_indices( df, metadata={}, subjectid=nil, compound_indices=nil, missing_values="NA" )
+    def dataframe_to_dataset_indices( df, metadata={}, subjectid=nil, compound_indices=nil, missing_values="NA", cluster=nil )
       raise unless @@feats[df].size>0
 
       missing_value_regexp = Regexp.new("^#{missing_values.to_s=="0" ? "(0.0|0)" : missing_values.to_s}$") unless NEW
@@ -469,14 +528,26 @@ module OpenTox
           end 
         end
       end
+      if cluster
+        cluster_feature = "http://no.such.domain/feature/split_cluster"
+        dataset.add_feature(cluster_feature)
+        #LOGGER.warn "adding feature #{cluster_feature}" 
+        compounds.size.times do |r|
+          if compound_indices==nil or compound_indices.include?(r)
+            dataset.add(compounds[r],cluster_feature,cluster[r],true)
+          end 
+        end
+      else
+        #LOGGER.warn "no cluster feature" 
+      end
       dataset.save(subjectid)
       dataset
     end    
     
-    def split_to_dataset( df, split, metadata={}, subjectid=nil, missing_values="NA" )
+    def split_to_dataset( df, split, metadata={}, subjectid=nil, missing_values="NA", cluster=nil )
       indices = []
       split.size.times{|i| indices<<i if yield(split[i]) }
-      dataset = dataframe_to_dataset_indices( df, metadata, subjectid, indices, missing_values )
+      dataset = dataframe_to_dataset_indices( df, metadata, subjectid, indices, missing_values, cluster )
       LOGGER.debug("r-util> split into #{dataset.uri}, c:#{dataset.compounds.size}, f:#{dataset.features.size}")
       dataset
     end

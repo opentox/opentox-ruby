@@ -113,10 +113,59 @@ cluster_hierarchical <- function(data, hclust_method="ward", max_num_clusters=15
 	cut
 }
 
-stratified_split <- function( data, ratio=0.3, method="cluster_knn", colnames=NULL, preprocess="none" )
+# input: classes [ 1 2 4 3 1 2 4 3 2 1 2 3 3 2 ]
+# input : ratio 0.1
+# output: split  [ 1 0 0 1 0 0 0 0 0 1 0 0 0 0 ]
+explicit_stratified_split <- function( class, ratio=0.3 )
+{
+#	print(class)
+	num_instances = length(class)
+#	print(num_instances)
+
+	# create a list with indexes of each class
+	class_idx <- list()
+	for (i in 1:max(class))
+		class_idx[[i]] <- vector() 
+	for (i in 1:num_instances)
+		class_idx[[class[i]]] <- c(class_idx[[class[i]]],i)
+	#print(class_idx)
+	# shuffle each index list
+	for (i in 1:max(class))
+		class_idx[[i]] <- sample(class_idx[[i]]) 
+ #   print(class_idx)
+	
+	selected <- vector()
+	sum_total <- 0
+	
+	classes = sample(1:max(class))
+	# iterate of classes in random order
+	for (i in classes)
+	{
+		# count the numbers of selections that should be made
+		sum_total <- sum_total + length(class_idx[[i]])
+		selected_total <- round_it(sum_total*ratio)
+	#	print(selected_total)
+		# count the number of new selections
+		selected_new <- selected_total - length(selected)
+	#	print(selected_new)
+		# add selections
+		selected <- c(selected, class_idx[[i]][1:selected_new])
+	#	print(selected)
+	#	print("")
+	}
+	
+	# convert selected indexs to split array
+	split <- array(0,num_instances)
+	for(i in selected)
+		split[i] <- 1
+	as.vector(split)
+}
+
+stratified_split <- function( data, ratio=0.3, method="cluster_knn", method_2="samplecube", colnames=NULL, preprocess="none" )
 {
 	data.processed = as.matrix(process_data( data, colnames ))
 	print(paste("strat split, method: ",method," #features: ",ncol(data.processed)," ratio: ",ratio," preprocess: ",preprocess))
+	cl = NULL
 	
 	if (preprocess == "none")
 	{
@@ -137,11 +186,11 @@ stratified_split <- function( data, ratio=0.3, method="cluster_knn", colnames=NU
       ratio = round_it(nrow(data.processed)*ratio)/nrow(data.processed)
       pik = rep(ratio,times=nrow(data.processed))
       data.strat = cbind(pik,data.processed)
-      samplecube(data.strat,pik,order=2,comment=F)
+      split = samplecube(data.strat,pik,order=2,comment=F)
     }
     else if (method == "cluster_knn")
     {
-      cl = cluster_knn(data.processed)
+      cl = as.vector(cluster_knn(data.processed))
 #      require("caret")
 #      res = createDataPartition(cl,p=ratio)
 #      split = rep(1, times=nrow(data))
@@ -149,12 +198,26 @@ stratified_split <- function( data, ratio=0.3, method="cluster_knn", colnames=NU
 #        if ( is.na(match(j,res$Resample1)) )
 #          split[j]=0
 #      split
-      stratified_split(cl,ratio,"samplecube")
+	   
+       split = stratified_split(cl,ratio,"samplecube")$split
     }
 	else if (method == "cluster_hierarchical") 
 	{
-		cl = cluster_hierarchical(data.processed)
-		stratified_split(cl,ratio,"samplecube")
+		cl = as.vector(cluster_hierarchical(data.processed))
+		
+	    #require("caret")
+        #res = createDataPartition(cl,p=ratio)
+        #split = rep(1, times=nrow(data))
+        #for (j in 1:nrow(data))
+        #if ( is.na(match(j,res$Resample1)) )
+        #  split[j]=0
+		
+	   if (method_2 == "samplecube")
+	     split = stratified_split(cl,ratio,"samplecube")$split
+	   else if (method_2 == "explicit")
+	     split = explicit_stratified_split(cl,ratio)
+	   else
+		   stop("unknown method")
 	}
 	## else if (method == "cluster2")
 	## {
@@ -199,6 +262,8 @@ stratified_split <- function( data, ratio=0.3, method="cluster_knn", colnames=NU
 	## }
     else
       stop("unknown method")
+  
+    list(split=split, cluster=cl)
 }
 
 anti_stratified_split <- function( data, ratio=0.3, colnames=NULL)
@@ -213,7 +278,7 @@ anti_stratified_split <- function( data, ratio=0.3, colnames=NULL)
   data.processed = as.matrix(process_data( data, colnames ))
   print(paste("anti-split using #features: ",ncol(data.processed)))
   num_c = floor(1/ratio)
-  cl = cluster(data.processed, num_c, num_c)
+  cl = cluster_knn(data.processed, num_c, num_c)
   #print(cl)
   idx = -1
   min = 1000000
@@ -244,7 +309,7 @@ anti_stratified_split <- function( data, ratio=0.3, colnames=NULL)
     for(j in 1:nrow(data))
       split[j] = 1-split[j]
   #print(split)
-  as.vector(split)
+  list(split=as.vector(split),cluster=cl)
 }
 
 stratified_k_fold_split <- function( data, num_folds=10, method="cluster", colnames=NULL )
@@ -382,7 +447,7 @@ plot_pre_process <- function( data, method="pca" )
     stop("unknown method")
 }
 
-plot_split <- function( data, color_idx, names=NULL, shape_idx=color_idx, ... )
+plot_split <- function( data, color_idx, circle_idx=NULL, ... )
 {
   if (ncol(data)!=2 || !is.numeric(data[,1]) || !is.numeric(data[,2]))
     stop("data not suitable for plotting, plot_pre_process() first")
@@ -390,20 +455,134 @@ plot_split <- function( data, color_idx, names=NULL, shape_idx=color_idx, ... )
   plot( NULL, xlim = extendrange(data[,1]), ylim = extendrange(data[,2]), ... )
   if (is.null(names))
     names <- c("split 1","split 2")
-  colos = as.double(rep(2:(max(split)+2)))
-  legend("topleft",names,pch=2,col=colos)
+  #colos = as.double(rep(2:(max(color_idx)+2)))
+  #legend("topleft",names,pch=2,col=colos)
+  
+  #legend("topleft",names[1],pch=as.double(c(1)),col="red")
 
-  for (j in max(color_idx):0)
+  ## for (j in max(color_idx):0)
+  ## {
+  ##   for (k in max(shape_idx):0)
+  ##   {
+  ##     set = c()
+  ##     for (i in 1:nrow(data))
+  ##       if (color_idx[i]==j && shape_idx[i]==k)
+  ##         set = c(set,i)
+  ##     points(data[set,], pch = 15+k, col=(j+2))
+  ##   }
+  ## }
+  col_offset = 2
+  if (!is.null(circle_idx))
+	  col_offset = 1
+  for (j in 0:max(color_idx))
   {
-    for (k in max(shape_idx):0)
-    {
-      set = c()
-      for (i in 1:nrow(data))
-        if (color_idx[i]==j && shape_idx[i]==k)
-          set = c(set,i)
-      points(data[set,], pch = 15+k, col=(j+2))
-    }
+	  set = c()
+	  for (i in 1:nrow(data))
+		  if (color_idx[i]==j)
+			  set = c(set,i)
+	  points(data[set,], pch = 19, cex=1, col=(max(color_idx)-j)+col_offset)
   }
+  if (!is.null(circle_idx))
+  {
+	  set = c()
+	  for (i in 1:nrow(data))
+		  if (circle_idx[i]==1)
+				set = c(set,i)#
+	  points(data[set,], pch = 1, cex=1, col=1)
+	  points(data[set,], pch = 1, cex=1.8, col=1)
+	  
+	  ## for (j in max(color_idx):0)
+	  ## {
+	  ##     set = c()
+	  ##     for (i in 1:nrow(data))
+	  ##         if (color_idx[i]==j && circle_idx[i]==1)
+	  ##             set = c(set,i)
+	  ##     points(data[set,], pch = 19, cex=1, col=1)
+	  ##     points(data[set,], pch = 20, cex=1, col=(max(color_idx)-j)+col_offset)
+	  ##     points(data[set,], pch = 1, cex=2, col=1)
+	  ## }
+	  
+  }
+}
+
+superboxplot  <- function( data, ..., significance_level=0.95 )
+{
+	b <- boxplot(data,...) #,col=rep(2:(ncol(data)+1)))
+	
+	#print mean and stdev
+	for (i in 1:ncol(data))
+	{
+		med <- sprintf("%.3f",b$stats[,i][3])
+		stdev <- sprintf("%.3f",sqrt(var(data[,i])))
+		mtext(paste(med,"+-",stdev),side=1,at=i,line=2)
+	}
+	
+	#print significance tests
+	sig <- array(list(),c(ncol(data),ncol(data)))
+	for (i in 1:(ncol(data)-1))
+	{
+		for (j in (i+1):ncol(data))
+		{
+			ttest = t.test(data[,i],data[,j],paired=T)
+			#print(ttest$p.value)
+			#print(is.na(ttest$p.value))
+			if ( !is.na(ttest$p.value) && 1-significance_level > ttest$p.value)
+			{
+				sig[i,j] = T
+				sig[j,i] = T
+			}
+			else
+			{
+				sig[i,j] = F
+				sig[j,i] = F
+			}
+		}
+	}
+	
+	for (i in 1:ncol(data))
+	{
+		## s <- ""
+		## for (j in 1:ncol(data))
+		## {
+		##     if (i == j)
+		##         s <- paste( s, "-" ,sep="")
+		##     else if (sig[i,j]==T)
+		##         s <- paste( s, "X" ,sep="")
+		##     else
+		##         s <- paste( s, "0" ,sep="")
+		## }
+		
+		s<-""
+		bigger <- ""
+		for (j in 1:ncol(data))
+		{
+			#print(paste(i,j))
+			if (i!=j && sig[i,j]==T && b$stats[,i][3] > b$stats[,j][3]) 
+				bigger <- paste(bigger,j,sep=",")
+		}
+		if (nchar(bigger)>0)
+		{
+			bigger <- substring(bigger, 2)
+			bigger <- paste(">(",bigger,")",sep="")
+			s <- paste(s,bigger,sep=" ")
+		}
+		smaller <- ""
+		for (j in 1:ncol(data))
+		{
+			#print(paste(i,j))
+			if (i!=j && sig[i,j]==T && b$stats[,i][3] < b$stats[,j][3]) 
+				smaller <- paste(smaller,j,sep=",")
+		}
+		if (nchar(smaller)>0)
+		{
+			smaller <- substring(smaller, 2)
+			smaller <- paste("<(",smaller,")",sep="")
+			s <- paste(s,smaller,sep=" ")
+		}
+		mtext(s,side=1,at=i,line=3)
+	}
+	
+	#print(sig)
 }
 
 #a<-matrix(rnorm(100, mean=50,  sd=4), ncol=5)
@@ -411,19 +590,20 @@ plot_split <- function( data, color_idx, names=NULL, shape_idx=color_idx, ... )
 #data<-rbind(a,b)
 #c<-matrix(rnorm(50, mean=-50, sd=2), ncol=5)
 #data<-rbind(data,c)
-#data=iris
+#data=iris[1:4]
 #pca_reduce_features(data)
 #data=ethanol
 #split = stratified_k_fold_split(data, num_folds=3)
-#split = anti_stratified_split(data, ratio=0.75)
+#split = stratified_split(data, ratio=0.1, method="cluster_hierarchical")
 
-#split = stratified_split(data, ratio=0.9,preprocess = "pca")
+#split = stratified_split(data, ratio=0.1,preprocess = "pca", method="cluster_hierarchical", method_2="explicit")
 
 #cluster = cluster(ethanol,3,3)
 
 #print(split)
-#print(sum(split))
-#plot_split(plot_pre_process(data, method="pca"),split,c("training","test"))
+#print(sum(split)
+#plot_split(plot_pre_process(data, method="pca"),color_idx=split$split)
+#plot_split(plot_pre_process(data, method="pca"),circle_idx=split$split,color_idx=split$cluster)
 
 
 
