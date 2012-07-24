@@ -122,40 +122,54 @@ explicit_stratified_split <- function( class, ratio=0.3 )
 	num_instances = length(class)
 #	print(num_instances)
 
+	min_class=min(class)
+	max_class=max(class)
+	
 	# create a list with indexes of each class
 	class_idx <- list()
-	for (i in 1:max(class))
-		class_idx[[i]] <- vector() 
+	for (i in min_class:max_class)
+		class_idx[[i+1]] <- vector() 
 	for (i in 1:num_instances)
-		class_idx[[class[i]]] <- c(class_idx[[class[i]]],i)
+		class_idx[[class[i]+1]] <- c(class_idx[[class[i]+1]],i)
 	#print(class_idx)
 	# shuffle each index list
-	for (i in 1:max(class))
-		class_idx[[i]] <- sample(class_idx[[i]]) 
+	for (i in min_class:max_class)
+		class_idx[[i+1]] <- sample(class_idx[[i+1]]) 
  #   print(class_idx)
 	
 	selected <- vector()
 	sum_total <- 0
 	
-	classes = sample(1:max(class))
+	classes = sample(min_class:max_class)
 	# iterate of classes in random order
 	for (i in classes)
 	{
 		# count the numbers of selections that should be made
-		sum_total <- sum_total + length(class_idx[[i]])
+		sum_total <- sum_total + length(class_idx[[i+1]])
 		selected_total <- round_it(sum_total*ratio)
 	#	print(selected_total)
 		# count the number of new selections
 		selected_new <- selected_total - length(selected)
 	#	print(selected_new)
 		# add selections
-		selected <- c(selected, class_idx[[i]][1:selected_new])
+		selected <- c(selected, class_idx[[i+1]][1:selected_new])
 	#	print(selected)
 	#	print("")
 	}
 	
 	# convert selected indexs to split array
 	split <- array(0,num_instances)
+	for(i in selected)
+		split[i] <- 1
+	as.vector(split)
+}
+
+random_split <- function( data, ratio=0.3 )
+{
+	num <- round_it(nrow(data)*ratio)
+	selected <- sample(rep(1:nrow(data)))[1:num]
+	# convert selected indexs to split array
+	split <- array(0,nrow(data))
 	for(i in selected)
 		split[i] <- 1
 	as.vector(split)
@@ -447,7 +461,7 @@ plot_pre_process <- function( data, method="pca" )
     stop("unknown method")
 }
 
-plot_split <- function( data, color_idx, circle_idx=NULL, ... )
+plot_split <- function( data, color_idx=NULL, circle_idx=NULL, ... )
 {
   if (ncol(data)!=2 || !is.numeric(data[,1]) || !is.numeric(data[,2]))
     stop("data not suitable for plotting, plot_pre_process() first")
@@ -474,6 +488,11 @@ plot_split <- function( data, color_idx, circle_idx=NULL, ... )
   col_offset = 2
   if (!is.null(circle_idx))
 	  col_offset = 1
+  if(is.null(color_idx))
+  {
+	  color_idx <- array(0,nrow(data))
+	  col_offset=3
+  }
   for (j in 0:max(color_idx))
   {
 	  set = c()
@@ -518,68 +537,70 @@ superboxplot  <- function( data, ..., significance_level=0.95 )
 	}
 	
 	#print significance tests
-	sig <- array(list(),c(ncol(data),ncol(data)))
-	for (i in 1:(ncol(data)-1))
+	if (nrow(data)>10)
 	{
-		for (j in (i+1):ncol(data))
+		sig <- array(list(),c(ncol(data),ncol(data)))
+		for (i in 1:(ncol(data)-1))
 		{
-			ttest = t.test(data[,i],data[,j],paired=T)
-			#print(ttest$p.value)
-			#print(is.na(ttest$p.value))
-			if ( !is.na(ttest$p.value) && 1-significance_level > ttest$p.value)
+			for (j in (i+1):ncol(data))
 			{
-				sig[i,j] = T
-				sig[j,i] = T
+				ttest = t.test(data[,i],data[,j],paired=T)
+				#print(ttest$p.value)
+				#print(is.na(ttest$p.value))
+				if ( !is.na(ttest$p.value) && 1-significance_level > ttest$p.value)
+				{
+					sig[i,j] = T
+					sig[j,i] = T
+				}
+				else
+				{
+					sig[i,j] = F
+					sig[j,i] = F
+				}
 			}
-			else
+		}
+		for (i in 1:ncol(data))
+		{
+			## s <- ""
+			## for (j in 1:ncol(data))
+			## {
+			##     if (i == j)
+			##         s <- paste( s, "-" ,sep="")
+			##     else if (sig[i,j]==T)
+			##         s <- paste( s, "X" ,sep="")
+			##     else
+			##         s <- paste( s, "0" ,sep="")
+			## }
+			
+			s<-""
+			bigger <- ""
+			for (j in 1:ncol(data))
 			{
-				sig[i,j] = F
-				sig[j,i] = F
+				#print(paste(i,j))
+				if (i!=j && sig[i,j]==T && b$stats[,i][3] > b$stats[,j][3]) 
+					bigger <- paste(bigger,j,sep=",")
 			}
+			if (nchar(bigger)>0)
+			{
+				bigger <- substring(bigger, 2)
+				bigger <- paste(">(",bigger,")",sep="")
+				s <- paste(s,bigger,sep=" ")
+			}
+			smaller <- ""
+			for (j in 1:ncol(data))
+			{
+				#print(paste(i,j))
+				if (i!=j && sig[i,j]==T && b$stats[,i][3] < b$stats[,j][3]) 
+					smaller <- paste(smaller,j,sep=",")
+			}
+			if (nchar(smaller)>0)
+			{
+				smaller <- substring(smaller, 2)
+				smaller <- paste("<(",smaller,")",sep="")
+				s <- paste(s,smaller,sep=" ")
+			}
+			mtext(s,side=1,at=i,line=3)
 		}
-	}
-	
-	for (i in 1:ncol(data))
-	{
-		## s <- ""
-		## for (j in 1:ncol(data))
-		## {
-		##     if (i == j)
-		##         s <- paste( s, "-" ,sep="")
-		##     else if (sig[i,j]==T)
-		##         s <- paste( s, "X" ,sep="")
-		##     else
-		##         s <- paste( s, "0" ,sep="")
-		## }
-		
-		s<-""
-		bigger <- ""
-		for (j in 1:ncol(data))
-		{
-			#print(paste(i,j))
-			if (i!=j && sig[i,j]==T && b$stats[,i][3] > b$stats[,j][3]) 
-				bigger <- paste(bigger,j,sep=",")
-		}
-		if (nchar(bigger)>0)
-		{
-			bigger <- substring(bigger, 2)
-			bigger <- paste(">(",bigger,")",sep="")
-			s <- paste(s,bigger,sep=" ")
-		}
-		smaller <- ""
-		for (j in 1:ncol(data))
-		{
-			#print(paste(i,j))
-			if (i!=j && sig[i,j]==T && b$stats[,i][3] < b$stats[,j][3]) 
-				smaller <- paste(smaller,j,sep=",")
-		}
-		if (nchar(smaller)>0)
-		{
-			smaller <- substring(smaller, 2)
-			smaller <- paste("<(",smaller,")",sep="")
-			s <- paste(s,smaller,sep=" ")
-		}
-		mtext(s,side=1,at=i,line=3)
 	}
 	
 	#print(sig)
@@ -591,17 +612,25 @@ superboxplot  <- function( data, ..., significance_level=0.95 )
 #c<-matrix(rnorm(50, mean=-50, sd=2), ncol=5)
 #data<-rbind(data,c)
 #data=iris[1:4]
+
+#require("datasets")
+#data=ChickWeight
+#data=freeny
+#data=sunspots
+#data=faithful
 #pca_reduce_features(data)
 #data=ethanol
 #split = stratified_k_fold_split(data, num_folds=3)
 #split = stratified_split(data, ratio=0.1, method="cluster_hierarchical")
 
 #split = stratified_split(data, ratio=0.1,preprocess = "pca", method="cluster_hierarchical", method_2="explicit")
+#split = stratified_split(data, ratio=0.1,preprocess = "pca", method="cluster_hierarchical")
 
 #cluster = cluster(ethanol,3,3)
 
 #print(split)
 #print(sum(split)
+
 #plot_split(plot_pre_process(data, method="pca"),color_idx=split$split)
 #plot_split(plot_pre_process(data, method="pca"),circle_idx=split$split,color_idx=split$cluster)
 
@@ -610,5 +639,30 @@ superboxplot  <- function( data, ..., significance_level=0.95 )
 #cl = cluster(data)
 
 
-
-
+## # stratified splitting plot
+## 
+## #png("data.png",width=1024,height=768,pointsize=20)
+## png("random.png",width=1024,height=768,pointsize=20)
+## #png("stratfied_cluster.png",width=1024,height=768,pointsize=20)
+## #png("stratfied_cluster_selected.png",width=1024,height=768,pointsize=20)
+## #png("stratfied_selected.png",width=1024,height=768,pointsize=20)
+## 
+## #seed = sample(1:1000000,1)
+## #print(paste("seed ",seed))
+## #set.seed(seed)
+## 
+## set.seed(86281) #unlucky random
+## #set.seed(160719) #nice stratifed
+## 
+## data=df_11306
+## data=cbind(data[1],data[3])
+## plot_split(data,xlab="Molecular weight",ylab="LogP")
+## 
+## #split = stratified_split(data, ratio=0.1,preprocess = "pca", method="cluster_hierarchical", method_2="explicit")
+## split = list(split=random_split(data, ratio=0.1))
+## 
+## plot_split(data,color_idx=split$split,xlab="Molecular weight",ylab="LogP")
+## #plot_split(data,color_idx=split$cluster,xlab="Molecular weight",ylab="LogP")
+## #plot_split(data,circle_idx=split$split,color_idx=split$cluster,xlab="Molecular weight",ylab="LogP")
+## 
+## dev.off()
