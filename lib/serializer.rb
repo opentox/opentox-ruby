@@ -500,7 +500,6 @@ module OpenTox
         # get headers
         features_smarts && @rows.first << features_smarts || @rows.first << features
         @rows.first.flatten!
-        LOGGER.debug @rows.first.to_yaml
 
         # feature positions pre-calculated
         feature_positions = features.inject({}) { |h,f| 
