@@ -462,13 +462,7 @@ module OpenTox
 
         features = dataset.features.keys
 
-        # prepare for subgraphs
-        have_substructures = features.collect{ |id| dataset.features[id][RDF.type].include? OT.Substructure}.compact.uniq
-        if have_substructures.size == 1 && have_substructures[0] 
-          features_smarts = features.collect{ |id| "\"" + dataset.features[id][OT.smarts] + "\"" }
-        end
-      
-        # gather missing features
+        # remove missing features
         delete_features = []
         features.each{ |id|
           dataset.features[id][RDF.type].each { |typestr|
@@ -478,6 +472,15 @@ module OpenTox
           }
         }
         features = features - delete_features
+
+        # sort features
+        features.sort!
+
+        # prepare for subgraphs
+        have_substructures = features.collect{ |id| dataset.features[id][RDF.type].include? OT.Substructure}.compact.uniq
+        if have_substructures.size == 1 && have_substructures[0] 
+          features_smarts = features.collect{ |id| "\"" + dataset.features[id][OT.smarts] + "\"" }
+        end
 
         # detect nr duplicates per compound
         compound_sizes = {}
@@ -497,6 +500,7 @@ module OpenTox
         # get headers
         features_smarts && @rows.first << features_smarts || @rows.first << features
         @rows.first.flatten!
+        LOGGER.debug @rows.first.to_yaml
 
         # feature positions pre-calculated
         feature_positions = features.inject({}) { |h,f| 
@@ -543,6 +547,7 @@ module OpenTox
         result = ""
         result << rows.shift.collect { |f| f.split('/').last }.join(",") << "\n" # only feature name
         result << rows.collect{ |r| r.join(",") }.join("\n")
+        result << "\n"
       end
 
       # Convert to spreadsheet workbook
