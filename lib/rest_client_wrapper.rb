@@ -73,8 +73,7 @@ module OpenTox
         if uri.include?(`hostname`.strip)
           RestClient.proxy = nil
         else
-          #RestClient.proxy = ENV['http_proxy'] # set to http proxy uri
-          RestClient.proxy = nil
+          CONFIG[:http_proxy] ? RestClient.proxy = CONFIG[:http_proxy] : RestClient.proxy = nil
         end
         
         resource = RestClient::Resource.new(uri,{:timeout => 600})
