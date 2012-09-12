@@ -297,7 +297,12 @@ module OpenTox
           else
             @prediction_dataset.add @compound.uri, value_feature_uri, prediction[:prediction]
           end
-          @prediction_dataset.add @compound.uri, confidence_feature_uri, prediction[:confidence]
+          confidence=prediction[:confidence]
+          if @similarity_algorithm.to_s =~ /cosine/
+            confidence=((confidence+1.0)/2.0).abs
+          end
+          @prediction_dataset.add @compound.uri, confidence_feature_uri, confidence
+
           @prediction_dataset.features[value_feature_uri][DC.title] = @prediction_dataset.metadata[DC.title]
           @prediction_dataset.features[confidence_feature_uri][DC.title] = "Confidence"
 
