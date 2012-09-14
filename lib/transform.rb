@@ -326,10 +326,10 @@ module OpenTox
 
         def transform
           get_matrices # creates @n_prop, @q_prop, @acts from ordered fps
-          @ids = (0..((@n_prop.length)-1)).to_a # surviving compounds; become neighbors
-
+  
           # Preprocessing
           if (@model.similarity_algorithm == "Similarity.cosine")
+            @ids = (0..((@n_prop.length)-1)).to_a # surviving compounds; become neighbors
             # truncate nil-columns and -rows
             LOGGER.debug "O: #{@n_prop.size}x#{@n_prop[0].size}; R: #{@q_prop.size}"
             while @q_prop.size>0
@@ -371,21 +371,23 @@ module OpenTox
           n_prop_tmp = []; @ids.each { |idx| n_prop_tmp << @n_prop[idx] }; @n_prop = n_prop_tmp # select neighbors from matrix
           acts_tmp = []; @ids.each { |idx| acts_tmp << @acts[idx] }; @acts = acts_tmp
 
-
           # Sims between neighbors, if necessary
           gram_matrix = []
-          if !@model.parameter("propositionalized") # need gram matrix for standard setting (n. prop.)
-            @n_prop.each_index do |i|
-              gram_matrix[i] = [] unless gram_matrix[i]
-              @n_prop.each_index do |j|
-                if (j>i)
-                  sim = eval("OpenTox::Algorithm::#{@similarity_algorithm}(@n_prop[i], @n_prop[j])")
-                  gram_matrix[i][j] = sim
-                  gram_matrix[j] = [] unless gram_matrix[j]
-                  gram_matrix[j][i] = gram_matrix[i][j]
+
+          unless @model.prediction_algorithm == "Neighbors.weighted_majority_vote" 
+            if !@model.parameter("propositionalized") # need gram matrix for standard setting (n. prop.)
+              @n_prop.each_index do |i|
+                gram_matrix[i] = [] unless gram_matrix[i]
+                @n_prop.each_index do |j|
+                  if (j>i)
+                    sim = eval("OpenTox::Algorithm::#{@similarity_algorithm}(@n_prop[i], @n_prop[j])")
+                    gram_matrix[i][j] = sim
+                    gram_matrix[j] = [] unless gram_matrix[j]
+                    gram_matrix[j][i] = gram_matrix[i][j]
+                  end
                 end
+                gram_matrix[i][i] = 1.0
               end
-              gram_matrix[i][i] = 1.0
             end
           end
 
@@ -404,21 +406,19 @@ module OpenTox
         end
 
 
-          
-
         # Find neighbors and store them as object variable, access all compounds for that.
         def neighbors
           @model.neighbors = []
-          @n_prop.each_with_index do |fp, idx| # AM: access all compounds
-            add_neighbor fp, idx
+          if @similarity_algorithm.to_s =~ /tanimoto/
+            @cmpds.each_with_index { |cmpd, idx| add_neighbor @model.fingerprints[cmpd], idx }
+          else
+            @n_prop.each_with_index { |fp, idx| add_neighbor fp, idx } # AM: access all compounds
           end
         end
-
 
         # Adds a neighbor to @neighbors if it passes the similarity threshold
         # adjusts @ids to signal the
         def add_neighbor(training_props, idx)
-
           sim = similarity(training_props)
           if sim > @model.parameter("min_sim")
             if @model.activities[@cmpds[idx]]
@@ -434,7 +434,7 @@ module OpenTox
               end
             end
           end
-        end
+       end
 
 
         # Removes nil entries from n_prop and q_prop.
@@ -480,7 +480,12 @@ module OpenTox
 
         # Executes model similarity_algorithm
         def similarity(training_props)
-          eval("OpenTox::Algorithm::#{@model.similarity_algorithm}(training_props, @q_prop)")
+          if @similarity_algorithm.to_s =~ /tanimoto/
+            query_fps = @model.compound_fingerprints
+            eval("OpenTox::Algorithm::#{@model.similarity_algorithm}(training_props, query_fps)")
+          else
+            eval("OpenTox::Algorithm::#{@model.similarity_algorithm}(training_props, @q_prop)")
+          end
         end
 
 
