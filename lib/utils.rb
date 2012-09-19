@@ -41,17 +41,25 @@ module OpenTox
 
       # # # joelib (via rjb)
       if !params[:lib] || params[:lib].split(",").include?("joelib")
-        jl_master, jl_ids = get_jl_descriptors( { :compounds => compounds, :rjb => params[:rjb], :pc_type => params[:pc_type], :descriptor => params[:descriptor] } ) 
+        jl_master, jl_ids = get_jl_descriptors( { :compounds => compounds, :rjb => params[:rjb][:jl], :pc_type => params[:pc_type], :descriptor => params[:descriptor] } ) 
         params[:task].progress(params[:task].metadata[OT.percentageCompleted] + task_weights["joelib"]) if params[:task]
       end
 
 
-      # # # cdk (via REST)
+      # # # cdk (via rjb)
       if !params[:lib] || params[:lib].split(",").include?("cdk")
-        ambit_result_uri, smiles_to_inchi, cdk_ids = get_cdk_descriptors( { :compounds => compounds, :pc_type => params[:pc_type], :task => params[:task], :step => task_weights["cdk"], :descriptor => params[:descriptor] } )
-        #LOGGER.debug "Ambit result uri for #{params.inspect}: '#{ambit_result_uri.to_yaml}'"
-        cdk_master, cdk_ids, ambit_ids = load_ds_csv(ambit_result_uri, smiles_to_inchi, cdk_ids )
-        params[:task].progress(params[:task].metadata[OT.percentageCompleted] + task_weights["load"]) if params[:task]
+        cdk_master, cdk_ids = get_cdk_descriptors( { :compounds => compounds, :rjb => params[:rjb][:cdk], :pc_type => params[:pc_type], :descriptor => params[:descriptor] } ) 
+        cdk_ids = cdk_master[0].collect { |id| id.to_s.split("-").first } # get column headers
+        cdk_single_ids = cdk_master[0].collect { |id| id.to_s.sub(/[^-]*-/,"").gsub(/[\/.\\\(\)\{\}\[\]]/,"_") } # get column headers w/ nice '_'
+        cdk_master[0] = cdk_single_ids.collect{|x| x} # Single IDs as features in result ds
+        cdk_ids.shift # remove SMILES
+        cdk_single_ids.shift # remove SMILES
+        params[:task].progress(params[:task].metadata[OT.percentageCompleted] + task_weights["cdk"]) if params[:task]
+
+        #ambit_result_uri, smiles_to_inchi, cdk_ids = get_cdk_descriptors( { :compounds => compounds, :pc_type => params[:pc_type], :task => params[:task], :step => task_weights["cdk"], :descriptor => params[:descriptor] } )
+        ##LOGGER.debug "Ambit result uri for #{params.inspect}: '#{ambit_result_uri.to_yaml}'"
+        #cdk_master, cdk_ids, ambit_ids = load_ds_csv(ambit_result_uri, smiles_to_inchi, cdk_ids )
+        #params[:task].progress(params[:task].metadata[OT.percentageCompleted] + task_weights["load"]) if params[:task]
       end
 
       # # # fuse CSVs ("master" structures)
@@ -94,10 +102,12 @@ module OpenTox
 
         # # # add feature metadata
         pc_descriptors = YAML::load_file(@keysfile)
-        ambit_ids && ambit_ids.each_with_index { |id,idx|
+        cdk_single_ids && cdk_single_ids.each_with_index { |id,idx|
           raise "Feature not found" if ! ds.features[File.join(ds.uri, "feature", id.to_s)]
           ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{DC.description => "#{pc_descriptors[cdk_ids[idx]][:name]} [#{pc_descriptors[cdk_ids[idx]][:pc_type]}, #{pc_descriptors[cdk_ids[idx]][:lib]}]"})
-          ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{DC.creator => @ambit_descriptor_algorithm_uri + cdk_ids[idx]})
+          creator_uri = ds.uri.gsub(/\/dataset\/.*/, "/algorithm/pc")
+          creator_uri += "/#{id}" if params[:add_uri]
+          ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{DC.creator => creator_uri})
           ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{OT.hasSource => params[:dataset_uri]})
         }
         ob_ids && ob_ids.each { |id|
@@ -283,73 +293,74 @@ module OpenTox
 
     end
 
-    # Calculate CDK physico-chemical descriptors via Ambit -- DO NOT OVERLOAD Ambit.
-    # @param[Hash] required: :compounds, :pc_type, :task, :step optional: :descriptor
-    # @return[Array] array of Ambit result uri, piecewise (1st: base, 2nd: SMILES, 3rd+: features, hash smiles to inchi, array of field descriptions
+    
     def self.get_cdk_descriptors(params)
 
-      ambit_result_uri = [] # 1st pos: base uri, then features
-      smiles_to_inchi = {}
-      task_weights = {"electronic"=> 4, "topological"=> 19, "constitutional"=> 12, "geometrical"=> 3, "hybrid"=> 2, "cpsa"=> 1 }
-      task_weights.keys.each { |pc_type| task_weights.delete(pc_type) if (params[:pc_type] && (!params[:pc_type].split(",").include?(pc_type)))}
-      task_sum = Float task_weights.values.sum
-      task_weights.keys.each { |pc_type| task_weights[pc_type] /= task_sum }
-      task_weights.keys.each { |pc_type| task_weights[pc_type] *= params[:step] }
-      
+      master = nil
+      t = params[:rjb]; raise "No Java environment" unless t
 
-      # extract wanted descriptors from config file and parameters
-      pc_descriptors = YAML::load_file(@keysfile)
+      # Load keys, enter CSV headers
+      begin
+        pc_descriptors = YAML::load_file(@keysfile)
+        ids = pc_descriptors.collect{ |id, info| 
+          id if info[:lib] == "cdk" && params[:pc_type].split(",").include?(info[:pc_type]) && (!params[:descriptor] || id == params[:descriptor])
+        }.compact
 
-      ids = pc_descriptors.collect { |id, info| 
-          "#{info[:pc_type]}:::#{id}" if info[:lib] == "cdk" && params[:pc_type].split(",").include?(info[:pc_type]) && (!params[:descriptor] || id == params[:descriptor])
-      }.compact
-
-      if ids.size > 0
-        ids.sort!
-        ids.collect! { |id| id.split(":::").last }
-
-        # create dataset at Ambit
-        begin
-          params[:compounds].each do |n|
-            cmpd = OpenTox::Compound.new(n)
-            smiles_string = cmpd.to_smiles
-            smiles_to_inchi[smiles_string] = URI.encode_www_form_component(cmpd.to_inchi)
+        if ids.length > 0
+          # remember inchis
+          inchis = params[:compounds].collect { |c_uri| 
+            cmpd = OpenTox::Compound.new(c_uri)
+            URI.encode_www_form_component(cmpd.to_inchi)
+          }
+          begin
+            # Process compounds
+            sdf_data = []
+            params[:compounds].each_with_index { |c_uri, c_idx| 
+              cmpd = OpenTox::Compound.new(c_uri)
+              LOGGER.debug "3D for #{cmpd.to_smiles}"
+              obconv = OpenBabel::OBConversion.new
+              obmol = OpenBabel::OBMol.new
+              obconv.set_in_format("smi") 
+              obconv.read_string(obmol, cmpd.to_smiles) 
+              obconv.set_out_format("sdf") 
+              sdf_string = obconv.write_string(obmol)  
+              gen3d = OpenBabel::OBOp.find_type("Gen3D") 
+              gen3d.do(obmol) 
+              sdf_string_3d = obconv.write_string(obmol)  
+              if sdf_string_3d.index(/.nan/).nil?
+                sdf_data << sdf_string_3d
+              else
+                sdf_data << sdf_string
+                LOGGER.debug "3D failed (using 2D)"
+              end
+            }
+            infile = Tempfile.open(['jl_descriptors-in-','.sdf'])
+            csvfile = infile.path.gsub(/jl_descriptors-in/,"jl_descriptors-out").gsub(/\.sdf/,".csv")
+            infile.puts sdf_data.join("")
+            infile.flush
+            t.new(infile.path, csvfile, ids.join(',')) # runs cdk
+          rescue Exception => e
+            LOGGER.debug "#{e.class}: #{e.message}"
+            LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+          ensure
+            infile.close!
           end
-          smi_file = Tempfile.open(['pc_ambit', '.csv']) ; smi_file.puts( "SMILES\n" + smiles_to_inchi.keys.join("\n") ) ; smi_file.flush
-          ambit_ds_uri = OpenTox::RestClientWrapper.post(@ambit_ds_service_uri, {:file => File.new(smi_file.path)}, {:content_type => "multipart/form-data", :accept => "text/uri-list"} )
-          ambit_result_uri = [ ambit_ds_uri + "?" ] # 1st pos: base uri, then features
-        rescue Exception => e
-          LOGGER.debug "#{e.class}: #{e.message}"
-          LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
-        ensure
-          smi_file.close! if smi_file
+          master = CSV::parse(File.open(csvfile, "rb").read)
+          master.each_with_index { |row, idx|
+            if idx != 0 # not alter headers
+              row[0] = inchis[idx-1]
+              row.collect! { |x| x.to_s == "null" ? nil : x }
+            end
+          }
         end
-        # get SMILES feature URI
-        ambit_smiles_uri = OpenTox::RestClientWrapper.get(
-          ambit_ds_uri + "/features", 
-          {:accept=> "text/uri-list"} 
-        ).chomp
-        ambit_result_uri << ("feature_uris[]=" + URI.encode_www_form_component(ambit_smiles_uri) + "&")
-        # always calculate 3D (http://goo.gl/Tk81j), then get results
-        OpenTox::RestClientWrapper.post(
-          @ambit_mopac_model_uri, 
-          {:dataset_uri => ambit_ds_uri}, 
-          {:accept => "text/uri-list"} 
-        ) 
-        current_cat = ""
-        ids.each_with_index do |id, i|
-          old_cat = current_cat; current_cat = pc_descriptors[id][:pc_type]
-          params[:task].progress(params[:task].metadata[OT.percentageCompleted] + task_weights[old_cat]) if params[:task] && old_cat != current_cat && old_cat != ""
-          algorithm = Algorithm::Generic.new(@ambit_descriptor_algorithm_uri+id)
-          result_uri = algorithm.run({:dataset_uri => ambit_ds_uri})
-          ambit_result_uri << result_uri.split("?")[1] + "&"
-          LOGGER.debug "Ambit (#{ids.size}): #{i+1}"
-        end
-        params[:task].progress(params[:task].metadata[OT.percentageCompleted] + task_weights[current_cat]) if params[:task]
-        #LOGGER.debug "Ambit result: #{ambit_result_uri.join('')}"
+      rescue Exception => e
+        LOGGER.debug "#{e.class}: #{e.message}"
+        LOGGER.debug "Backtrace:\n\t#{e.backtrace.join("\n\t")}"
+      ensure
+        [ csvfile ].each { |f| File.delete(f) }
       end
 
-      [ ambit_result_uri, smiles_to_inchi, ids ]
+      [ master, ids ]
 
     end
 
