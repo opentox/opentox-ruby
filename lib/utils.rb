@@ -55,11 +55,6 @@ module OpenTox
         cdk_ids.shift # remove SMILES
         cdk_single_ids.shift # remove SMILES
         params[:task].progress(params[:task].metadata[OT.percentageCompleted] + task_weights["cdk"]) if params[:task]
-
-        #ambit_result_uri, smiles_to_inchi, cdk_ids = get_cdk_descriptors( { :compounds => compounds, :pc_type => params[:pc_type], :task => params[:task], :step => task_weights["cdk"], :descriptor => params[:descriptor] } )
-        ##LOGGER.debug "Ambit result uri for #{params.inspect}: '#{ambit_result_uri.to_yaml}'"
-        #cdk_master, cdk_ids, ambit_ids = load_ds_csv(ambit_result_uri, smiles_to_inchi, cdk_ids )
-        #params[:task].progress(params[:task].metadata[OT.percentageCompleted] + task_weights["load"]) if params[:task]
       end
 
       # # # fuse CSVs ("master" structures)
@@ -106,7 +101,7 @@ module OpenTox
           raise "Feature not found" if ! ds.features[File.join(ds.uri, "feature", id.to_s)]
           ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{DC.description => "#{pc_descriptors[cdk_ids[idx]][:name]} [#{pc_descriptors[cdk_ids[idx]][:pc_type]}, #{pc_descriptors[cdk_ids[idx]][:lib]}]"})
           creator_uri = ds.uri.gsub(/\/dataset\/.*/, "/algorithm/pc")
-          creator_uri += "/#{id}" if params[:add_uri]
+          creator_uri += "/#{cdk_ids[idx]}" if params[:add_uri]
           ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{DC.creator => creator_uri})
           ds.add_feature_metadata(File.join(ds.uri, "feature", id.to_s),{OT.hasSource => params[:dataset_uri]})
         }
@@ -361,64 +356,6 @@ module OpenTox
       end
 
       [ master, ids ]
-
-    end
-
-
-    # Load dataset via CSV
-    # @param[Array] Ambit result uri, piecewise (1st: base, 2nd: SMILES, 3rd+: features
-    # @param[Hash] keys: SMILES, values: InChIs
-    # @param[Array] field descriptions, one for each feature
-    # @return[Array] CSV, array of field ids, array of field descriptions
-    def self.load_ds_csv(ambit_result_uri, smiles_to_inchi, single_ids, subjectid=nil)
-      
-      master=nil
-      ids=[]
-      ambit_ids=[]
-
-      if ambit_result_uri.size > 0
-        (1...ambit_result_uri.size).collect { |idx|
-          curr_uri = ambit_result_uri[0] + ambit_result_uri[idx]
-          #LOGGER.debug "Requesting #{curr_uri}"
-          csv_data = CSV.parse( OpenTox::RestClientWrapper.get(curr_uri, {:accept => "text/csv", :subjectid => subjectid}) )
-          if csv_data[0] && csv_data[0].size>1
-            if master.nil? # This is the smiles entry
-              (1...csv_data.size).each{ |idx| csv_data[idx][1] = smiles_to_inchi[csv_data[idx][1]] }
-              master = csv_data
-              next
-            else
-              index_uri = csv_data[0].index("SMILES")
-              csv_data.map {|i| i.delete_at(index_uri)} if index_uri #Removes additional SMILES information
-
-              nr_cols = (csv_data[0].size)-1
-              LOGGER.debug "Merging #{nr_cols} new columns"
-              ids += Array.new(nr_cols, single_ids[idx-2])
-              master.each {|row| nr_cols.times { row.push(nil) }  } # Adds empty columns to all rows
-              csv_data.each do |row|
-                temp = master.assoc(row[0]) # Finds the appropriate line in master
-                ((-1*nr_cols)..-1).collect.each { |idx|
-                  temp[idx] = row[nr_cols+idx+1] if temp # Updates columns if line is found
-                }
-              end
-            end
-          end
-        }
-
-        index_uri = master[0].index("Compound")
-        master.map {|i| i.delete_at(index_uri)}
-        master[0].each {|cell| cell.chomp!(" ")}
-        master[0][0] = "Compound" #"SMILES" 
-        index_smi = master[0].index("SMILES")
-        master.map {|i| i.delete_at(index_smi)} if index_smi
-        master[0][0] = "SMILES" 
-        ambit_ids=master[0].collect {|header| header.to_s.gsub(/[\/.\\\(\)\{\}\[\]]/,"_")}
-        ambit_ids.shift
-      end
-       
-      #LOGGER.debug "-------- AM: Writing to dumpfile"
-      #File.open("/tmp/test.csv", 'w') {|f| f.write( master.collect {|r| r.join(",")}.join("\n") ) }
-     
-      [ master, ids, ambit_ids ]
 
     end
 
