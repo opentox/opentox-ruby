@@ -60,7 +60,7 @@ module OpenTox
       # # # fuse CSVs ("master" structures)
       if jl_master && cdk_master
         nr_cols = (jl_master[0].size)-1
-        LOGGER.debug "Merging #{nr_cols} new columns"
+        LOGGER.debug "Merging #{nr_cols} new columns on #{cdk_master[0].size}"
         cdk_master.each {|row| nr_cols.times { row.push(nil) }  }
         jl_master.each do |row|
           temp = cdk_master.assoc(row[0]) # Finds the appropriate line in master
@@ -75,7 +75,7 @@ module OpenTox
 
       if ob_master && master
         nr_cols = (ob_master[0].size)-1
-        LOGGER.debug "Merging #{nr_cols} new columns"
+        LOGGER.debug "Merging #{nr_cols} new columns on #{master[0].size}"
         master.each {|row| nr_cols.times { row.push(nil) }  } # Adds empty columns to all rows
         ob_master.each do |row|
           temp = master.assoc(row[0]) # Finds the appropriate line in master
@@ -180,7 +180,7 @@ module OpenTox
               end
               row << val
             }
-            LOGGER.debug "Compound #{c_idx+1} (#{inchis.size}), #{row.size} entries"
+            LOGGER.debug "Compound #{c_idx+1} (#{inchis.size}), #{row.size-1} entries"
             csvfile.puts(row.join(","))
             csvfile.flush
           }
@@ -261,7 +261,7 @@ module OpenTox
                   end
                 end
               end
-              LOGGER.debug "Compound #{c_idx+1} (#{inchis.size}), #{row.size} entries"
+              LOGGER.debug "Compound #{c_idx+1} (#{inchis.size}), #{row.size-1} entries"
               csvfile.puts(row.join(","))
               csvfile.flush
 
@@ -341,6 +341,7 @@ module OpenTox
             infile.close!
           end
           master = CSV::parse(File.open(csvfile, "rb").read)
+          LOGGER.debug "Compounds 1-#{master.size-1}, #{master[0].size-1} entries"
           master.each_with_index { |row, idx|
             if idx != 0 # not alter headers
               row[0] = inchis[idx-1]
