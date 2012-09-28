@@ -393,7 +393,7 @@ module OpenTox
             end
             acts = params[:acts].collect
             acts = acts.collect{|v| "Val" + v.to_s} # Convert to string for R to recognize classification
-            prediction = local_svm_prop( props, acts, params[:min_train_performance]) # params[:props].nil? signals non-prop setting
+            prediction = local_svm_prop( props, acts, params[:min_train_performance], params[:weights_option]) # params[:props].nil? signals non-prop setting
             prediction = prediction.sub(/Val/,"") if prediction # Convert back to Float
             confidence = 0.0 if prediction.nil?
             LOGGER.debug "Prediction is: '" + prediction.to_s + "'."
@@ -415,8 +415,9 @@ module OpenTox
       # @param [Array] props, propositionalization of neighbors and query structure e.g. [ Array_for_q, two-nested-Arrays_for_n ]
       # @param [Array] acts, activities for neighbors.
       # @param [Float] min_train_performance, parameter to control censoring
+      # @param [integer] weights_option, parameter to select a weight function
       # @return [Numeric] A prediction value.
-      def self.local_svm_prop(props, acts, min_train_performance)
+      def self.local_svm_prop(props, acts, min_train_performance, weights_option=nil)
 
         LOGGER.debug "Local SVM (Propositionalization / Kernlab Kernel)."
         n_prop = props[0] # is a matrix, i.e. two nested Arrays.
@@ -441,6 +442,7 @@ module OpenTox
             @r.n_prop_y_size = n_prop[0].size
             @r.y = acts
             @r.q_prop = q_prop
+            weights_option.nil? ? @r.weights_opt = 0 : @r.weights_opt = weights_option 
             #@r.eval "y = matrix(y)"
             @r.eval "prop_matrix = matrix(n_prop, n_prop_x_size, n_prop_y_size, byrow=T)"
             @r.eval "q_prop = matrix(q_prop, 1, n_prop_y_size, byrow=T)"
@@ -449,10 +451,26 @@ module OpenTox
             LOGGER.debug "Preparing R data ..."
             @r.eval <<-EOR
               weights=NULL
-              if (class(y) == 'character') { 
+              if (!(class(y) == 'numeric')) { 
                 y = factor(y)
                 suppressPackageStartupMessages(library('class')) 
-                #weights=unlist(as.list(prop.table(table(y))))
+                weights=unlist(as.list(prop.table(table(y))))
+                set_weights <- function(weights, option) {
+                  if (option==1){
+                    return(weights)
+                  } else if (option==2){
+                    return(1/weights)
+                  } else if (option==3){
+                    return(1-weights)
+                  } else if (option==4){
+                    return(-(weights^2)+1)
+                  } else if (option==5){
+                    return((weights-1)^2)
+                  }else {
+                    return(NULL)
+                  }
+                }
+                weights=set_weights(weights,weights_opt)
               }
             EOR
 
