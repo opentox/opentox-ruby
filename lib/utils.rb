@@ -312,7 +312,8 @@ module OpenTox
             sdf_data = []
             params[:compounds].each_with_index { |c_uri, c_idx| 
               cmpd = OpenTox::Compound.new(c_uri)
-              LOGGER.debug "3D for #{cmpd.to_smiles}"
+              #LOGGER.debug "3D for #{cmpd.to_smiles}"
+              LOGGER.debug "3D for #{c_idx}"
               obconv = OpenBabel::OBConversion.new
               obmol = OpenBabel::OBMol.new
               obconv.set_in_format("smi") 
