@@ -355,7 +355,7 @@ module OpenTox
       # @return [OpenTox::Dataset] Dataset object with CSV data
       def load_csv(csv, drop_missing=false, all_numeric=false)
         row = 0
-        input = csv.split("\n")
+        input = csv.split("\n").collect { |row| row.chomp }
         headers = split_row(input.shift)
         headers.collect! {|header| header.to_s.gsub(/[\/.\\\(\)\{\}\[\]]/,"_")}
         add_features(headers)
