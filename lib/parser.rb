@@ -525,7 +525,8 @@ module OpenTox
       end
 
       def split_row(row)
-        CSV.parse(row)[0]
+        row=CSV.parse(row)[0]
+        row.collect{ |x| x.nil? ? "" : x.to_s }
         #row.chomp.gsub(/["']/,'').split(/\s*[,;\t]\s*/,-1) # -1: do not skip empty cells
       end
 
