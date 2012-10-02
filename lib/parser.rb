@@ -376,6 +376,7 @@ module OpenTox
 
         input.each_with_index { |row, i| 
           drop=false
+          drop_missing=false
           row = split_row(row)
           raise "Entry has size #{row.size}, different from headers (#{headers.size})" if row.size != headers.size
           if row.include?("")
