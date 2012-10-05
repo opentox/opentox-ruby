@@ -294,7 +294,7 @@ module OpenTox
         @id_errors = []
         @activity_errors = []
         @duplicates = {}
-        @max_class_values = 3
+        @max_class_values = 5
       end
 
       def detect_new_values(row, value_maps)
@@ -475,6 +475,7 @@ module OpenTox
         end
         @duplicates[compound.inchi] = [] unless @duplicates[compound.inchi]
         @duplicates[compound.inchi] << id+", "+row.join(", ")
+        @dataset.add_compound(compound.uri)
 
         feature_idx = 0
         row.each_index do |i|
@@ -502,12 +503,10 @@ module OpenTox
 
             feature_idx += 1
   
-            if val != nil 
-              @dataset.add(compound.uri, feature, val)
-              if @feature_types[feature].include? OT.NominalFeature
-                @dataset.features[feature][OT.acceptValue] = [] unless @dataset.features[feature][OT.acceptValue]
-                @dataset.features[feature][OT.acceptValue] << val unless @dataset.features[feature][OT.acceptValue].include?(val)
-              end
+            @dataset.add_data_entry(compound.uri, feature, val)
+            if @feature_types[feature].include? OT.NominalFeature
+              @dataset.features[feature][OT.acceptValue] = [] unless @dataset.features[feature][OT.acceptValue]
+              @dataset.features[feature][OT.acceptValue] << val unless (@dataset.features[feature][OT.acceptValue].include?(val) or val.nil?)
             end
 
           end
@@ -539,7 +538,7 @@ module OpenTox
       def initialize
         @data = {}
         @activity_errors = []
-        @max_class_values = 3
+        @max_class_values = 5
       end
 
       def feature_values(feature)

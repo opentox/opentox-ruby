@@ -409,29 +409,35 @@ module OpenTox
         # Find neighbors and store them as object variable, access all compounds for that.
         def neighbors
           @model.neighbors = []
+          which_row=@cmpds.inject({}) {|h,c| h[c]=0; h}
           if @similarity_algorithm.to_s =~ /tanimoto/
-            @cmpds.each_with_index { |cmpd, idx| add_neighbor @model.fingerprints[cmpd], idx }
+            @cmpds.each_with_index { |cmpd, idx| 
+              fp={}; @model.fingerprints[cmpd].each { |f,vals| fp[f] = vals[which_row[cmpd]] }
+              add_neighbor fp, idx, which_row[cmpd] # Pass hash, not array
+              which_row[cmpd] += 1
+            }
           else
-            @n_prop.each_with_index { |fp, idx| add_neighbor fp, idx } # AM: access all compounds
+            @cmpds.each_with_index{ |cmpd, idx| 
+              add_neighbor @n_prop[idx], idx, which_row[cmpd] # AM: access all compounds
+              which_row[cmpd] += 1
+            }
           end
         end
 
         # Adds a neighbor to @neighbors if it passes the similarity threshold
         # adjusts @ids to signal the
-        def add_neighbor(training_props, idx)
+        def add_neighbor(training_props, idx, which_row)
           sim = similarity(training_props)
           if sim > @model.parameter("min_sim")
             if @model.activities[@cmpds[idx]]
-              @model.activities[@cmpds[idx]].each do |act|
-                @model.neighbors << {
-                  :compound => @cmpds[idx],
-                  :similarity => sim,
-                  :features => @fps[idx].keys,
-                  :activity => act
-                }
-                @sims << sim
-                @ids << idx
-              end
+              @model.neighbors << {
+                :compound => @cmpds[idx],
+                :similarity => sim,
+                :features => @fps[idx].keys,
+                :activity => @model.activities[@cmpds[idx]][which_row]
+              }
+              @sims << sim
+              @ids << idx
             end
           end
        end
@@ -497,20 +503,27 @@ module OpenTox
           
           # Major BUG! Must loop over @model.compounds, hash is unordered!
           # @model.fingerprints.each 
+          which_row=@model.compounds.inject({}) {|h,c| h[c]=0; h}
           @model.compounds.each { |cmpd|
             fp = @model.fingerprints[cmpd]
             if @model.activities[cmpd] # row good
-              acts = @model.activities[cmpd]; @acts += acts
+              acts = @model.activities[cmpd]; @acts << acts[which_row[cmpd]]
               LOGGER.debug "#{acts.size} activities for '#{cmpd}'" if acts.size > 1
-              row = []; @model.features.each { |f| row << fp[f] } # nils for non-existent f's
-              acts.size.times { # multiple additions for multiple activities
-                @n_prop << row.collect
-                @cmpds << cmpd
-                @fps << Marshal.load(Marshal.dump(fp))
+              row = []; @model.features.each { |f| 
+                if fp[f].nil?
+                  row << nil
+                else
+                  row << fp[f][which_row[cmpd]]
+                end
+                #row << fp[f].nil? ? nil : fp[f][which_row[cmpd]] # nils for non-existent f's
               } 
+              @n_prop << row.collect
+              @cmpds << cmpd
+              @fps << Marshal.load(Marshal.dump(fp))
             else
               LOGGER.warn "No activity found for compound '#{cmpd}' in model '#{@model.uri}'"
             end
+            which_row[cmpd] += 1
           }
 
           @model.features.each { |f| @q_prop << @model.compound_fingerprints[f] } # query structure

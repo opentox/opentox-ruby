@@ -261,7 +261,7 @@ module OpenTox
                                     :lib => self.parameter(\"lib\"),
                                     :subjectid => subjectid
                                     })")
-          
+
           # Adding fingerprint of query compound with features and values(p_value*nr_hits)
           @compound_fingerprints = {}
           @compound_features.each do |feature, value| # value is nil if "Substructure.match"
@@ -279,12 +279,14 @@ module OpenTox
           mtf.transform
 
           # Make a prediction
-          prediction = eval("#{@prediction_algorithm}( { :props => mtf.props,
-                                                          :acts => mtf.acts,
-                                                          :sims => mtf.sims,
-                                                          :value_map => @value_map,
-                                                          :min_train_performance => self.parameter(\"min_train_performance\")
-                                                        } ) ")
+          modul, algorthm = @prediction_algorithm.split('.')
+          pred_params = { :props => mtf.props,
+                          :acts => mtf.acts,
+                          :sims => mtf.sims,
+                          :value_map => @value_map,
+                          :min_train_performance => self.parameter("min_train_performance")
+                         }
+          prediction = eval(modul).send(algorthm, pred_params) 
 
           value_feature_uri = File.join( @uri, "predicted", "value")
           confidence_feature_uri = File.join( @uri, "predicted", "confidence")
@@ -292,16 +294,17 @@ module OpenTox
           @prediction_dataset.metadata[OT.dependentVariables] = @metadata[OT.dependentVariables] unless @prediction_dataset.metadata[OT.dependentVariables] 
           @prediction_dataset.metadata[OT.predictedVariables] = [value_feature_uri, confidence_feature_uri] unless @prediction_dataset.metadata[OT.predictedVariables] 
 
+          @prediction_dataset.add_compound @compound.uri
           if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "classification"
-            @prediction_dataset.add @compound.uri, value_feature_uri, @value_map[prediction[:prediction].to_s]
+            @prediction_dataset.add_data_entry @compound.uri, value_feature_uri, @value_map[prediction[:prediction].to_s]
           else
-            @prediction_dataset.add @compound.uri, value_feature_uri, prediction[:prediction]
+            @prediction_dataset.add_data_entry @compound.uri, value_feature_uri, prediction[:prediction]
           end
           confidence=prediction[:confidence]
           if @similarity_algorithm.to_s =~ /cosine/
             confidence=((confidence+1.0)/2.0).abs
           end
-          @prediction_dataset.add @compound.uri, confidence_feature_uri, confidence
+          @prediction_dataset.add_data_entry @compound.uri, confidence_feature_uri, confidence
 
           @prediction_dataset.features[value_feature_uri][DC.title] = @prediction_dataset.metadata[DC.title]
           @prediction_dataset.features[confidence_feature_uri][DC.title] = "Confidence"
@@ -318,7 +321,7 @@ module OpenTox
                   OT.pValue => @p_values[feature],
                   OT.effect => @effects[feature]
                 })
-                @prediction_dataset.add @compound.uri, feature_uri, true
+                @prediction_dataset.add_data_entry @compound.uri, feature_uri, true
                 f+=1
               end
             elsif @feature_calculation_algorithm == "Substructure.lookup"
@@ -328,13 +331,13 @@ module OpenTox
                 @prediction_dataset.add_feature(feature, {
                   RDF.type => [OT.NumericFeature]
                 })
-                @prediction_dataset.add @compound.uri, feature, value
+                @prediction_dataset.add_data_entry @compound.uri, feature, value
                 f+=1
               end
             else
               @compound_features.each do |feature|
                 features[feature] = feature
-                @prediction_dataset.add @compound.uri, feature, true
+                @prediction_dataset.add_data_entry @compound.uri, feature, true
               end
             end
             n = 0
@@ -346,8 +349,10 @@ module OpenTox
                 OT.measuredActivity => neighbor[:activity],
                 RDF.type => [OT.Neighbor]
               })
-              @prediction_dataset.add @compound.uri, neighbor_uri, true
+              @prediction_dataset.add_data_entry @compound.uri, neighbor_uri, true
               f = 0 unless f
+
+              @prediction_dataset.add_compound neighbor[:compound]
               neighbor[:features].each do |feature|
                 if @feature_calculation_algorithm == "Substructure.match"
                   feature_uri = File.join( @prediction_dataset.uri, "feature", "descriptor", f.to_s) unless feature_uri = features[feature]
@@ -355,9 +360,9 @@ module OpenTox
                   feature_uri = feature
                 end
                 if @feature_calculation_algorithm == "Substructure.lookup"
-                  @prediction_dataset.add neighbor[:compound], feature_uri, @fingerprints[neighbor[:compound]][feature_uri]
+                  @prediction_dataset.add_data_entry neighbor[:compound], feature_uri, @fingerprints[neighbor[:compound]][feature_uri]
                 else
-                  @prediction_dataset.add neighbor[:compound], feature_uri, true
+                  @prediction_dataset.add_data_entry neighbor[:compound], feature_uri, true
                 end
 
                 unless features.has_key? feature
@@ -390,10 +395,11 @@ module OpenTox
       # @return [Boolean] true if compound has databasse activities, false if not
       def database_activity(subjectid)
         if @activities[@compound.uri]
+          @prediction_dataset.add_compound @compound.uri
           if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "classification"
-            @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], @value_map[act.to_s] }
+            @activities[@compound.uri].each { |act| @prediction_dataset.add_data_entry @compound.uri, @metadata[OT.dependentVariables], @value_map[act.to_s] }
           else
-            @activities[@compound.uri].each { |act| @prediction_dataset.add @compound.uri, @metadata[OT.dependentVariables], act }
+            @activities[@compound.uri].each { |act| @prediction_dataset.add_data_entry @compound.uri, @metadata[OT.dependentVariables], act }
           end
           @prediction_dataset.add_metadata(OT.hasSource => @metadata[OT.trainingDataset])
           @prediction_dataset.save(subjectid)

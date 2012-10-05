@@ -462,17 +462,6 @@ module OpenTox
 
         features = dataset.features.keys
 
-        # remove missing features
-        delete_features = []
-        features.each{ |id|
-          dataset.features[id][RDF.type].each { |typestr|
-            if typestr.include? "MissingFeature"
-              delete_features << id 
-            end
-          }
-        }
-        features = features - delete_features
-
         # sort features
         features.sort!
 
@@ -486,60 +475,56 @@ module OpenTox
         compound_sizes = {}
         dataset.compounds.each do |compound|
           entries=dataset.data_entries[compound]
-          if entries
-            entries.each do |feature, values|
-              compound_sizes[compound] || compound_sizes[compound] = []
-              compound_sizes[compound] << values.size
-            end
-            compound_sizes[compound].uniq!
-            raise "Inappropriate data for CSV export for compound #{compound}" if compound_sizes[compound].size > 1
-            compound_sizes[compound] = compound_sizes[compound][0] # integer instead of array
+          entries && entries.each do |feature, values|
+            compound_sizes[compound] || compound_sizes[compound] = values.size
+            raise "Inappropriate data for CSV export" if compound_sizes[compound] != values.size
           end
         end
+        dataset.compounds.uniq.each do |compound| # Must handle compounds with no data entries
+          compound_sizes.has_key?(compound) || compound_sizes[compound] = dataset.compounds.count(compound)
+        end
+
 
         # get headers
         features_smarts && @rows.first << features_smarts || @rows.first << features
         @rows.first.flatten!
 
+        which_row = dataset.compounds.inject({}) { |h,id| h[id]=0; h }
+
         # feature positions pre-calculated
-        feature_positions = features.inject({}) { |h,f| 
-          h.merge!({f => features.index(f)+1}) # +1 due to ID
-          h
+        feature_positions = {}
+        features.each_with_index { |f,idx| 
+          feature_positions[f] = idx+1 # +1 due to ID
         }
 
-        # serialize to csv
-        dataset.compounds.each do |compound|
-          entries=dataset.data_entries[compound]
-          inchi = URI.encode_www_form_component(Compound.new(compound).to_inchi)
-
-          if entries
-            # allocate container
-            row_container = Array.new(compound_sizes[compound])
-            (0...row_container.size).each do |i|
-              row_container[i] = Array.new(@rows.first.size)
-              row_container[i][0] = inchi
-            end
-
-            # fill entries
-            entries.each { |feature, values|
-              (0...compound_sizes[compound]).each { |i|
-                row_container[i][feature_positions[feature]] = values[i]
-              }
-            }
-
-            # fill zeroes for subgraphs
-            if (features_smarts)
-              row_container.collect! { |row|
-                row.collect! { |x| x ? x : 0 } 
-              }
-            end
-            row_container.each { |row| @rows << row }
-
-          else
-            row = Array.new(@rows.first.size)
-            row[0] = inchi
-            @rows << row
+        # feature_types pre-calculated (for quoting)
+        feature_quoting = {}
+        features.each_with_index { |f,idx|
+          feature_quoting[f] = false
+          if dataset.features[f][RDF.type].size == 1 && dataset.features[f][RDF.type][0] == OT.NominalFeature
+            feature_quoting[f] = true
           end
+        }
+
+        @rows += dataset.compounds.collect do |compound| # assumes compounds list with duplicates
+          inchi_unenc = Compound.new(compound).to_inchi
+          inchi = URI.encode_www_form_component(inchi_unenc)
+
+          i = which_row[compound] # select appropriate feature value
+
+          # allocate row
+          row = Array.new(@rows.first.size)
+          row[0] = inchi
+
+          # fill entries
+          entries=dataset.data_entries[compound]
+          entries && entries.each { |feature, values|
+            row[feature_positions[feature]] = feature_quoting[feature] ? "\""+values[i].to_s+"\"" : values[i].to_s
+          }
+          
+          which_row[compound] = i + 1
+
+          row
         end
       end
 
@@ -549,8 +534,7 @@ module OpenTox
         rows = @rows.collect
         result = ""
         result << rows.shift.collect { |f| f.split('/').last }.join(",") << "\n" # only feature name
-        result << rows.collect{ |r| r.join(",") }.join("\n")
-        result << "\n"
+        result << rows.collect{ |r| r.join(",") }.join("\n") + "\n"
       end
 
       # Convert to spreadsheet workbook

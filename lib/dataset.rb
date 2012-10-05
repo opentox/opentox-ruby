@@ -316,12 +316,23 @@ module OpenTox
     # @param [String] feature Compound URI
     # @param [Boolean,Float] value Feature value
     def add (compound,feature,value)
-      @compounds << compound unless @compounds.include? compound
-      @features[feature] = {}  unless @features[feature]
-      @data_entries[compound] = {} unless @data_entries[compound]
-      @data_entries[compound][feature] = [] unless @data_entries[compound][feature]
-      @data_entries[compound][feature] << value if value!=nil
+      self.add_compound(compound)
+      self.add_data_entry(compound,feature,value)
     end
+
+    # Insert a data entry
+    # @param [String] compound Compound URI
+    # @param [String] feature Compound URI
+    # @param [Boolean,Float] value Feature value
+    def add_data_entry (compound,feature,value)
+      if @compounds.include? compound
+        @features[feature] = {}  unless @features[feature]
+        @data_entries[compound] = {} unless @data_entries[compound]
+        @data_entries[compound][feature] = [] unless @data_entries[compound][feature]
+        @data_entries[compound][feature] << value
+      end
+    end
+
 
     # Add/modify metadata, existing entries will be overwritten
     # @example
@@ -361,7 +372,8 @@ module OpenTox
     # Add a new compound
     # @param [String] compound Compound URI
     def add_compound (compound)
-      @compounds << compound unless @compounds.include? compound
+      @compounds << compound
+      #@compounds << compound unless @compounds.include? compound
     end
     
     # Creates a new dataset, by splitting the current dataset, i.e. using only a subset of compounds and features
@@ -443,8 +455,6 @@ module OpenTox
     # - overwrites dataset if uri exists
     # @return [String] Dataset URI
     def save(subjectid=nil)
-      # TODO: rewrite feature URI's ??
-      @compounds.uniq!
       if @uri
         if (CONFIG[:json_hosts].include?(URI.parse(@uri).host))
           #LOGGER.debug self.to_json

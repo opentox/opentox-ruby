@@ -103,22 +103,7 @@ module OpenTox
 
       def add_fminer_data(fminer_instance, value_map)
 
-
-        # detect nr duplicates per compound
-        compound_sizes = {}
-        @training_dataset.compounds.each do |compound|
-          entries=@training_dataset.data_entries[compound]
-          entries.each do |feature, values|
-            compound_sizes[compound] || compound_sizes[compound] = []
-            compound_sizes[compound] << values.size unless values.size == 0
-          end
-          compound_sizes[compound].uniq!
-          raise "Inappropriate data for fminer" if compound_sizes[compound].size > 1
-          compound_sizes[compound] = compound_sizes[compound][0] # integer instead of array
-        end
-
         id = 1 # fminer start id is not 0
-
         @training_dataset.compounds.each do |compound|
           entry=@training_dataset.data_entries[compound]
           begin
@@ -132,17 +117,17 @@ module OpenTox
             next
           end
 
-          entry.each do |feature,values|
+          entry && entry.each do |feature,values|
             if feature == @prediction_feature.uri
-              (0...compound_sizes[compound]).each { |i|
-                if values[i].nil? 
+              values.each do |value|
+                if value.nil? 
                   LOGGER.warn "No #{feature} activity for #{compound.to_s}."
                 else
                   if @prediction_feature.feature_type == "classification"
-                    activity= value_map.invert[values[i]].to_i # activities are mapped to 1..n
+                    activity= value_map.invert[value].to_i # activities are mapped to 1..n
                     @db_class_sizes[activity-1].nil? ? @db_class_sizes[activity-1]=1 : @db_class_sizes[activity-1]+=1 # AM effect
                   elsif @prediction_feature.feature_type == "regression"
-                    activity= values[i].to_f 
+                    activity= value.to_f 
                   end
                   begin
                     fminer_instance.AddCompound(smiles,id) if fminer_instance
@@ -152,11 +137,11 @@ module OpenTox
                     @smi[id] = smiles
                     id += 1
                   rescue Exception => e
-                    LOGGER.warn "Could not add " + smiles + "\t" + values[i].to_s + " to fminer"
+                    LOGGER.warn "Could not add " + smiles + "\t" + value.to_s + " to fminer"
                     LOGGER.warn e.backtrace
                   end
                 end
-              }
+              end
             end
           end
         end
