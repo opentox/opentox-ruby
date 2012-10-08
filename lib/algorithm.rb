@@ -96,7 +96,7 @@ module OpenTox
           raise OpenTox::BadRequestError.new "Minimum frequency must be integer [n], or a percentage [n]pc, or a per-mil [n]pm , with n greater 0" if bad_request
         end
         if @minfreq.nil?
-          @minfreq=OpenTox::Algorithm.min_frequency(@training_dataset,per_mil)
+          @minfreq=OpenTox::Algorithm.min_frequency(@training_dataset,@prediction_feature,per_mil)
           LOGGER.debug "min_frequency #{@minfreq} (input was #{per_mil} per-mil)"
         end
       end
