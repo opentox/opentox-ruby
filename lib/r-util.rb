@@ -21,6 +21,14 @@ class Array
     
 end
 
+class RinRuby
+  def puts(object)
+    object.to_s.split("\n").each do |s|
+      LOGGER.debug "R> #{s.chomp}" if s.chomp.length>0
+    end
+  end
+end
+
 module OpenTox
   
   class RUtil
@@ -29,6 +37,7 @@ module OpenTox
       
     def initialize
       @r = RinRuby.new(true,false) unless defined?(@r) and @r
+      #@r.eval "sink(type='message')"
       @r.eval ".libPaths('#{PACKAGE_DIR}')"
       @r_packages = @r.pull "installed.packages()[,1]"
       ["sampling","gam","vegan","dynamicTreeCut"].each{|l| install_package(l)} #"caret", "smacof", "TunePareto"
@@ -58,21 +67,46 @@ module OpenTox
       end
     end
     
+#    def ttest_matrix_deviation(arrays, significance_level=0.95)
+#    
+#      LOGGER.info("perform ttest matrix deviation")
+#      result = []
+#      arrays.size.times do |i|
+#        result[i] = [] 
+#        @r.assign "v#{i}",arrays[i]
+#        @r.eval "v#{i}<-abs(as.numeric(v#{i}))"
+#      end 
+#      (arrays.size-1).times do |i|
+#        (i+1..arrays.size-1).each do |j|
+#          raise if arrays[i].size!=arrays[j].size
+#          @r.eval "ttest = t.test(v#{i}-v#{j},conf.level=#{significance_level})"
+#          min = @r.pull "ttest$conf.int[1]"
+#          max = @r.pull "ttest$conf.int[2]"
+#          if (min>0 or max<0)
+#            result[i][j]=true
+#            result[j][i]=true
+#          else
+#            result[i][j]=false
+#            result[j][i]=false
+#          end            
+#        end
+#      end
+#      result
+#    end
     
-    def ttest_matrix(arrays, paired, significance_level=0.95)
-    
-      LOGGER.info("perform ttest matrix")
+    def pvalue_test_matrix(test, arrays, significance_level=0.95, params="")
+      LOGGER.info("perform test '#{test}' matrix")
       result = []
       arrays.size.times do |i|
         result[i] = [] 
         @r.assign "v#{i}",arrays[i]
+        @r.eval "v#{i}<-as.numeric(v#{i})"
       end 
       (arrays.size-1).times do |i|
         (i+1..arrays.size-1).each do |j|
-          raise if paired && arrays[i].size!=arrays[j].size
-          @r.eval "ttest = t.test(as.numeric(v#{i}),as.numeric(v#{j}),paired=#{paired ? "T" : "F"})"
-          t = @r.pull "ttest$statistic"
-          p = @r.pull "ttest$p.value"
+          @r.eval "test = #{test}(v#{i},v#{j},#{params})"
+          t = @r.pull "test$statistic"
+          p = @r.pull "test$p.value"
           if (1-significance_level > p)
             result[i][j]=true
             result[j][i]=true
@@ -85,24 +119,61 @@ module OpenTox
       result
     end
     
+    def ttest_matrix(arrays, paired, significance_level=0.95)
+      (arrays.size-1).times do |i|
+        (i+1..arrays.size-1).each do |j|
+          raise if paired && arrays[i].size!=arrays[j].size
+        end   
+      end           
+      params = "paired=#{paired ? "T" : "F"}"
+      pvalue_test_matrix("t.test",arrays,significance_level,params)
+    end    
     
+    def ftest_matrix(arrays, paired, significance_level=0.95)
+      pvalue_test_matrix("var.test",arrays,significance_level)
+    end  
+    
+    def ttest_closer_to_zero_matrix(arrays, paired, significance_level=0.95)
+      (arrays.size-1).times do |i|
+        (i+1..arrays.size-1).each do |j|
+          raise if paired && arrays[i].size!=arrays[j].size
+        end   
+      end           
+      params = "paired=#{paired ? "T" : "F"}"
+      pvalue_test_matrix("ttest_closer_to_zero",arrays,significance_level,params)
+    end      
+    
+    def pvalue_test(test, array1, array2, significance_level=0.95, params="")
+      LOGGER.info("perform test '#{test}'")
+        @r.assign "v1",array1
+        @r.assign "v2",array2
+        @r.eval "test = #{test}(as.numeric(v1),as.numeric(v2),#{params})"
+        t = @r.pull "test$statistic"
+        p = @r.pull "test$p.value"
+        if (1-significance_level > p)
+          t
+        else
+          0
+        end
+    end
     
     # <0 -> array1 << array2
     # 0  -> no significant difference
     # >0 -> array2 >> array1
     def ttest(array1, array2, paired, significance_level=0.95)
-      LOGGER.info("perform ttest")
-      @r.assign "v1",array1
-      @r.assign "v2",array2
       raise if paired && array1.size!=array2.size
-      @r.eval "ttest = t.test(as.numeric(v1),as.numeric(v2),paired=#{paired ? "T" : "F"})"
-      t = @r.pull "ttest$statistic"
-      p = @r.pull "ttest$p.value"
-      if (1-significance_level > p)
-        t
-      else
-        0
-      end
+      params = "paired=#{paired ? "T" : "F"}"
+      pvalue_test("t.test",array1,array2,significance_level,params)
+    end
+    
+    def ftest(array1, array2, significance_level=0.95)
+      pvalue_test("var.test",array1,array2,significance_level)
+    end
+    
+    def ttest_closer_to_zero
+      raise if paired && array1.size!=array2.size
+      params = "paired=#{paired ? "T" : "F"}"
+      pvalue_test("ttest_closer_to_zero",array1,array2,significance_level,params)
     end
     
     def pvalue(array1, array2)
@@ -119,10 +190,13 @@ module OpenTox
       min = @r.pull "ttest$conf.int[1]"
       max = @r.pull "ttest$conf.int[2]"
       if value2 <= min
+        LOGGER.debug "perform ttest-single: significant=true, #{value2} is lower than conf-interval [ #{min} - #{max} ]"
         1
       elsif value2 >= max
+        LOGGER.debug "perform ttest-single: significant=true, #{value2} is higher than conf-interval [ #{min} - #{max} ]"
         -1
       else
+        LOGGER.debug "perform ttest-single: significant=false, #{value2} is inside conf-interval [ #{min} - #{max} ]"
         0
       end
     end
@@ -154,7 +228,7 @@ module OpenTox
         max_median_idx = i if max_median==med
         min_median = [min_median,med].min
         min_median_idx = i if min_median==med
-        data[i] = [data[i][0]+"(#{values.size})",data[i][1]]
+        data[i] = [data[i][0]+"(#{values.size})",data[i][1]] if @@boxplot_alg_info
       end
       if min != max
         times = max/min.to_f
@@ -182,25 +256,30 @@ module OpenTox
       hlines << [max_median,2+max_median_idx] 
       hlines << [min_median,2+min_median_idx]
       plot_to_files(files, hlines) do |file|
-        @r.eval "superboxplot(boxdata,main='#{title}',col=rep(2:#{data.size+1})#{param_str})"
+        @r.eval "superboxplot(boxdata,alg_info=#{@@boxplot_alg_info ? "T" : "F"},main='#{title}',col=rep(2:#{data.size+1})#{param_str})"
       end
     end
 
     # embedds feature values of two datasets into 2D and plots it
     #        
     def feature_value_plot(files, dataset_uri1, dataset_uri2, dataset_name1, dataset_name2,
-        features=nil, subjectid=nil, waiting_task=nil, direct_plot=false, title=nil, color_feature=nil )
+        prediction_feature=nil, subjectid=nil, waiting_task=nil, direct_plot=false, title=nil, color_feature=nil )
         
       LOGGER.debug("r-util> create feature value plot")
       d1 = OpenTox::Dataset.find(dataset_uri1,subjectid)
       d2 = OpenTox::Dataset.find(dataset_uri2,subjectid)
-      if features
-        [d1, d2].each{|d| features.each{|f| raise "feature not included" unless d.features.keys.include?(f)}} 
-      else
-        raise "different\n#{d1.features.keys.sort.to_yaml}\n#{d2.features.keys.sort.to_yaml}" if 
+      
+      raise "different\n#{d1.features.keys.sort.to_yaml}\n#{d2.features.keys.sort.to_yaml}" if 
           (d1.features.keys.sort != d2.features.keys.sort)
-        features = d1.features.keys
-      end
+      features = d1.features.keys
+      if prediction_feature
+        if features.include?(prediction_feature)
+          features -= [prediction_feature]
+        else
+          LOGGER.debug "prediction feature #{prediction_feature} cannot be remvoed because not included in #{dataset_uri1}"
+        end
+      end 
+      
       raise "at least two features needed" if d1.features.keys.size<2
       waiting_task.progress(25) if waiting_task
       
@@ -258,6 +337,11 @@ module OpenTox
       if (is_numerical)
         @r.eval "double_plot <- function(data1, data2, log=FALSE, names=c('data1','data2'), title='title', xlab='x-values')
         {
+          if( log && ( min(data1)<=0 || min(data2)<=0 ))
+          {
+            print('disabling log because of datapoints <= 0')
+            log = FALSE
+          }   
           if (log)
           {
             data1 <- log(data1)
@@ -265,7 +349,8 @@ module OpenTox
             xlab = paste('logarithm of',xlab,sep=' ')
           }
           xlims <- round(c(min(c(min(data1),min(data2))),max(c(max(data1),max(data2)))))
-          h <- hist(rbind(data1,data2),plot=F)
+          save.image('/tmp/image.R')
+          h <- hist(c(data1,data2),plot=F)
           h1 <- hist(data1,plot=F,breaks=h$breaks)
           h2 <- hist(data2,plot=F,breaks=h$breaks)
           xlims = c(min(h$breaks),max(h$breaks))
@@ -356,32 +441,44 @@ module OpenTox
         end
         return train, test
       else
-        raise unless stratification=~/^(super|super4|super5|anti)$/
+        raise unless stratification=~/^(super|super4|super5|contra)$/
         anti = ""
         super_method = ""
         super_method_2 = ""
-        preprocess = ""
+        #preprocess = ""
         case stratification
-        when "anti"
-          anti = "anti_"
+        when "contra"
+          anti = "contra_"
         when "super"
           super_method = ", method='cluster_knn'"
         when "super4"
           super_method = ", method='cluster_hierarchical'"
-          preprocess = ", preprocess='pca'"
+          #preprocess = ", preprocess='pca'"
         when "super5"
           super_method = ", method='cluster_hierarchical'"
           super_method_2 = ", method_2='explicit'"
-          preprocess = ", preprocess='pca'"
+          #preprocess = ", preprocess='pca'"
         end
-        LOGGER.debug "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features} #{super_method} #{super_method_2} #{preprocess})"
-        @r.eval "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features} #{super_method} #{super_method_2} #{preprocess})"
+        LOGGER.debug "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features} #{super_method} #{super_method_2})" # #{preprocess}
+        @r.eval "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features} #{super_method} #{super_method_2})" # #{preprocess}
         split = @r.pull 'split$split'
         cluster = (store_split_clusters ?  @r.pull('split$cluster') : nil)
         metadata[DC.title] = "Training dataset split of "+dataset.uri
         train = split_to_dataset( df, split, metadata, subjectid, missing_values, cluster ){ |i| i==1 }
         metadata[DC.title] = "Test dataset split of "+dataset.uri
         test = split_to_dataset( df, split, metadata, subjectid, missing_values, cluster ){ |i| i==0 }
+
+        f = "/tmp/split_pic.svg"
+        LOGGER.debug "plotting to #{f} .."
+        @r.eval "num_feats = #{split_features ? split_features.size : "ncol(plot_data)"}"
+        @r.eval "plot_data = process_data(#{df}, #{str_split_features})"
+        @r.eval "plot_data = plot_pre_process(plot_data, method='sammon')"
+        @r.eval "title = paste('sammon embedding for splitting #{df},',num_feats,'features,',nrow(plot_data),'instances')"
+        plot_to_files([f]) do |file|
+          @r.eval "plot_split(plot_data,color_idx=split$split, main=title)"
+        end
+        LOGGER.debug "plotting to #{f} .. done"
+          
         return train, test
       end
     end
@@ -507,26 +604,35 @@ module OpenTox
       LOGGER.debug "r-util> convert dataframe to dataset #{dataset.uri}"
       compounds.size.times{|i| dataset.add_compound(compounds[i]) if compound_indices==nil or compound_indices.include?(i)}
       features.each{|f| dataset.add_feature(f,@@feats[df][f])}
-      features.size.times do |c|
-        LOGGER.debug "r-util> dataframe to dataset - feature #{c+1} / #{features.size}" if 
-          c%25==0 && (features.size*compounds.size)>100000
-        if features[c]=~/\/feature\/bbrc\//
-          numeric=true
+      features.size.times do |f_i|
+        LOGGER.debug "r-util> dataframe to dataset - feature #{f_i+1} / #{features.size}" if 
+          f_i%25==0 && (features.size*compounds.size)>100000
+        if features[f_i]=~/\/feature\/bbrc\//
+          numeric="int"
         else
-          type = @@feats[df][features[c]][RDF.type]
+          type = @@feats[df][features[f_i]][RDF.type]
           unless type
             LOGGER.debug "r-util> derive feature type by rest-call"
-            feat = OpenTox::Feature.find(features[c],subjectid)
+            feat = OpenTox::Feature.find(features[f_i],subjectid)
             type = feat.metadata[RDF.type]
           end
-          numeric = type.to_a.flatten.include?(OT.NumericFeature)
+          numeric = type.to_a.flatten.include?(OT.NumericFeature) ? "float" : nil
         end
-        compounds.size.times do |r|
-          if compound_indices==nil or compound_indices.include?(r)
-            dataset.add(compounds[r],features[c],numeric ? values[r][c].to_f : values[r][c], true) if 
-              ((NEW and values[r][c]!=nil) or (values[r][c]!="NA" and !(values[r][c] =~ missing_value_regexp)))
+        case numeric
+        when "int"
+          def convert_numeric(v); v.to_i; end
+        when "float"             
+          def convert_numeric(v); v.to_f; end
+        else
+          def convert_numeric(v); v; end
+        end
+        compounds.size.times do |c_i|
+          if compound_indices==nil or compound_indices.include?(c_i)
+            dataset.add(compounds[c_i],features[f_i],convert_numeric(values[c_i][f_i]), true) if 
+              ((NEW and values[c_i][f_i]!=nil) or (values[c_i][f_i]!="NA" and !(values[c_i][f_i] =~ missing_value_regexp)))
           end 
         end
+        
       end
       if cluster
         cluster_feature = "http://no.such.domain/feature/split_cluster"
@@ -595,11 +701,27 @@ module OpenTox
     
     @@svg_plot_width = 12
     @@svg_plot_height = 8
-        
+    
     public
     def set_svg_plot_size(width,height)
       @@svg_plot_width = width
       @@svg_plot_height = height
+    end
+    
+    @@png_plot_width = 800
+    @@png_plot_height = 600
+    @@png_plot_pointsize = 12
+    
+    def set_png_plot_size(width,height,pointsize)
+      @@png_plot_width = width
+      @@png_plot_height = height
+      @@png_plot_pointsize = pointsize
+    end
+    
+    @@boxplot_alg_info = true
+    
+    def set_boxplot_alg_info(boxplot_alg_info)
+      @@boxplot_alg_info = boxplot_alg_info
     end
     
     private
@@ -608,7 +730,7 @@ module OpenTox
         if file=~/(?i)\.svg/
           @r.eval("svg('#{file}',#{@@svg_plot_width},#{@@svg_plot_height})")
         elsif file=~/(?i)\.png/
-          @r.eval("png('#{file}')")
+          @r.eval("png('#{file}',width=#{@@png_plot_width},height=#{@@png_plot_height},pointsize=#{@@png_plot_pointsize})")
         else
           raise "invalid format: "+file.to_s
         end

@@ -1,4 +1,39 @@
 
+# 	bbrc dataset 249 x 530
+#load("/home/martin/workspace/ValidationExperiments/bbrc_image.R")
+#data=df_12117 
+
+# 250 compounds, 2 features
+#load("/home/martin/workspace/ValidationExperiments/strat_pics/image.R")
+#data=df_11306
+#data=cbind(data[1],data[3])
+
+# 1000 compounds, 226 features
+#load("/home/martin/tmp/image_12171.R")
+#data=df_12171
+
+is_binary <- function( data )
+{
+	#print(length(data[data==0]))
+	#print(length(data[data==1]))
+	#print(length(data[data==0])+length(data[data==1]))
+	#print(nrow(data))
+	#print(ncol(data))
+	#print(nrow(data)*ncol(data))
+	#print(head(data))
+	length(data[data==0])+length(data[data==1]) == nrow(data)*ncol(data)
+}
+
+is_really_numeric <- function(data)
+{
+	for (i in 1:ncol(data))
+	{
+		if (!is.numeric(data[,i]))
+			return(FALSE)
+	}
+	TRUE
+}
+
 round_it <- function( x )
 {
   if(isTRUE((x - floor(x))>=0.5))
@@ -60,30 +95,45 @@ remove_var_zero <- function(data, useNA = 'ifany')
 
 process_data <- function( data, colnames=NULL )
 {
+  #save.image("/tmp/to_process.R")
+	
+  rownames(data) <- NULL
   data.num <- as.data.frame(data)
   if (!is.null(colnames))
   {
     data.num = subset(data.num, select = colnames)
+	## if (ncol(data.num)==0)
+	## {
+	##     print("ERROR no columns left after selecting colnames")
+	##     print("colnames before selection:")
+	##     print(colnames(data))
+	##     print("colnames to be selected:")
+	##     print(colnames)
+	##     stop("no columns left after selecting colnames")
+	## }
   }
-  if (!is.numeric(data.num))
-  {
+  if (!is_really_numeric(data.num))
     data.num = nominal_to_binary(data.num)
-  }
   if(any(is.na(data.num)))
   {
-    require("gam")
+	print("WARNING data contains NAs, if you convert to dataframe you can specify the missing values value.")
+	suppressPackageStartupMessages(require("gam"))
    	data.repl = na.gam.replace(data.num)
   }
   else
   	data.repl = data.num
   data.without_constant_vals = remove_var_zero(data.repl)
+  if(ncol(data.repl)>ncol(data.without_constant_vals))
+	  print(paste("removed ",(ncol(data.repl)-ncol(data.without_constant_vals)),"/",ncol(data.repl)," features because of no variance"))
+  if (ncol(data.without_constant_vals)==0)
+	  stop("ERROR no columns left after processing")
   data.without_constant_vals
 }
 
 # depends on random seed
 cluster_knn <- function( data, min=10, max=15) #, method="kmeans" )
 {
-  require("vegan")
+  suppressPackageStartupMessages(require("vegan"))
   max <- min(max,nrow(unique(data)))
   max <- min(max,nrow(data)-1)
   if (min>max)
@@ -95,17 +145,36 @@ cluster_knn <- function( data, min=10, max=15) #, method="kmeans" )
   cbind(s$partition[,m])
 }
 
+dynamic_dist <- function(data, is_bin=NULL)
+{
+	if(is.null(is_bin))
+		is_bin = is_binary(data)
+	if (!is_bin)
+	{
+		print(paste("distance used: Euclidean"))
+		d <- dist(data, method="euclidean")
+	}
+	else
+	{
+		print(paste("distance used: Jaccard (Tanimoto)"))
+		suppressPackageStartupMessages(require("proxy"))
+		d <- dist(data, method="Jaccard")
+	}
+	m <- as.matrix(d) 
+	diag(m)=0 # do this manually, as it is set to NA by the Tanimoto method
+	list(dist=d,matrix=m)
+}
+
 #deterministic!
 cluster_hierarchical <- function(data, hclust_method="ward", max_num_clusters=15, deep_split=4, ...)
 {
 	max_num_clusters <- min(max_num_clusters,nrow(unique(data)))
 	max_num_clusters <- min(max_num_clusters,nrow(data)-1)
 	min_size <- round_it(nrow(data)/max_num_clusters)
-	
-	require("dynamicTreeCut")
-	d <- dist(data, method = "euclidean")
-	fit <- hclust(d, method=hclust_method)
-	cut = cutreeDynamic(fit, method = "hybrid", distM = as.matrix(d), minClusterSize = min_size, deepSplit=deep_split, ...)
+	d <- dynamic_dist(data)	
+	suppressPackageStartupMessages(require("dynamicTreeCut"))
+	fit <- hclust(d$dist, method=hclust_method)
+	cut = cutreeDynamic(fit, method = "hybrid", distM = d$matrix, minClusterSize = min_size, deepSplit=deep_split, ...)
 	print(paste("dynamicTreeCut clustering, minClusterSize:",min_size," result:"))
 	print(table(cut))
 	#print(cut)
@@ -175,27 +244,146 @@ random_split <- function( data, ratio=0.3 )
 	as.vector(split)
 }
 
-stratified_split <- function( data, ratio=0.3, method="cluster_knn", method_2="samplecube", colnames=NULL, preprocess="none" )
+
+contra_stratified_split <- function( data, ratio=0.3, colnames=NULL ) #, samplesize=10 )
 {
 	data.processed = as.matrix(process_data( data, colnames ))
-	print(paste("strat split, method: ",method," #features: ",ncol(data.processed)," ratio: ",ratio," preprocess: ",preprocess))
-	cl = NULL
+	print(paste("contra strat split, #features:",ncol(data.processed),"/",ncol(data),", ratio:",ratio))
+
+	##save.image("/tmp/contra_splitting.R")
 	
-	if (preprocess == "none")
-	{
-		#do nothing
-	}	
-	else if (preprocess == "pca")
+	binary=is_binary(data.processed)
+	print(paste("data is binary: ",binary))
+	
+	if (!binary)
 	{
 		data.processed = as.matrix(pca_reduce_features(data.processed))
-		print(paste("#features reduced with pca: ",ncol(data.processed)))	
+		print(paste("#features reduced with pca: ",ncol(data.processed)))
 	}
 	else
-		stop("unknown preprocess")
+	{
+		#do nothing
+	}
+	
+	samplesize = 50
+	if (nrow(data.processed)<=samplesize)
+	   sample = as.vector(1:nrow(data.processed))
+	else
+	   sample = random_split(data,ratio=samplesize/nrow(data))
+	sample_data = data.frame()
+	orig_idx = c()
+	for(i in 1:nrow(data.processed))
+	    if(sample[i]==1)
+	    {
+	        sample_data = rbind(sample_data, data.processed[i,])
+	        orig_idx = cbind(orig_idx,i)
+	    }
+	#print("head(sample data) (random sampled with fixed samplesize)")
+	#print(head(sample_data))
+	print("orig_idx (orinal indices of sample data in orig data)")
+	print(as.vector(orig_idx))
+	
+	m <- dynamic_dist(sample_data, is_bin=binary)$matrix
+	
+	max_dist = 0
+	max_dist_idx = -1
+	for(i in 1:nrow(sample_data))
+	{
+	    m_dist <- sum(m[,i])
+	    if (max_dist_idx==-1 || m_dist>max_dist)
+	    {
+	        max_dist = m_dist
+	        max_dist_idx = i
+	    }
+	}
+	print("max-dist (in sample distance matrix)")
+	print(max_dist)
+	print("max-dist-id")
+	print(max_dist_idx)
+	
+	anti_strat_center = orig_idx[max_dist_idx]
+	print("anti strat center (orignal index of max-distindex)")
+	print(anti_strat_center)
+	
+	#anti_strat_center = sample(1:nrow(data.processed),1)
+	
+	dist = array(0,nrow(data.processed))
+	if (!binary)
+	{
+		for(i in 1:nrow(data.processed))
+			dist[i] = sqrt(sum((data.processed[i,] - data.processed[anti_strat_center,]) ^ 2))
+	}
+	else
+	{
+		for(i in 1:nrow(data.processed))
+			dist[i] = as.vector(dist(rbind(data.processed[i,],data.processed[anti_strat_center,]),method="Jaccard"))
+	}
+	
+	print("head(dist) (distance from all data to anti strat center)")
+	print(head(dist))
+	max = max(dist)
+	print("max (maxium distance)")
+	print(max)
+	
+	not_nil = 0
+	prob = array(0,nrow(data.processed))
+	#raw = array(0,nrow(data.processed))
+	for(i in 1:nrow(data.processed))
+	{
+		prob[i] = (1-dist[i]/max) ^ 100		
+		#raw[i] = 1-dist[i]/max
+	    if(prob[i]!=0)
+			not_nil = not_nil+1
+	}
+	
+	
+	print("head(prop) (convert distance into propability)")
+	print(head(prob))
+	sum_prop = sum(prob)
+	print("sum prop (sum of propabilities)")
+	print(sum_prop)
+	
+	num_sel = round_it(nrow(data.processed)*ratio)
+	print(paste("selecting",num_sel,"from",nrow(data.processed),"according to prob ( prob!=0 for",not_nil,")"))
+	if (num_sel>not_nil)
+	{
+	    for(i in 1:nrow(data.processed))
+			if(prob[i]==0)
+				prob[i]=.Machine$double.xmin
+	}	
+	
+	selected = 	sample(1:nrow(data.processed),num_sel,replace=FALSE,prob=prob)
+	split <- array(0,nrow(data.processed))
+	for(i in selected)
+	{
+		#print(paste("sel ",i,"  raw ",raw[i]," dist ",prop[i]))
+		split[i] <- 1
+	}
+	split = as.vector(split)
+	
+	cl <- array(0,nrow(data.processed))
+	cl[anti_strat_center] = 1
+	
+	list(split=split,cluster=cl)
+}
+
+stratified_split <- function( data, ratio=0.3, method="cluster_knn", method_2="samplecube", colnames=NULL ) #, preprocess="none"
+{
+	data.processed = as.matrix(process_data( data, colnames ))
+	print(paste("strat split, method: ",method," #features: ",ncol(data.processed)," ratio: ",ratio)) #," preprocess: ",preprocess))
+	cl = NULL
+	
+	
+	
+	if (!is_binary(data.processed))
+	{
+		data.processed = as.matrix(pca_reduce_features(data.processed))
+		print(paste("#features reduced with pca: ",ncol(data.processed)))
+	}
 	
     if (method == "samplecube")
     {
-      require("sampling")
+	  suppressPackageStartupMessages(require("sampling"))
       # adjust ratio to make samplecube return exact number of samples
       ratio = round_it(nrow(data.processed)*ratio)/nrow(data.processed)
       pik = rep(ratio,times=nrow(data.processed))
@@ -205,7 +393,7 @@ stratified_split <- function( data, ratio=0.3, method="cluster_knn", method_2="s
     else if (method == "cluster_knn")
     {
       cl = as.vector(cluster_knn(data.processed))
-#      require("caret")
+#      suppressPackageStartupMessages(require("caret"))
 #      res = createDataPartition(cl,p=ratio)
 #      split = rep(1, times=nrow(data))
 #      for (j in 1:nrow(data))
@@ -219,7 +407,7 @@ stratified_split <- function( data, ratio=0.3, method="cluster_knn", method_2="s
 	{
 		cl = as.vector(cluster_hierarchical(data.processed))
 		
-	    #require("caret")
+	    #suppressPackageStartupMessages(require("caret"))
         #res = createDataPartition(cl,p=ratio)
         #split = rep(1, times=nrow(data))
         #for (j in 1:nrow(data))
@@ -270,7 +458,7 @@ stratified_split <- function( data, ratio=0.3, method="cluster_knn", method_2="s
 	##   }
 	##   else
 	##   {
-	##     require("sampling")
+	##     suppressPackageStartupMessages(require("sampling"))
 	##     stratified_split(cl,ratio,"samplecube")
 	##   }
 	## }
@@ -280,7 +468,7 @@ stratified_split <- function( data, ratio=0.3, method="cluster_knn", method_2="s
     list(split=split, cluster=cl)
 }
 
-anti_stratified_split <- function( data, ratio=0.3, colnames=NULL)
+anti_stratified_split_OLD <- function( data, ratio=0.3, colnames=NULL)
 {
   if (ratio > 0.5)
   {
@@ -336,7 +524,7 @@ stratified_k_fold_split <- function( data, num_folds=10, method="cluster", colna
     folds = rep(0, times=nrow(data))
     for (i in 1:(num_folds-1))
     {
-      require("sampling")
+	  suppressPackageStartupMessages(require("sampling"))
       prop = 1/(num_folds-(i-1))
       print(paste("fold",i,"/",num_folds," prop",prop))
       pik = rep(prop,times=nrow(data))
@@ -357,7 +545,7 @@ stratified_k_fold_split <- function( data, num_folds=10, method="cluster", colna
   }
   else if (method == "cluster")
   {
-    require("TunePareto")
+	suppressPackageStartupMessages(require("TunePareto"))
     cl = cluster(data.processed)
     res = generateCVRuns(cl,ntimes=1,nfold=num_folds)
     folds = rep(0, times=nrow(data))
@@ -398,11 +586,15 @@ add_duplicates <- function( data, dup_indices ) {
 
 sammon_duplicates <- function( data, ... ) { 
   di <- duplicate_indices(data)
-  print(di)
+  #print("duplicate indices")
+  #print(di)
   u <- unique(data) 
   print(paste('unique data points',nrow(u),'of',nrow(data)))
   if(nrow(u) <= 4) stop("number of unqiue datapoints <= 4")
-  points_unique <- sammon(dist(u), ...)$points
+  distance <- dynamic_dist(u, is_binary(data))$dist
+  points_unique <- sammon(distance, ...)$points
+  #print("points unique")
+  #print(points_unique)
   if (nrow(u)<nrow(data))
   {
     points <- add_duplicates(points_unique, di) 
@@ -422,11 +614,11 @@ pca_reduce_features <- function( data, max_num_features=1000, min_explained_vari
   #data.processed = process_data( data )
   data.pca <- prcomp(data,scale=TRUE)
   
-  print("pca reduce features2")
+  #print("pca reduce features2")
   
   data.var <- data.pca$sdev^2
   
-  print("pca reduce features3")
+  #print("pca reduce features3")
   
   explained_variance <- cumsum(data.var)/sum(data.var)
   
@@ -448,170 +640,284 @@ plot_pre_process <- function( data, method="pca" )
   }
   else if (method == "smacof")
   {
-    require("smacof")
+	suppressPackageStartupMessages(require("smacof"))
     data.emb <- smacofSym(dist(data.processed, method = "euclidean"), ndim=2, verbose=T)
     data.emb$conf
   }
   else if (method == "sammon")
   {
-    require("MASS")
+	suppressPackageStartupMessages(require("MASS"))
     sammon_duplicates(data.processed, k=2)
   }
   else
     stop("unknown method")
 }
 
+
 plot_split <- function( data, color_idx=NULL, circle_idx=NULL, ... )
-{
-  if (ncol(data)!=2 || !is.numeric(data[,1]) || !is.numeric(data[,2]))
-    stop("data not suitable for plotting, plot_pre_process() first")
-
-  plot( NULL, xlim = extendrange(data[,1]), ylim = extendrange(data[,2]), ... )
-  if (is.null(names))
-    names <- c("split 1","split 2")
-  #colos = as.double(rep(2:(max(color_idx)+2)))
-  #legend("topleft",names,pch=2,col=colos)
-  
-  #legend("topleft",names[1],pch=as.double(c(1)),col="red")
-
-  ## for (j in max(color_idx):0)
-  ## {
-  ##   for (k in max(shape_idx):0)
-  ##   {
-  ##     set = c()
-  ##     for (i in 1:nrow(data))
-  ##       if (color_idx[i]==j && shape_idx[i]==k)
-  ##         set = c(set,i)
-  ##     points(data[set,], pch = 15+k, col=(j+2))
-  ##   }
-  ## }
-  col_offset = 2
-  if (!is.null(circle_idx))
-	  col_offset = 1
-  if(is.null(color_idx))
-  {
-	  color_idx <- array(0,nrow(data))
-	  col_offset=3
-  }
-  for (j in 0:max(color_idx))
-  {
-	  set = c()
-	  for (i in 1:nrow(data))
-		  if (color_idx[i]==j)
-			  set = c(set,i)
-	  points(data[set,], pch = 19, cex=1, col=(max(color_idx)-j)+col_offset)
-  }
-  if (!is.null(circle_idx))
-  {
-	  set = c()
-	  for (i in 1:nrow(data))
-		  if (circle_idx[i]==1)
+{ 
+	if (ncol(data)!=2 || !is.numeric(data[,1]) || !is.numeric(data[,2]))
+		stop("data not suitable for plotting, plot_pre_process() first")
+	
+	plot( NULL, xlim = extendrange(data[,1]), ylim = extendrange(data[,2]), ... )
+	if (is.null(names))
+		names <- c("split 1","split 2")
+	#colos = as.double(rep(2:(max(color_idx)+2)))
+	#legend("topleft",names,pch=2,col=colos)
+	
+	#legend("topleft",names[1],pch=as.double(c(1)),col="red")
+	
+	## for (j in max(color_idx):0)
+	## {
+	##   for (k in max(shape_idx):0)
+	##   {
+	##     set = c()
+	##     for (i in 1:nrow(data))
+	##       if (color_idx[i]==j && shape_idx[i]==k)
+	##         set = c(set,i)
+	##     points(data[set,], pch = 15+k, col=(j+2))
+	##   }
+	## }
+	
+	
+	col_offset = 2
+	if(is.null(color_idx))
+	{
+		color_idx <- array(0,nrow(data))
+		col_offset=3
+	}
+	for (j in 0:max(color_idx))
+	{
+		set = c()
+		for (i in 1:nrow(data))
+			if (color_idx[i]==j)
+				set = c(set,i)
+		points(data[set,], pch = 19, cex=1, col=(max(color_idx)-j)+col_offset)
+	}
+	if (!is.null(circle_idx))
+	{
+		set = c()
+		for (i in 1:nrow(data))
+			if (circle_idx[i]==1)
 				set = c(set,i)#
-	  points(data[set,], pch = 1, cex=1, col=1)
-	  points(data[set,], pch = 1, cex=1.8, col=1)
-	  
-	  ## for (j in max(color_idx):0)
-	  ## {
-	  ##     set = c()
-	  ##     for (i in 1:nrow(data))
-	  ##         if (color_idx[i]==j && circle_idx[i]==1)
-	  ##             set = c(set,i)
-	  ##     points(data[set,], pch = 19, cex=1, col=1)
-	  ##     points(data[set,], pch = 20, cex=1, col=(max(color_idx)-j)+col_offset)
-	  ##     points(data[set,], pch = 1, cex=2, col=1)
-	  ## }
-	  
-  }
+		
+		#print(set)
+		#print(data[set,])
+		
+		points(matrix(data[set,],ncol=2), pch = 1, cex=1, col=1)
+		points(matrix(data[set,],ncol=2), pch = 1, cex=1.8, col=1)
+		#points(data[set,], pch = 1, cex=1, col=1)
+		#points(data[set,], pch = 1, cex=1.8, col=1)
+		
+		## for (j in max(color_idx):0)
+		## {
+		##     set = c()
+		##     for (i in 1:nrow(data))
+		##         if (color_idx[i]==j && circle_idx[i]==1)
+		##             set = c(set,i)
+		##     points(data[set,], pch = 19, cex=1, col=1)
+		##     points(data[set,], pch = 20, cex=1, col=(max(color_idx)-j)+col_offset)
+		##     points(data[set,], pch = 1, cex=2, col=1)
+		## }
+		
+	}
 }
 
-superboxplot  <- function( data, ..., significance_level=0.95 )
+superboxplot  <- function( data, ..., significance_level=0.95, paired=T, test_closer_to_zero=F, alg_info=T )
 {
 	b <- boxplot(data,...) #,col=rep(2:(ncol(data)+1)))
 	
-	#print mean and stdev
-	for (i in 1:ncol(data))
+	if (alg_info)
 	{
-		med <- sprintf("%.3f",b$stats[,i][3])
-		stdev <- sprintf("%.3f",sqrt(var(data[,i])))
-		mtext(paste(med,"+-",stdev),side=1,at=i,line=2)
-	}
-	
-	#print significance tests
-	if (nrow(data)>10)
-	{
-		sig <- array(list(),c(ncol(data),ncol(data)))
-		for (i in 1:(ncol(data)-1))
-		{
-			for (j in (i+1):ncol(data))
-			{
-				ttest = t.test(data[,i],data[,j],paired=T)
-				#print(ttest$p.value)
-				#print(is.na(ttest$p.value))
-				if ( !is.na(ttest$p.value) && 1-significance_level > ttest$p.value)
-				{
-					sig[i,j] = T
-					sig[j,i] = T
-				}
-				else
-				{
-					sig[i,j] = F
-					sig[j,i] = F
-				}
-			}
-		}
+		#print mean and stdev
 		for (i in 1:ncol(data))
 		{
-			## s <- ""
-			## for (j in 1:ncol(data))
-			## {
-			##     if (i == j)
-			##         s <- paste( s, "-" ,sep="")
-			##     else if (sig[i,j]==T)
-			##         s <- paste( s, "X" ,sep="")
-			##     else
-			##         s <- paste( s, "0" ,sep="")
-			## }
-			
-			s<-""
-			bigger <- ""
-			for (j in 1:ncol(data))
+			med <- sprintf("%.3f",b$stats[,i][3])
+			stdev <- sprintf("%.3f",sqrt(var(data[,i])))
+			mtext(paste(med,"+-",stdev),side=1,at=i,line=2)
+		}
+		
+		#print significance tests
+		if (nrow(data)>10 && significance_level>0 && significance_level<=1)
+		{
+			sig <- array(list(),c(ncol(data),ncol(data)))
+			sig_var <- array(list(),c(ncol(data),ncol(data)))
+			for (i in 1:(ncol(data)-1))
 			{
-				#print(paste(i,j))
-				if (i!=j && sig[i,j]==T && b$stats[,i][3] > b$stats[,j][3]) 
-					bigger <- paste(bigger,j,sep=",")
+				for (j in (i+1):ncol(data))
+				{
+					if (test_closer_to_zero==F)
+						ttest = t.test(data[,i],data[,j],paired=paired)
+					else
+						ttest = ttest_closer_to_zero(data[,i],data[,j],paired=paired)
+					if ( !is.na(ttest$p.value) && 1-significance_level > ttest$p.value)
+					{
+						sig[i,j] = T
+						sig[j,i] = T
+					}
+					else
+					{
+						sig[i,j] = F
+						sig[j,i] = F
+					}
+					
+					ftest = var.test(data[,i],data[,j])
+					if ( !is.na(ftest$p.value) && 1-significance_level > ftest$p.value)
+					{
+						sig_var[i,j] = T
+						sig_var[j,i] = T
+					}
+					else
+					{
+						sig_var[i,j] = F
+						sig_var[j,i] = F
+					}
+				}
 			}
-			if (nchar(bigger)>0)
+			for (i in 1:ncol(data))
 			{
-				bigger <- substring(bigger, 2)
-				bigger <- paste(">(",bigger,")",sep="")
-				s <- paste(s,bigger,sep=" ")
+				## s <- ""
+				## for (j in 1:ncol(data))
+				## {
+				##     if (i == j)
+				##         s <- paste( s, "-" ,sep="")
+				##     else if (sig[i,j]==T)
+				##         s <- paste( s, "X" ,sep="")
+				##     else
+				##         s <- paste( s, "0" ,sep="")
+				## }
+				
+				s<-""
+				bigger <- ""
+				for (j in 1:ncol(data))
+				{
+					#print(paste(i,j))
+					if (i!=j && sig[i,j]==T)
+					{
+						if (test_closer_to_zero==F && b$stats[,i][3] > b$stats[,j][3]) 
+							bigger <- paste(bigger,j,sep=",")
+						else if (test_closer_to_zero==T && abs(b$stats[,i][3]) > abs(b$stats[,j][3])) 
+							bigger <- paste(bigger,j,sep=",")
+					}
+				}
+				if (nchar(bigger)>0)
+				{
+					s<-"med"
+					bigger <- substring(bigger, 2)
+					bigger <- paste(">(",bigger,")",sep="")
+					s <- paste(s,bigger,sep=" ")
+				}
+				smaller <- ""
+				for (j in 1:ncol(data))
+				{
+					#print(paste(i,j))
+					if (i!=j && sig[i,j]==T)
+					{
+						if (test_closer_to_zero==F && b$stats[,i][3] < b$stats[,j][3]) 
+							smaller <- paste(smaller,j,sep=",")
+						else if (test_closer_to_zero==T && abs(b$stats[,i][3]) < abs(b$stats[,j][3])) 
+							smaller <- paste(smaller,j,sep=",")
+					}
+				}
+				if (nchar(smaller)>0)
+				{
+					if(nchar(bigger)==0)
+						s<-"med"
+					smaller <- substring(smaller, 2)
+					smaller <- paste("<(",smaller,")",sep="")
+					s <- paste(s,smaller,sep=" ")
+				}
+				
+				bigger <- ""
+				for (j in 1:ncol(data))
+				{
+					if (i!=j && sig_var[i,j]==T && var(data[,i]) > var(data[,j])) 
+						bigger <- paste(bigger,j,sep=",")
+				}
+				if (nchar(bigger)>0)
+				{
+					s <- paste(s,"var",sep=" ")
+					bigger <- substring(bigger, 2)
+					bigger <- paste(">(",bigger,")",sep="")
+					s <- paste(s,bigger,sep=" ")
+				}
+				smaller <- ""
+				for (j in 1:ncol(data))
+				{
+					#print(paste(i,j))
+					if (i!=j && sig_var[i,j]==T && var(data[,i]) < var(data[,j])) 
+						smaller <- paste(smaller,j,sep=",")
+				}
+				if (nchar(smaller)>0)
+				{
+					if(nchar(bigger)==0)
+						s <- paste(s,"var",sep=" ")
+					smaller <- substring(smaller, 2)
+					smaller <- paste("<(",smaller,")",sep="")
+					s <- paste(s,smaller,sep=" ")
+				}			
+				
+				
+				mtext(s,side=1,at=i,line=3)
 			}
-			smaller <- ""
-			for (j in 1:ncol(data))
-			{
-				#print(paste(i,j))
-				if (i!=j && sig[i,j]==T && b$stats[,i][3] < b$stats[,j][3]) 
-					smaller <- paste(smaller,j,sep=",")
-			}
-			if (nchar(smaller)>0)
-			{
-				smaller <- substring(smaller, 2)
-				smaller <- paste("<(",smaller,")",sep="")
-				s <- paste(s,smaller,sep=" ")
-			}
-			mtext(s,side=1,at=i,line=3)
 		}
 	}
 	
 	#print(sig)
 }
 
+ttest_closer_to_zero <- function( x, y, ... )
+{
+	prep = pre_process_ttest_closer_to_zero(x,y)
+	t.test(prep$x, prep$y, ...)	
+}
+
+pre_process_ttest_closer_to_zero  <- function( x, y )
+{
+	medX = median(x)
+	medY = median(y)
+	if((medX > 0 && medY > 0)|| (medX < 0 && medY < 0))
+	{
+		list(x=x,y=y)
+	}
+	else
+	{
+		pos_data = x
+		neg_data = y
+		if (medX<medY)
+		{
+			pos_data = y
+			neg_data = x
+		}
+		shift = min(abs(medX),abs(medY))
+		pos_data = pos_data - shift
+		neg_data = neg_data + shift
+		if (medX>medY)
+			list(x=pos_data,y=neg_data)
+		else
+			list(x=neg_data,y=pos_data)
+	}
+}
+
+split_plot <- function(ratio=0.33)
+{
+	print("splitting")
+	split = contra_stratified_split(data, ratio=ratio)
+	#print(split$cluster)
+	print("plotting")
+	plot_split(plot_data,circle_idx=split$cluster,color_idx=split$split)
+}
+
 #a<-matrix(rnorm(100, mean=50,  sd=4), ncol=5)
-#b<-matrix(rnorm(5000, mean=0, sd=10), ncol=5)
+#b<-matrix(rnorm(5000, mean=0, sd=30), ncol=5)
+#data<-b
 #data<-rbind(a,b)
 #c<-matrix(rnorm(50, mean=-50, sd=2), ncol=5)
 #data<-rbind(data,c)
 #data=iris[1:4]
+
+
+#data = data[1:10,]
 
 #require("datasets")
 #data=ChickWeight
@@ -621,6 +927,10 @@ superboxplot  <- function( data, ..., significance_level=0.95 )
 #pca_reduce_features(data)
 #data=ethanol
 #split = stratified_k_fold_split(data, num_folds=3)
+
+#set.seed(as.numeric(Sys.time()))
+#split = contra_stratified_split(data, ratio=0.1)
+#split = stratified_split(data, ratio=0.1, method="cluster_hierarchical")
 #split = stratified_split(data, ratio=0.1, method="cluster_hierarchical")
 
 #split = stratified_split(data, ratio=0.1,preprocess = "pca", method="cluster_hierarchical", method_2="explicit")
@@ -631,38 +941,25 @@ superboxplot  <- function( data, ..., significance_level=0.95 )
 #print(split)
 #print(sum(split)
 
-#plot_split(plot_pre_process(data, method="pca"),color_idx=split$split)
-#plot_split(plot_pre_process(data, method="pca"),circle_idx=split$split,color_idx=split$cluster)
+#print(split$cluster)
+#print(which(split$cluster==1))
+
+#plot_data = plot_pre_process(data, method="sammon")
+
+#print(nrow(plot_data))
+#print(ncol(plot_data))
+#print(head(plot_data))
+#print(plot_data[which(split$cluster==1),])
+
+
+#plot_data = data
+#plot_split(plot_data,color_idx=split$split)
+#plot_split(plot_data,circle_idx=split$split,color_idx=split$cluster)
+#plot_split(plot_data,circle_idx=split$cluster,color_idx=split$split)
 
 
 
 #cl = cluster(data)
 
 
-## # stratified splitting plot
-## 
-## #png("data.png",width=1024,height=768,pointsize=20)
-## png("random.png",width=1024,height=768,pointsize=20)
-## #png("stratfied_cluster.png",width=1024,height=768,pointsize=20)
-## #png("stratfied_cluster_selected.png",width=1024,height=768,pointsize=20)
-## #png("stratfied_selected.png",width=1024,height=768,pointsize=20)
-## 
-## #seed = sample(1:1000000,1)
-## #print(paste("seed ",seed))
-## #set.seed(seed)
-## 
-## set.seed(86281) #unlucky random
-## #set.seed(160719) #nice stratifed
-## 
-## data=df_11306
-## data=cbind(data[1],data[3])
-## plot_split(data,xlab="Molecular weight",ylab="LogP")
-## 
-## #split = stratified_split(data, ratio=0.1,preprocess = "pca", method="cluster_hierarchical", method_2="explicit")
-## split = list(split=random_split(data, ratio=0.1))
-## 
-## plot_split(data,color_idx=split$split,xlab="Molecular weight",ylab="LogP")
-## #plot_split(data,color_idx=split$cluster,xlab="Molecular weight",ylab="LogP")
-## #plot_split(data,circle_idx=split$split,color_idx=split$cluster,xlab="Molecular weight",ylab="LogP")
-## 
-## dev.off()
+
