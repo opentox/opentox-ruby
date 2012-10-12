@@ -468,16 +468,16 @@ module OpenTox
         metadata[DC.title] = "Test dataset split of "+dataset.uri
         test = split_to_dataset( df, split, metadata, subjectid, missing_values, cluster ){ |i| i==0 }
 
-        f = "/tmp/split_pic.svg"
-        LOGGER.debug "plotting to #{f} .."
-        @r.eval "num_feats = #{split_features ? split_features.size : "ncol(plot_data)"}"
-        @r.eval "plot_data = process_data(#{df}, #{str_split_features})"
-        @r.eval "plot_data = plot_pre_process(plot_data, method='sammon')"
-        @r.eval "title = paste('sammon embedding for splitting #{df},',num_feats,'features,',nrow(plot_data),'instances')"
-        plot_to_files([f]) do |file|
-          @r.eval "plot_split(plot_data,color_idx=split$split, main=title)"
-        end
-        LOGGER.debug "plotting to #{f} .. done"
+        #f = "/tmp/split_pic.svg"
+        #LOGGER.debug "plotting to #{f} .."
+        #@r.eval "num_feats = #{split_features ? split_features.size : "ncol(plot_data)"}"
+        #@r.eval "plot_data = process_data(#{df}, #{str_split_features})"
+        #@r.eval "plot_data = plot_pre_process(plot_data, method='sammon')"
+        #@r.eval "title = paste('sammon embedding for splitting #{df},',num_feats,'features,',nrow(plot_data),'instances')"
+        #plot_to_files([f]) do |file|
+        #  @r.eval "plot_split(plot_data,color_idx=split$split, main=title)"
+        #end
+        #LOGGER.debug "plotting to #{f} .. done"
           
         return train, test
       end
