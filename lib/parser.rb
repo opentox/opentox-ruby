@@ -301,8 +301,10 @@ module OpenTox
         row.shift
         row.each_index do |i|
           value = row[i]
-          value_maps[i] = Hash.new if value_maps[i].nil?
-          value_maps[i][value].nil? ? value_maps[i][value]=0 : value_maps[i][value] += 1
+          unless (value.nil? or value == "")
+            value_maps[i] = Hash.new if value_maps[i].nil?
+            value_maps[i][value].nil? ? value_maps[i][value]=0 : value_maps[i][value] += 1
+          end
         end
         value_maps
       end
