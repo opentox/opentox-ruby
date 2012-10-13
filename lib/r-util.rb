@@ -441,26 +441,35 @@ module OpenTox
         end
         return train, test
       else
-        raise unless stratification=~/^(super|super4|super5|contra)$/
+        raise unless stratification=~/^(super|super4|super5|super_bin|contra)$/
         anti = ""
         super_method = ""
         super_method_2 = ""
         #preprocess = ""
         case stratification
         when "contra"
+          raise "what about the feature_type"
           anti = "contra_"
         when "super"
+          feature_type = "numerical"
           super_method = ", method='cluster_knn'"
         when "super4"
+          feature_type = "numerical"
           super_method = ", method='cluster_hierarchical'"
-          #preprocess = ", preprocess='pca'"
         when "super5"
+          feature_type = "numerical"
           super_method = ", method='cluster_hierarchical'"
           super_method_2 = ", method_2='explicit'"
-          #preprocess = ", preprocess='pca'"
+        when "super_bin"
+          feature_type = "binary"
+          super_method = ", method='cluster_hierarchical'"
+          super_method_2 = ", method_2='explicit'"
+        else
+          raise "strat unknown"
         end
-        LOGGER.debug "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features} #{super_method} #{super_method_2})" # #{preprocess}
-        @r.eval "split <- #{anti}stratified_split(#{df}, ratio=#{pct}, #{str_split_features} #{super_method} #{super_method_2})" # #{preprocess}
+        cmd = "split <- #{anti}stratified_split(#{df}, '#{feature_type}', ratio=#{pct}, #{str_split_features} #{super_method} #{super_method_2})" # #{preprocess}
+        LOGGER.debug cmd
+        @r.eval cmd
         split = @r.pull 'split$split'
         cluster = (store_split_clusters ?  @r.pull('split$cluster') : nil)
         metadata[DC.title] = "Training dataset split of "+dataset.uri

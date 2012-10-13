@@ -12,18 +12,6 @@
 #load("/home/martin/tmp/image_12171.R")
 #data=df_12171
 
-is_binary <- function( data )
-{
-	#print(length(data[data==0]))
-	#print(length(data[data==1]))
-	#print(length(data[data==0])+length(data[data==1]))
-	#print(nrow(data))
-	#print(ncol(data))
-	#print(nrow(data)*ncol(data))
-	#print(head(data))
-	length(data[data==0])+length(data[data==1]) == nrow(data)*ncol(data)
-}
-
 is_really_numeric <- function(data)
 {
 	for (i in 1:ncol(data))
@@ -145,11 +133,10 @@ cluster_knn <- function( data, min=10, max=15) #, method="kmeans" )
   cbind(s$partition[,m])
 }
 
-dynamic_dist <- function(data, is_bin=NULL)
+dynamic_dist <- function(data, feature_type)
 {
-	if(is.null(is_bin))
-		is_bin = is_binary(data)
-	if (!is_bin)
+	binary = check_binary(data, feature_type)
+	if (!binary)
 	{
 		print(paste("distance used: Euclidean"))
 		d <- dist(data, method="euclidean")
@@ -166,12 +153,12 @@ dynamic_dist <- function(data, is_bin=NULL)
 }
 
 #deterministic!
-cluster_hierarchical <- function(data, hclust_method="ward", max_num_clusters=15, deep_split=4, ...)
+cluster_hierarchical <- function(data, feature_type, hclust_method="ward", max_num_clusters=15, deep_split=4, ...)
 {
 	max_num_clusters <- min(max_num_clusters,nrow(unique(data)))
 	max_num_clusters <- min(max_num_clusters,nrow(data)-1)
 	min_size <- round_it(nrow(data)/max_num_clusters)
-	d <- dynamic_dist(data)	
+	d <- dynamic_dist(data, feature_type)	
 	suppressPackageStartupMessages(require("dynamicTreeCut"))
 	fit <- hclust(d$dist, method=hclust_method)
 	cut = cutreeDynamic(fit, method = "hybrid", distM = d$matrix, minClusterSize = min_size, deepSplit=deep_split, ...)
@@ -244,15 +231,47 @@ random_split <- function( data, ratio=0.3 )
 	as.vector(split)
 }
 
+## is_binary <- function( data )
+## {
+##     #print(length(data[data==0]))
+##     #print(length(data[data==1]))
+##     #print(length(data[data==0])+length(data[data==1]))
+##     #print(nrow(data))
+##     #print(ncol(data))
+##     #print(nrow(data)*ncol(data))
+##     #print(head(data))
+##     length(data[data==0])+length(data[data==1]) == nrow(data)*ncol(data)
+## }
 
-contra_stratified_split <- function( data, ratio=0.3, colnames=NULL ) #, samplesize=10 )
+check_binary <- function( data, feature_type)
+{
+	binary <- length(data[data==0])+length(data[data==1]) == nrow(data)*ncol(data) #=is_binary(data)
+	if (feature_type=="numerical")
+	{
+		if (binary)
+			stop("data is binary, but specified feature_type is numerical")
+	}
+	else if (feature_type=="binary")
+	{
+		if (!binary)
+			stop("data is not binary, but specified feature_type is binary")
+	}
+	else
+		stop("unknown feature type")
+	binary
+}
+
+
+contra_stratified_split <- function( data, feature_type, ratio=0.3, colnames=NULL ) #, samplesize=10 )
 {
 	data.processed = as.matrix(process_data( data, colnames ))
 	print(paste("contra strat split, #features:",ncol(data.processed),"/",ncol(data),", ratio:",ratio))
 
+	binary=check_binary(data.processed, feature_type)
+	
 	##save.image("/tmp/contra_splitting.R")
 	
-	binary=is_binary(data.processed)
+	
 	print(paste("data is binary: ",binary))
 	
 	if (!binary)
@@ -283,7 +302,7 @@ contra_stratified_split <- function( data, ratio=0.3, colnames=NULL ) #, samples
 	print("orig_idx (orinal indices of sample data in orig data)")
 	print(as.vector(orig_idx))
 	
-	m <- dynamic_dist(sample_data, is_bin=binary)$matrix
+	m <- dynamic_dist(sample_data, feature_type)$matrix
 	
 	max_dist = 0
 	max_dist_idx = -1
@@ -367,15 +386,15 @@ contra_stratified_split <- function( data, ratio=0.3, colnames=NULL ) #, samples
 	list(split=split,cluster=cl)
 }
 
-stratified_split <- function( data, ratio=0.3, method="cluster_knn", method_2="samplecube", colnames=NULL ) #, preprocess="none"
+stratified_split <- function( data, feature_type, ratio=0.3, method="cluster_knn", method_2="samplecube", colnames=NULL ) #, preprocess="none"
 {
 	data.processed = as.matrix(process_data( data, colnames ))
 	print(paste("strat split, method: ",method," #features: ",ncol(data.processed)," ratio: ",ratio)) #," preprocess: ",preprocess))
 	cl = NULL
 	
+	binary = check_binary(data.processed, feature_type)
 	
-	
-	if (!is_binary(data.processed))
+	if (!binary)
 	{
 		data.processed = as.matrix(pca_reduce_features(data.processed))
 		print(paste("#features reduced with pca: ",ncol(data.processed)))
@@ -405,7 +424,7 @@ stratified_split <- function( data, ratio=0.3, method="cluster_knn", method_2="s
     }
 	else if (method == "cluster_hierarchical") 
 	{
-		cl = as.vector(cluster_hierarchical(data.processed))
+		cl = as.vector(cluster_hierarchical(data.processed, feature_type))
 		
 	    #suppressPackageStartupMessages(require("caret"))
         #res = createDataPartition(cl,p=ratio)
@@ -584,14 +603,14 @@ add_duplicates <- function( data, dup_indices ) {
   result 
 }
 
-sammon_duplicates <- function( data, ... ) { 
+sammon_duplicates <- function( data, feature_type, ... ) { 
   di <- duplicate_indices(data)
   #print("duplicate indices")
   #print(di)
   u <- unique(data) 
   print(paste('unique data points',nrow(u),'of',nrow(data)))
   if(nrow(u) <= 4) stop("number of unqiue datapoints <= 4")
-  distance <- dynamic_dist(u, is_binary(data))$dist
+  distance <- dynamic_dist(u, check_binary(data, feature_type))$dist
   points_unique <- sammon(distance, ...)$points
   #print("points unique")
   #print(points_unique)
