@@ -257,7 +257,7 @@ check_binary <- function( data, feature_type)
 			stop("data is not binary, but specified feature_type is binary")
 	}
 	else
-		stop("unknown feature type")
+		stop(paste("unknown feature type",feature_type))
 	binary
 }
 
@@ -284,7 +284,8 @@ contra_stratified_split <- function( data, feature_type, ratio=0.3, colnames=NUL
 		#do nothing
 	}
 	
-	samplesize = 50
+	samplesize = nrow(data.processed)/20
+	print(paste("samplesize",samplesize))
 	if (nrow(data.processed)<=samplesize)
 	   sample = as.vector(1:nrow(data.processed))
 	else
@@ -610,7 +611,7 @@ sammon_duplicates <- function( data, feature_type, ... ) {
   u <- unique(data) 
   print(paste('unique data points',nrow(u),'of',nrow(data)))
   if(nrow(u) <= 4) stop("number of unqiue datapoints <= 4")
-  distance <- dynamic_dist(u, check_binary(data, feature_type))$dist
+  distance <- dynamic_dist(u, feature_type)$dist
   points_unique <- sammon(distance, ...)$points
   #print("points unique")
   #print(points_unique)
@@ -649,7 +650,7 @@ pca_reduce_features <- function( data, max_num_features=1000, min_explained_vari
   as.data.frame(data.pca$x)[1:i]
 }
 
-plot_pre_process <- function( data, method="pca" )
+plot_pre_process <- function( data, feature_type, method="pca" )
 {
   data.processed = process_data( data )
   if (method == "pca")
@@ -666,7 +667,7 @@ plot_pre_process <- function( data, method="pca" )
   else if (method == "sammon")
   {
 	suppressPackageStartupMessages(require("MASS"))
-    sammon_duplicates(data.processed, k=2)
+    sammon_duplicates(data.processed, feature_type, k=2)
   }
   else
     stop("unknown method")
@@ -926,6 +927,35 @@ split_plot <- function(ratio=0.33)
 	print("plotting")
 	plot_split(plot_data,circle_idx=split$cluster,color_idx=split$split)
 }
+
+norm_test <- function(data.orig)
+{
+	print(paste("cols: ",ncol(data.orig)))
+	data <- remove_var_zero(data.orig)
+	print(paste("cols var != zero: ",ncol(data)))	
+	for (j in 1:ncol(data))
+	{
+		col = data[,j]
+		if(length(col)>5000)
+			col = sample(col,5000)
+		result = tryCatch({
+			w = shapiro.test(col)$statistic
+			w_log = shapiro.test(log(col))$statistic
+			if (w<0.60 && w_log>0.9)
+			{
+				print(paste("replace with log","new-index:",j,"old-index:",which(colnames(data.orig)==colnames(data)[j]),colnames(data)[j],w,w_log))
+				colnames(data)[j] <- paste("log",colnames(data)[j],sep="_")
+				data[,j] <- log(data[,j])
+			}
+		}, error = function(err){
+			#print(paste(j,colnames(d)[j],err))
+		}, warning = function(warn){
+			#print(paste("warning",warn))
+		})
+	}
+	data
+}
+
 
 #a<-matrix(rnorm(100, mean=50,  sd=4), ncol=5)
 #b<-matrix(rnorm(5000, mean=0, sd=30), ncol=5)

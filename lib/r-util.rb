@@ -441,14 +441,17 @@ module OpenTox
         end
         return train, test
       else
-        raise unless stratification=~/^(super|super4|super5|super_bin|contra)$/
+        raise unless stratification=~/^(super|super4|super5|super_bin|contra_eucl|contra_bin)$/
         anti = ""
         super_method = ""
         super_method_2 = ""
         #preprocess = ""
         case stratification
-        when "contra"
-          raise "what about the feature_type"
+        when "contra_eucl"
+          feature_type = "numerical"
+          anti = "contra_"
+        when "contra_bin"
+          feature_type = "binary"
           anti = "contra_"
         when "super"
           feature_type = "numerical"
