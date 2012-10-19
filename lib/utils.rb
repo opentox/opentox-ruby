@@ -10,9 +10,8 @@ module ProcessUtil
     stdout_str = stdout.readlines.join("")
     stderr_str = stderr.readlines.join("")
     ignored, status = Process::waitpid2 pid
-    exit_status = status.exitstatus
     [stdin, stdout, stderr].each{|io| io.close}
-    return stdout_str, stderr_str, exit_status
+    return stdout_str, stderr_str, status.exitstatus
   end
   
   def self.run(cmd)

@@ -4,9 +4,9 @@
 #data=df_12117 
 
 # 250 compounds, 2 features
-#load("/home/martin/workspace/ValidationExperiments/strat_pics/image.R")
-#data=df_11306
-#data=cbind(data[1],data[3])
+## load("/home/martin/workspace/ValidationExperiments/strat_pics/image.R")
+## data=df_11306
+## data=cbind(data[1],data[3])
 
 # 1000 compounds, 226 features
 #load("/home/martin/tmp/image_12171.R")
@@ -285,6 +285,7 @@ contra_stratified_split <- function( data, feature_type, ratio=0.3, colnames=NUL
 	}
 	
 	samplesize = nrow(data.processed)/20
+	
 	print(paste("samplesize",samplesize))
 	if (nrow(data.processed)<=samplesize)
 	   sample = as.vector(1:nrow(data.processed))
@@ -350,12 +351,14 @@ contra_stratified_split <- function( data, feature_type, ratio=0.3, colnames=NUL
 	#raw = array(0,nrow(data.processed))
 	for(i in 1:nrow(data.processed))
 	{
-		prob[i] = (1-dist[i]/max) ^ 100		
+		prob[i] = (1-dist[i]/max) ^ 10		
 		#raw[i] = 1-dist[i]/max
 	    if(prob[i]!=0)
 			not_nil = not_nil+1
 	}
-	
+	#hist( log(prob[1:anti_strat_center-1] ))
+	#hist( c( prob[1:anti_strat_center-1],prob[anti_strat_center+1:length(prob)] ))
+	#hist( log( c( prob[1:anti_strat_center-1],prob[anti_strat_center+1:length(prob)] )))
 	
 	print("head(prop) (convert distance into propability)")
 	print(head(prob))
@@ -372,19 +375,71 @@ contra_stratified_split <- function( data, feature_type, ratio=0.3, colnames=NUL
 				prob[i]=.Machine$double.xmin
 	}	
 	
-	selected = 	sample(1:nrow(data.processed),num_sel,replace=FALSE,prob=prob)
+	#selected = 	sample(1:nrow(data.processed),num_sel,replace=FALSE,prob=prob)
+	selected = 	sample_self(1:nrow(data.processed),num_sel,prob)
 	split <- array(0,nrow(data.processed))
 	for(i in selected)
 	{
-		#print(paste("sel ",i,"  raw ",raw[i]," dist ",prop[i]))
+	#	print(paste("sel ",i,"  raw ",raw[i]," dist ",prob[i]))
 		split[i] <- 1
 	}
+	#for(i in 1:nrow(data.processed))
+#		print(paste(i," sel",split[i],"  raw ",raw[i]," dist ",prob[i]))
 	split = as.vector(split)
 	
 	cl <- array(0,nrow(data.processed))
 	cl[anti_strat_center] = 1
 	
-	list(split=split,cluster=cl)
+	list(split=split,cluster=cl,dist=prob)
+}
+
+sample_self <- function(x,n,prop)
+{
+	if (length(x)!=length(prop))
+		stop("wtf") 
+	sum_prop = 0
+	for(i in 1:length(x))
+		sum_prop = sum_prop + prop[i]
+	#print("start")
+	#print(x)
+	#print(n)
+	#print(prop)
+	#print(paste("sum ",sum_prop))
+	r = runif(1,0.0,sum_prop)
+	#print(paste("rand",r))
+	sum_prop = 0
+	for(i in 1:length(x))
+	{
+		sum_prop = sum_prop + prop[i]
+		#print(paste("current sum",sum_prop))
+		if(r <= sum_prop)
+		{
+			sel = i
+			break
+		}
+	}
+	if (n>1)
+	{
+		if(sel==1)
+		{
+			x_ = x[2:length(x)]
+			prop_ = prop[2:length(prop)]
+		}
+		else if(sel==length(x))
+		{
+			x_ = x[1:length(x)-1]
+			prop_ = prop[1:length(prop)-1]
+		}
+		else
+		{
+			x_ = c(x[1:sel-1],x[(sel+1):length(x)])
+			prop_ = c(prop[1:sel-1],prop[(sel+1):length(prop)])
+		}
+		n_ = n - 1
+		c(x[i],sample_self(x_,n_,prop_))
+	}
+	else
+		x[i]
 }
 
 stratified_split <- function( data, feature_type, ratio=0.3, method="cluster_knn", method_2="samplecube", colnames=NULL ) #, preprocess="none"
@@ -674,7 +729,7 @@ plot_pre_process <- function( data, feature_type, method="pca" )
 }
 
 
-plot_split <- function( data, color_idx=NULL, circle_idx=NULL, ... )
+plot_split <- function( data, color_idx=NULL, circle_idx=NULL, transparent=NULL, ... )
 { 
 	if (ncol(data)!=2 || !is.numeric(data[,1]) || !is.numeric(data[,2]))
 		stop("data not suitable for plotting, plot_pre_process() first")
@@ -708,11 +763,26 @@ plot_split <- function( data, color_idx=NULL, circle_idx=NULL, ... )
 	}
 	for (j in 0:max(color_idx))
 	{
-		set = c()
-		for (i in 1:nrow(data))
-			if (color_idx[i]==j)
-				set = c(set,i)
-		points(data[set,], pch = 19, cex=1, col=(max(color_idx)-j)+col_offset)
+		if(is.null(transparent))
+		{	
+			set = c()
+			for (i in 1:nrow(data))
+				if (color_idx[i]==j)
+					set = c(set,i)
+			points(data[set,], pch = 19, cex=1, col=(max(color_idx)-j)+col_offset)
+		}
+		else
+		{
+			for (i in 1:nrow(data))
+				if (color_idx[i]==j)
+				{
+					col_rgb = col2rgb((max(color_idx)-j)+col_offset)
+					col_rgb2=rgb(col_rgb[1]/255.0,col_rgb[2]/255.0,col_rgb[3]/255.0,transparent[i])
+					points(data[i,], pch = 19, cex=1, col=col_rgb2)
+				}
+			
+			#points(data[set,], pch = 19, cex=1, col=col_rgb2)			
+		}
 	}
 	if (!is.null(circle_idx))
 	{
@@ -919,13 +989,20 @@ pre_process_ttest_closer_to_zero  <- function( x, y )
 	}
 }
 
-split_plot <- function(ratio=0.33)
+split_plot <- function(feature_type,ratio=0.33)
 {
+	seed = as.numeric(Sys.time())
+	print(paste("seed",seed))
+	
+	#seed = 1350675271.02398
+	
+	set.seed(seed)
 	print("splitting")
-	split = contra_stratified_split(data, ratio=ratio)
+	split = contra_stratified_split(data, feature_type, ratio=ratio)
 	#print(split$cluster)
+	
 	print("plotting")
-	plot_split(plot_data,circle_idx=split$cluster,color_idx=split$split)
+	plot_split(data,circle_idx=split$cluster,color_idx=split$split)#,transparent=split$dist)
 }
 
 norm_test <- function(data.orig)

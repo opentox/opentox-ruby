@@ -202,12 +202,24 @@ module OpenTox
     end
     
     
+    private
+    def get_r_cols(pair_colors=false)
+      cols = ["red","cyan","green","magenta","blue","orange","seagreen","salmon","goldenrod","gray","orchid","khaki"]
+      if pair_colors
+        pair_cols=[]
+        cols.each{|c| pair_cols<<c; pair_cols<<"dark#{c}"}
+        cols = pair_cols
+      end
+      "col=c('#{cols.join("','")}')"
+    end
+    
+    public
     # example: 
     # files = ["/tmp/box.svg","/tmp/box.png"]
     # data = [ [ :method, [4,4,5,5,4,3,2] ], [ :method2, [1,2,3,4,5,4,6] ], [ :asdf, [9,1,8,0,7,1,6] ] ]
     # boxplot(files, data, "comparison1" )
     #
-    def boxplot(files, data, title="", hline=nil, param="")
+    def boxplot(files, data, title="", hline=nil, param="", pair_colors=false)
       LOGGER.debug("r-util> create boxplot "+data.inspect)
       raise "no hashes, to keep order" if data.is_a?(Hash)
       raise "boxplot: data is empty" if data.size==0
@@ -228,7 +240,7 @@ module OpenTox
         max_median_idx = i if max_median==med
         min_median = [min_median,med].min
         min_median_idx = i if min_median==med
-        data[i] = [data[i][0]+"(#{values.size})",data[i][1]] if @@boxplot_alg_info
+        data[i] = [data[i][0].to_s+"(#{values.size})",data[i][1]] if @@boxplot_alg_info
       end
       if min != max
         times = max/min.to_f
@@ -256,7 +268,8 @@ module OpenTox
       hlines << [max_median,2+max_median_idx] 
       hlines << [min_median,2+min_median_idx]
       plot_to_files(files, hlines) do |file|
-        @r.eval "superboxplot(boxdata,alg_info=#{@@boxplot_alg_info ? "T" : "F"},main='#{title}',col=rep(2:#{data.size+1})#{param_str})"
+        #@r.eval "superboxplot(boxdata,alg_info=#{@@boxplot_alg_info ? "T" : "F"},main='#{title}',col=rep(2:#{data.size+1})#{param_str})"
+        @r.eval "superboxplot(boxdata,alg_info=#{@@boxplot_alg_info ? "T" : "F"},main='#{title}',#{get_r_cols(pair_colors)}#{param_str})"
       end
     end
 
@@ -443,16 +456,16 @@ module OpenTox
         end
         return train, test
       else
-        raise unless stratification=~/^(super|super4|super5|super_bin|contra_eucl|contra_bin)$/
+        raise unless stratification=~/^(super|super4|super5|super_bin|contra_eucl2|contra_bin2)$/
         anti = ""
         super_method = ""
         super_method_2 = ""
         #preprocess = ""
         case stratification
-        when "contra_eucl"
+        when "contra_eucl2"
           feature_type = "numerical"
           anti = "contra_"
-        when "contra_bin"
+        when "contra_bin2"
           feature_type = "binary"
           anti = "contra_"
         when "super"
