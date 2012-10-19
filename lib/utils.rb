@@ -1,6 +1,49 @@
 require 'csv'
 require 'tempfile'
 
+require 'open4'
+
+module ProcessUtil
+  
+  def self.run_status(cmd)
+    pid, stdin, stdout, stderr = Open4::popen4(cmd)
+    stdout_str = stdout.readlines.join("")
+    stderr_str = stderr.readlines.join("")
+    ignored, status = Process::waitpid2 pid
+    exit_status = status.exitstatus
+    [stdin, stdout, stderr].each{|io| io.close}
+    return stdout_str, stderr_str, exit_status
+  end
+  
+  def self.run(cmd)
+    stdout_str, stderr_str, exit_status = run_status(cmd)
+    raise "cmd '#{cmd}' failed (status '#{exit_status}'): #{stderr_str}"  if exit_status!=0
+    return stdout_str, stderr_str
+  end 
+
+end
+
+module ZipUtil
+  
+  def self.zip(zip_file, file)
+    LOGGER.debug "zipping #{zip_file}"
+    raise "no file #{file}" unless File.exist?(file)
+    stdout_str, stderr_str = ProcessUtil.run("/usr/bin/zip -D #{zip_file} #{file}")
+    LOGGER.warn(stderr_str) if stderr_str.chomp.length>0
+    raise "could not zip file" unless File.exist?(zip_file)
+    File.delete(file)
+  end
+  
+  def self.unzip(zip_file, dir)
+    LOGGER.debug "unzipping #{zip_file}"
+    raise "no zip file found #{zip_file}" unless File.exist?(zip_file)
+    stdout_str, stderr_str = ProcessUtil.run("/usr/bin/unzip -nj #{zip_file} -d #{dir}")
+    LOGGER.warn(stderr_str) if stderr_str.chomp.length>0
+  end
+  
+end
+
+
 
 module OpenTox
 

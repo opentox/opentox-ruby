@@ -262,10 +262,12 @@ module OpenTox
 
     # embedds feature values of two datasets into 2D and plots it
     #        
-    def feature_value_plot(files, dataset_uri1, dataset_uri2, dataset_name1, dataset_name2,
+    def feature_value_plot(files, dataset_uri1, dataset_uri2, dataset_name1, dataset_name2, feature_type,
         prediction_feature=nil, subjectid=nil, waiting_task=nil, direct_plot=false, title=nil, color_feature=nil )
         
-      LOGGER.debug("r-util> create feature value plot")
+      raise "feature_type has to be binary or numerical" unless ["binary","numerical"].include?(feature_type)
+        
+      LOGGER.debug("r-util> create feature value plot #{feature_type}")
       d1 = OpenTox::Dataset.find(dataset_uri1,subjectid)
       d2 = OpenTox::Dataset.find(dataset_uri2,subjectid)
       
@@ -310,7 +312,7 @@ module OpenTox
         x = features[0].split("/")[-1]
         y = features[1].split("/")[-1]
       else
-        @r.eval "df.2d <- plot_pre_process(df, method='sammon')"
+        @r.eval "df.2d <- plot_pre_process(df, '#{feature_type}', method='sammon')"
         x = "x"
         y = "y"
       end
