@@ -434,10 +434,11 @@ module OpenTox
             LOGGER.debug "Preparing R data ..."
             @r.eval <<-EOR
               weights=NULL
-              if (class(y) == 'character') { 
+              if (!(class(y) == 'numeric')) { 
                 y = factor(y)
                 suppressPackageStartupMessages(library('class')) 
-                #weights=unlist(as.list(prop.table(table(y))))
+                weights=unlist(as.list(prop.table(table(y))))
+                weights=(weights-1)^2
               }
             EOR
 
@@ -457,10 +458,6 @@ module OpenTox
             # model + support vectors
             LOGGER.debug "Creating R SVM model ..."
             train_success = @r.eval <<-EOR
-              # AM: TODO: evaluate class weight effect by altering:
-              # AM: comment in 'weights' above run and class.weights=weights vs. class.weights=1-weights
-              # AM: vs
-              # AM: comment out 'weights' above (status quo), thereby disabling weights
               model = train(prop_matrix,y,
                              method="svmradial",
                              preProcess=c("center", "scale"),
