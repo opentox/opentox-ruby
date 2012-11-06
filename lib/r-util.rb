@@ -170,7 +170,7 @@ module OpenTox
       pvalue_test("var.test",array1,array2,significance_level)
     end
     
-    def ttest_closer_to_zero
+    def ttest_closer_to_zero(array1, array2, paired, significance_level=0.95, params="")
       raise if paired && array1.size!=array2.size
       params = "paired=#{paired ? "T" : "F"}"
       pvalue_test("ttest_closer_to_zero",array1,array2,significance_level,params)
