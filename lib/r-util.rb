@@ -199,7 +199,7 @@ module OpenTox
       else
         raise "pct is not a numeric: #{pct}" unless pct.is_a?(Numeric)
       end
-      raise "not a loaded ot-dataset" unless dataset.is_a?(OpenTox::Dataset) and dataset.compounds.size>0 and dataset.features.size>0
+      raise "not a loaded ot-dataset (#{dataset.class})" unless dataset.is_a?(OpenTox::Dataset) and dataset.compounds.size>0 and dataset.features.size>0
       raise "missing_values=#{missing_values}" unless missing_values.is_a?(String) or missing_values==0
       raise "subjectid=#{subjectid}" unless subjectid==nil or subjectid.is_a?(String)          
       LOGGER.debug("r-util> apply stratified split to #{dataset.uri}")
@@ -246,57 +246,27 @@ module OpenTox
     def dataset_to_dataframe( dataset, missing_value="NA", subjectid=nil, features=nil )
       LOGGER.debug "r-util> convert dataset to dataframe #{dataset.uri}"
       
-      # count duplicates
-      num_compounds = {}
-      dataset.features.keys.each do |f|
-        dataset.compounds.each do |c|
-          if dataset.data_entries[c]
-            val = dataset.data_entries[c][f]
-            size = val==nil ? 1 : val.size
-            num_compounds[c] = num_compounds[c]==nil ? size : [num_compounds[c],size].max
-          else
-            num_compounds[c] = 1
-          end
-        end
-      end  
-      
       # use either all, or the provided features, sorting is important as col-index := features
       if features
         features.sort!
       else
         features = dataset.features.keys.sort
       end
-      compounds = []
-      compound_names = []
-      dataset.compounds.each do |c|
-        count = 0
-        num_compounds[c].times do |i|
-          compounds << c
-          compound_names << "#{c}$#{count}"
-          count+=1
-        end
-      end
 
       # values into 2D array, then to dataframe
       d_values = []
-      dataset.compounds.each do |c|
-        num_compounds[c].times do |i|
-          c_values = []
-          features.each do |f|
-            if dataset.data_entries[c]
-              val = dataset.data_entries[c][f]
-              v = val==nil ? "" : val[i].to_s
-            else
-              raise "wtf" if i>0
-              v = ""
-            end
-            v = missing_value if v.size()==0
-            c_values << v
-          end
-          d_values << c_values
+      dataset.compounds.size.times do |c_idx|
+        c_values = []
+        features.each do |f|
+          v = dataset.data_entry_value(c_idx,f)
+          v = missing_value if v==nil
+          c_values << v
         end
+        d_values << c_values
       end  
       df_name = "df_#{dataset.uri.split("/")[-1].split("?")[0]}"
+      
+      compound_names = dataset.compounds.size.times.collect{|idx| dataset.compounds[idx]+"$"+idx.to_s}
       assign_dataframe(df_name,d_values,compound_names,features)
       
       # set dataframe column types accordingly
@@ -336,15 +306,17 @@ module OpenTox
       dataset = OpenTox::Dataset.create(CONFIG[:services]["opentox-dataset"],subjectid)
       dataset.add_metadata(metadata)
       LOGGER.debug "r-util> convert dataframe to dataset #{dataset.uri}"
-      compounds.size.times{|i| dataset.add_compound(compounds[i]) if compound_indices==nil or compound_indices.include?(i)}
       features.each{|f| dataset.add_feature(f,@@feats[df][f])}
-      features.size.times do |c|
+      feature_numeric = features.size.times.collect do |c|
         feat = OpenTox::Feature.find(features[c],subjectid)
-        numeric = feat.metadata[RDF.type].to_a.flatten.include?(OT.NumericFeature)
-        compounds.size.times do |r|
-          if compound_indices==nil or compound_indices.include?(r)
-            dataset.add(compounds[r],features[c],numeric ? values[r][c].to_f : values[r][c]) if values[r][c]!="NA"
-          end 
+        feat.metadata[RDF.type].to_a.flatten.include?(OT.NumericFeature) 
+      end
+      compounds.size.times do |r|
+        if compound_indices==nil or compound_indices.include?(r)
+          dataset.add_compound(compounds[r])          
+          features.size.times do |c|
+            dataset.add_data_entry(compounds[r],features[c],feature_numeric[c] ? values[r][c].to_f : values[r][c]) if values[r][c]!="NA"
+          end
         end
       end
       dataset.save(subjectid)

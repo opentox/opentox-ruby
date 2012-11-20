@@ -173,7 +173,7 @@ module OpenTox
       RestClientWrapper.get(u,{:accept=> "text/uri-list", :subjectid => subjectid}).to_s.each_line do |compound_uri|
         @compounds << compound_uri.chomp
       end
-      @compounds.uniq!
+      @compounds
     end
 
     # Load and return only features from the dataset service
@@ -193,7 +193,10 @@ module OpenTox
     # @return [Array] return array with strings, nil if value is not set (e.g. when feature is numeric)
     def accept_values(feature)
       accept_values = features[feature][OT.acceptValue]
-      accept_values.sort if accept_values
+      if accept_values
+        accept_values = accept_values.collect{|av| av.to_s}
+        accept_values.sort!
+      end 
       accept_values
     end
 
@@ -316,6 +319,7 @@ module OpenTox
     # @param [String] feature Compound URI
     # @param [Boolean,Float] value Feature value
     def add (compound,feature,value)
+      LOGGER.warn("dataset.add is deprecated and should not be used any longer")
       self.add_compound(compound)
       self.add_data_entry(compound,feature,value)
     end
@@ -376,78 +380,113 @@ module OpenTox
       #@compounds << compound unless @compounds.include? compound
     end
     
+    protected
+    # returns array with (row-)indices of a compound (in the compounds arrays) 
+    def compound_indices( compound )
+      unless defined?(@cmp_indices) and @cmp_indices.has_key?(compound)
+        @cmp_indices = {}
+        @compounds.size.times do |i|
+          c = @compounds[i]
+          if @cmp_indices[c]==nil
+            @cmp_indices[c] = [i]
+          else
+            @cmp_indices[c] = @cmp_indices[c]+[i]
+          end   
+        end
+      end
+      @cmp_indices[compound]
+    end
+    
+    # returns index in data_entries-array for the compound-index 
+    def entry_index( compound_index )
+      unless defined?(@entry_indices) and @entry_indices.has_key?(compound_index)
+        @entry_indices = {}
+        @compounds.size.times do |i|
+          @entry_indices[i] = compound_indices(@compounds[i]).index(i)
+        end
+      end
+      @entry_indices[compound_index]
+    end
+    public 
+
+    # maps a compound-index from another dataset to a compound-index from this dataset
+    # mapping works as follows:
+    # (compound c is the compound identified by the compound-index of the other dataset)
+    # * c occurs only once in this dataset? map compound-index of other dataset to index in this dataset
+    # * c occurs >1 in this dataset?
+    # ** number of occurences is equal in both datasets? assume order is preserved(!) and map accordingly
+    # ** number of occurences is not equal in both datasets? cannot map, raise error
+    # @param [OpenTox::Dataset] dataset that should be mapped to this dataset (fully loaded)
+    # @param [Fixnum] compound_index, corresponding to dataset
+    def compound_index( dataset, compound_index )
+      unless defined?(@index_map) and @index_map[dataset.uri]
+        map = {}
+        dataset.compounds.uniq.each do |compound|
+          self_indices = compound_indices(compound)
+          next unless self_indices
+          dataset_indices = dataset.compound_indices(compound)
+          if self_indices.size==1  
+            dataset_indices.size.times do |i|
+              map[dataset_indices[i]] = self_indices[0]
+            end
+          elsif self_indices.size==dataset_indices.size
+            # we do assume that the order is preseverd!
+            dataset_indices.size.times do |i|
+              map[dataset_indices[i]] = self_indices[i]
+            end
+          else
+            raise "cannot map compound #{compound} from dataset #{dataset.uri} to dataset #{uri}, "+
+              "compound occurs #{dataset_indices.size} times and #{self_indices.size} times"
+          end
+        end  
+        @index_map = {} unless defined?(@index_map)
+        @index_map[dataset.uri] = map
+      end
+      @index_map[dataset.uri][compound_index]
+    end
+    
+    # returns data entry value for a compound-index and given feature
+    # @param [Fixnum] compound_index
+    # @param [OpenTox::Feature] feature
+    def data_entry_value( compound_index, feature )
+      raise "please give compound index instead of '#{compound_index}'" unless compound_index.is_a?(Fixnum)
+      c = @compounds[compound_index]
+      if @data_entries[c]==nil
+        nil
+      elsif @data_entries[c][feature]==nil
+        nil
+      else
+        @data_entries[c][feature][entry_index(compound_index)]
+      end  
+    end
+    
     # Creates a new dataset, by splitting the current dataset, i.e. using only a subset of compounds and features
-    # @param [Array] compounds List of compound URIs
+    # @param [Array] compound_indices List of compound indices
     # @param [Array] features List of feature URIs
     # @param [Hash] metadata Hash containing the metadata for the new dataset
     # @param [String] subjectid
     # @return [OpenTox::Dataset] newly created dataset, already saved
-    def split( compounds, features, metadata, subjectid=nil)
-      LOGGER.debug "split dataset using "+compounds.size.to_s+"/"+@compounds.size.to_s+" compounds"
-      raise "no new compounds selected" unless compounds and compounds.size>0
+    def split( compound_indices, features, metadata, subjectid=nil)
+      raise "Dataset.split : pls give compounds as indices" if compound_indices.size==nil or !compound_indices[0].is_a?(Fixnum) 
+      LOGGER.debug "split dataset using "+compound_indices.size.to_s+"/"+@compounds.size.to_s+" compounds"
       dataset = OpenTox::Dataset.create(CONFIG[:services]["opentox-dataset"],subjectid)
-      if features.size==0
-        compounds.each{ |c| dataset.add_compound(c) }
-      else
-        compounds.each do |c|
+      features.each{|f| dataset.add_feature(f,@features[f])}
+      compound_indices.each do |c_idx|
+        c = @compounds[c_idx]
+        dataset.add_compound(c)
+        if @data_entries[c]
           features.each do |f|
-            if @data_entries[c]==nil or @data_entries[c][f]==nil
-              dataset.add(c,f,nil)
+            if @data_entries[c][f] 
+              dataset.add_data_entry c,f,@data_entries[c][f][entry_index(c_idx)]
             else
-              @data_entries[c][f].each do |v|
-                dataset.add(c,f,v)
-              end
+              dataset.add_data_entry c,f,nil
             end
           end
-        end
-      end
-      # set feature metadata in new dataset accordingly (including accept values)      
-      features.each do |f|
-        self.features[f].each do |k,v|
-          dataset.features[f][k] = v
         end
       end
       dataset.add_metadata(metadata)
       dataset.save(subjectid)
       dataset
-    end
-    
-    # merges two dataset into a new dataset (by default uses all compounds and features)
-    # precondition: both datasets are fully loaded
-    # @param [OpenTox::Dataset] dataset1 to merge
-    # @param [OpenTox::Dataset] dataset2 to merge
-    # @param [Hash] metadata
-    # @param [optional,String] subjectid
-    # @param [optional,Array] features1, if specified only this features of dataset1 are used
-    # @param [optional,Array] features2, if specified only this features of dataset2 are used
-    # @param [optional,Array] compounds1, if specified only this compounds of dataset1 are used
-    # @param [optional,Array] compounds2, if specified only this compounds of dataset2 are used
-    # example: if you want no features from dataset2, give empty array as features2
-    def self.merge( dataset1, dataset2, metadata, subjectid=nil, features1=nil, features2=nil, compounds1=nil, compounds2=nil )
-      features1 = dataset1.features.keys unless features1
-      features2 = dataset2.features.keys unless features2
-      compounds1 = dataset1.compounds unless compounds1
-      compounds2 = dataset2.compounds unless compounds2
-      data_combined = OpenTox::Dataset.create(CONFIG[:services]["opentox-dataset"],subjectid)
-      LOGGER.debug("merging datasets #{dataset1.uri} and #{dataset2.uri} to #{data_combined.uri}")
-      [[dataset1, features1, compounds1], [dataset2, features2, compounds2]].each do |dataset,features,compounds|
-        compounds.each{|c| data_combined.add_compound(c)}
-        features.each do |f|
-          m = dataset.features[f]
-          m[OT.hasSource] = dataset.uri unless m[OT.hasSource]
-          data_combined.add_feature(f,m)
-          compounds.each do |c|
-            dataset.data_entries[c][f].each do |v|
-              data_combined.add(c,f,v)
-            end if dataset.data_entries[c] and dataset.data_entries[c][f]
-          end
-        end
-      end
-      metadata = {} unless metadata
-      metadata[OT.hasSource] = "Merge from #{dataset1.uri} and #{dataset2.uri}" unless metadata[OT.hasSource]
-      data_combined.add_metadata(metadata)
-      data_combined.save(subjectid)
-      data_combined
     end
     
     # Save dataset at the dataset service 

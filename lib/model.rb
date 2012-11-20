@@ -197,6 +197,16 @@ module OpenTox
         @metadata[OT.parameters].collect{|p| p[OT.paramValue] if p[DC.title] == param}.compact.first
       end
 
+      private
+      def value_feature_uri
+        File.join( @uri, "predicted", "value")
+      end
+      
+      def confidence_feature_uri
+        File.join( @uri, "predicted", "confidence")
+      end
+      public
+      
       # Predict a dataset
       # @param [String] dataset_uri Dataset URI
       # @param [optional,subjectid] 
@@ -209,8 +219,13 @@ module OpenTox
           OT.hasSource => @uri,
           DC.creator => @uri,
           DC.title => URI.decode(File.basename( @metadata[OT.dependentVariables] )),
-          OT.parameters => [{DC.title => "dataset_uri", OT.paramValue => dataset_uri}]
+          OT.parameters => [{DC.title => "dataset_uri", OT.paramValue => dataset_uri}],
+          OT.dependentVariables => @metadata[OT.dependentVariables],
+          OT.predictedVariables => @prediction_dataset.metadata[OT.predictedVariables]    
         })
+        @prediction_dataset.add_feature(value_feature_uri, {DC.title => "Model prediction for #{@metadata[OT.dependentVariables]}"})
+        @prediction_dataset.add_feature(confidence_feature_uri, {DC.title => "Confidence"})
+        
         d = Dataset.new(dataset_uri,subjectid)
         d.load_compounds(subjectid)
         count = 0
@@ -288,12 +303,6 @@ module OpenTox
                          }
           prediction = eval(modul).send(algorthm, pred_params) 
 
-          value_feature_uri = File.join( @uri, "predicted", "value")
-          confidence_feature_uri = File.join( @uri, "predicted", "confidence")
-
-          @prediction_dataset.metadata[OT.dependentVariables] = @metadata[OT.dependentVariables] unless @prediction_dataset.metadata[OT.dependentVariables] 
-          @prediction_dataset.metadata[OT.predictedVariables] = [value_feature_uri, confidence_feature_uri] unless @prediction_dataset.metadata[OT.predictedVariables] 
-
           @prediction_dataset.add_compound @compound.uri
           if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "classification"
             @prediction_dataset.add_data_entry @compound.uri, value_feature_uri, @value_map[prediction[:prediction].to_s]
@@ -305,10 +314,7 @@ module OpenTox
             confidence=((confidence+1.0)/2.0).abs
           end
           @prediction_dataset.add_data_entry @compound.uri, confidence_feature_uri, confidence
-
-          @prediction_dataset.features[value_feature_uri][DC.title] = @prediction_dataset.metadata[DC.title]
-          @prediction_dataset.features[confidence_feature_uri][DC.title] = "Confidence"
-
+          
           if verbose
             if @feature_calculation_algorithm == "Substructure.match"
               f = 0
@@ -397,10 +403,11 @@ module OpenTox
         if @activities[@compound.uri]
           @prediction_dataset.add_compound @compound.uri
           if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "classification"
-            @activities[@compound.uri].each { |act| @prediction_dataset.add_data_entry @compound.uri, @metadata[OT.dependentVariables], @value_map[act.to_s] }
+            @activities[@compound.uri].each { |act| @prediction_dataset.add_data_entry @compound.uri, value_feature_uri, @value_map[act.to_s] }
           else
-            @activities[@compound.uri].each { |act| @prediction_dataset.add_data_entry @compound.uri, @metadata[OT.dependentVariables], act }
+            @activities[@compound.uri].each { |act| @prediction_dataset.add_data_entry @compound.uri, value_feature_uri, act }
           end
+          @activities[@compound.uri].each { |act| @prediction_dataset.add_data_entry @compound.uri, confidence_feature_uri, 1 }
           @prediction_dataset.add_metadata(OT.hasSource => @metadata[OT.trainingDataset])
           @prediction_dataset.save(subjectid)
           true
