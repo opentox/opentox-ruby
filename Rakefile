@@ -45,6 +45,7 @@ begin
     gem.add_dependency "ruby-plot", "=0.6.1"
     gem.add_dependency "gsl", "=1.14.7"
     gem.add_dependency "statsample", "=1.1.0"
+    gem.add_dependency "rdoc", "=3.12"
     gem.add_dependency "redis", "=2.2.2"
 
     gem.add_development_dependency 'jeweler'
@@ -79,7 +80,7 @@ task :test => :check_dependencies
 
 task :default => :test
 
-require 'rake/rdoctask'
+require 'rdoc/task'
 Rake::RDocTask.new do |rdoc|
   if File.exist?('VERSION')
     version = File.read('VERSION')
