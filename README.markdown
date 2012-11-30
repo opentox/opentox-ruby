@@ -6,7 +6,7 @@ Ruby wrapper for the [OpenTox](http://www.opentox.org) REST API
 Installation
 ------------
 
-opentox-ruby depends on many third party programs and libraries, which makes the setup complicated and error prone. For this reason we recommend to use the installer from [opentox-install](http://github.com/opentox/opentox-install). If you want to install manually you can find the necessary steps in the installation scripts.
+opentox-ruby depends on many third party programs and libraries, which makes the setup complicated and error prone. For this reason we recommend to use the installer from [opentox-install](http://github.com/opentox/install/tree/oldarch). If you want to install manually you can find the necessary steps in the installation scripts.
 
 Quickstart
 ----------
