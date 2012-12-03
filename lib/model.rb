@@ -401,11 +401,18 @@ module OpenTox
       # @return [Boolean] true if compound has databasse activities, false if not
       def database_activity(subjectid)
         if @activities[@compound.uri]
+          @prediction_dataset.add_feature(metadata[OT.dependentVariables]) unless @prediction_dataset.features.include?(metadata[OT.dependentVariables])
           @prediction_dataset.add_compound @compound.uri
           if OpenTox::Feature.find(metadata[OT.dependentVariables], subjectid).feature_type == "classification"
-            @activities[@compound.uri].each { |act| @prediction_dataset.add_data_entry @compound.uri, value_feature_uri, @value_map[act.to_s] }
+            @activities[@compound.uri].each do |act| 
+              @prediction_dataset.add_data_entry @compound.uri, value_feature_uri, @value_map[act.to_s]
+              @prediction_dataset.add_data_entry @compound.uri, metadata[OT.dependentVariables], @value_map[act.to_s]
+            end
           else
-            @activities[@compound.uri].each { |act| @prediction_dataset.add_data_entry @compound.uri, value_feature_uri, act }
+            @activities[@compound.uri].each do |act|
+              @prediction_dataset.add_data_entry @compound.uri, value_feature_uri, act
+              @prediction_dataset.add_data_entry @compound.uri, metadata[OT.dependentVariables], act
+            end
           end
           @activities[@compound.uri].each { |act| @prediction_dataset.add_data_entry @compound.uri, confidence_feature_uri, 1 }
           @prediction_dataset.add_metadata(OT.hasSource => @metadata[OT.trainingDataset])
