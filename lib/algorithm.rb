@@ -125,6 +125,7 @@ module OpenTox
                 else
                   if @prediction_feature.feature_type == "classification"
                     activity= value_map.invert[value].to_i # activities are mapped to 1..n
+                    raise "activity should be mapped to 1..n is 0, for value '#{value}', value_map: #{value_map.inspect}" if activity==0
                     @db_class_sizes[activity-1].nil? ? @db_class_sizes[activity-1]=1 : @db_class_sizes[activity-1]+=1 # AM effect
                   elsif @prediction_feature.feature_type == "regression"
                     activity= value.to_f 

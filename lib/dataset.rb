@@ -194,7 +194,7 @@ module OpenTox
     def accept_values(feature)
       accept_values = features[feature][OT.acceptValue]
       if accept_values
-        accept_values = accept_values.collect{|av| av.to_s}
+        accept_values = accept_values.collect{|av| av}
         accept_values.sort!
       end 
       accept_values
