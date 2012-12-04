@@ -429,21 +429,23 @@ module OpenTox
 
 
     # Effect calculation for classification. It is assumed that the elements of the arrays match each other pairwise
-    # @param [Array] Array of occurrences per class (in the form of Enumerables).
-    # @param [Array] Array of database instance counts per class.
+    # @param [Array] Array of occurrences per class (in the form of Enumerables)
+    # @param [Array] Array of database instance counts per class, starting from the lowest with index 0
     def self.effect(occurrences, db_instances)
       max=0
       max_value=0
       nr_o = self.sum_size(occurrences)
       nr_db = db_instances.to_scale.sum
 
-      occurrences.each_with_index { |o,i| # fminer outputs occurrences sorted reverse by activity.
+      # Crawl occurrences per class i
+      # starting from the lowest with index 0
+      occurrences.each_with_index { |o,i|
         actual = o.size.to_f/nr_o
-        expected = db_instances[i].to_f/nr_db
+        expected = db_instances[i].to_f/nr_db 
         if actual > expected
           if ((actual - expected) / actual) > max_value
            max_value = (actual - expected) / actual # 'Schleppzeiger'
-            max = i
+           max = i
           end
         end
       }

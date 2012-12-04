@@ -52,7 +52,7 @@ module OpenTox
     # Fminer algorithms (https://github.com/amaunz/fminer2)
     class Fminer
       include Algorithm
-      attr_accessor :prediction_feature, :training_dataset, :minfreq, :compounds, :db_class_sizes, :all_activities, :smi
+      attr_accessor :prediction_feature, :training_dataset, :minfreq, :compounds, :db_class_sizes, :all_activities, :smi, :weight_feature
 
       def check_params(params,per_mil,subjectid=nil)
         raise OpenTox::NotFoundError.new "Please submit a dataset_uri." unless params[:dataset_uri] and  !params[:dataset_uri].nil?
@@ -66,6 +66,11 @@ module OpenTox
         @prediction_feature = OpenTox::Feature.find params[:prediction_feature], subjectid
 
         raise OpenTox::NotFoundError.new "No feature #{params[:prediction_feature]} in dataset #{params[:dataset_uri]}" unless @training_dataset.features and @training_dataset.features.include?(params[:prediction_feature])
+
+        unless params[:weight_feature].nil?
+          @weight_feature = OpenTox::Feature.find params[:weight_feature], subjectid
+          raise OpenTox::NotFoundError.new "No feature #{params[:weight_feature]} in dataset #{params[:dataset_uri]}" unless @training_dataset.features and @training_dataset.features.include?(params[:weight_feature])
+        end
 
         unless params[:min_frequency].nil? 
           # check for percentage
@@ -104,6 +109,8 @@ module OpenTox
       def add_fminer_data(fminer_instance, value_map)
 
         id = 1 # fminer start id is not 0
+        which_row=@training_dataset.compounds.inject({}) {|h,c| h[c]=0; h}
+
         @training_dataset.compounds.each do |compound|
           entry=@training_dataset.data_entries[compound]
           begin
@@ -119,30 +126,35 @@ module OpenTox
 
           entry && entry.each do |feature,values|
             if feature == @prediction_feature.uri
-              values.each do |value|
-                if value.nil? 
-                  LOGGER.warn "No #{feature} activity for #{compound.to_s}."
-                else
-                  if @prediction_feature.feature_type == "classification"
-                    activity= value_map.invert[value].to_i # activities are mapped to 1..n
-                    raise "activity should be mapped to 1..n is 0, for value '#{value}', value_map: #{value_map.inspect}" if activity==0
-                    @db_class_sizes[activity-1].nil? ? @db_class_sizes[activity-1]=1 : @db_class_sizes[activity-1]+=1 # AM effect
-                  elsif @prediction_feature.feature_type == "regression"
-                    activity= value.to_f 
+              value=values[which_row[compound]]
+              if value.nil? 
+                LOGGER.warn "No #{feature} activity for #{compound.to_s}."
+              else
+                if @prediction_feature.feature_type == "classification"
+                  activity= value_map.invert[value].to_i # activities are mapped to 1..n
+                  raise "activity should be mapped to 1..n for id '#{id}' with value '#{value}', value_map: #{value_map.inspect}" if activity==0
+                  @db_class_sizes[activity-1].nil? ? @db_class_sizes[activity-1]=1 : @db_class_sizes[activity-1]+=1 # AM effect
+                elsif @prediction_feature.feature_type == "regression"
+                  activity= value.to_f 
+                end
+                begin
+                  fminer_instance.AddCompound(smiles,id) if fminer_instance
+                  fminer_instance.AddActivity(activity, id) if fminer_instance 
+                  @all_activities[id]=activity # DV: insert global information
+                  @compounds[id] = compound
+                  @smi[id] = smiles
+                  if ((not fminer_instance.nil?) and (not @weight_feature.nil?) and (@prediction_feature.feature_type == "classification"))
+                    weight=entry[@weight_feature.uri][which_row[compound]].to_f # nil.to_f = 0
+                    raise "weights should be positive for id '#{id}' with weight '#{weight}'" unless weight>0.0
+                    fminer_instance.AddWeight(weight, id)
                   end
-                  begin
-                    fminer_instance.AddCompound(smiles,id) if fminer_instance
-                    fminer_instance.AddActivity(activity, id) if fminer_instance 
-                    @all_activities[id]=activity # DV: insert global information
-                    @compounds[id] = compound
-                    @smi[id] = smiles
-                    id += 1
-                  rescue Exception => e
-                    LOGGER.warn "Could not add " + smiles + "\t" + value.to_s + " to fminer"
-                    LOGGER.warn e.backtrace
-                  end
+                  id += 1
+                rescue Exception => e
+                  LOGGER.warn "Could not add " + smiles + "\t" + value.to_s + " to fminer"
+                  LOGGER.warn e.backtrace
                 end
               end
+              which_row[compound] += 1
             end
           end
         end
