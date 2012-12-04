@@ -458,7 +458,7 @@ module OpenTox
       # @param [OpenTox::Dataset] dataset Dataset object
       def initialize(dataset)
         @rows = []
-        @rows << ["SMILES"]
+        @rows << ["INCHI"]
 
         features = dataset.features.keys
 
