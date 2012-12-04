@@ -471,7 +471,7 @@ module OpenTox
         id = row.shift
         case id
         when /InChI/
-          compound = Compound.from_inchi(URI.decode_www_form_component(id))
+          compound = Compound.from_inchi(id)
         else
           compound = Compound.from_smiles(id)
         end

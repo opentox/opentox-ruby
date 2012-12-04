@@ -507,14 +507,13 @@ module OpenTox
         }
 
         @rows += dataset.compounds.collect do |compound| # assumes compounds list with duplicates
-          inchi_unenc = Compound.new(compound).to_inchi
-          inchi = URI.encode_www_form_component(inchi_unenc)
+          inchi = Compound.new(compound).to_inchi
 
           i = which_row[compound] # select appropriate feature value
 
           # allocate row
           row = Array.new(@rows.first.size)
-          row[0] = inchi
+          row[0] = "\""+inchi+"\""
 
           # fill entries
           entries=dataset.data_entries[compound]
