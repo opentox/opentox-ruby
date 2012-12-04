@@ -319,7 +319,7 @@ module OpenTox
     # @param [String] feature Compound URI
     # @param [Boolean,Float] value Feature value
     def add (compound,feature,value)
-      LOGGER.warn("dataset.add is deprecated and should not be used any longer")
+      raise("dataset.add is deprecated, use add_data_entry instead")
       self.add_compound(compound)
       self.add_data_entry(compound,feature,value)
     end
@@ -334,6 +334,8 @@ module OpenTox
         @data_entries[compound] = {} unless @data_entries[compound]
         @data_entries[compound][feature] = [] unless @data_entries[compound][feature]
         @data_entries[compound][feature] << value
+      else
+        raise "dataset.add_data_entry> add compound #{compound} first"
       end
     end
 

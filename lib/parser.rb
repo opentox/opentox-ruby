@@ -206,8 +206,9 @@ module OpenTox
           end
           File.delete(to_delete) if to_delete
           data.each do |id,entry|
-            if entry[:values].size==0
+            if entry[:values].size==0 and !@dataset.compounds.include?(entry[:compound])
               # no feature values add plain compounds
+              #RDF has no support for multiple occurences yet! 
               @dataset.add_compound(entry[:compound])
             else
               entry[:values].each do |value_id|
@@ -222,7 +223,9 @@ module OpenTox
                     value = split.first
                   end
                 end
-                @dataset.add entry[:compound],feature[value_id],value
+                #RDF has no support for multiple occurences yet!
+                @dataset.add_compound(entry[:compound]) unless @dataset.compounds.include?(entry[:compound])
+                @dataset.add_data_entry entry[:compound],feature[value_id],value
               end
             end
           end
@@ -591,6 +594,7 @@ module OpenTox
         end
 
         @data.each do |compound,row|
+          dataset.add_compound(compound)
           unless row.empty?
             row.each do |feature,value|
               if OpenTox::Algorithm::numeric?(value)
@@ -601,7 +605,7 @@ module OpenTox
                 value = value.to_s
               end
               feature_uri = File.join(dataset.uri,"feature",URI.encode(feature))
-              dataset.add(compound, feature_uri, value)
+              dataset.add_data_entry(compound, feature_uri, value)
               #dataset.features[feature_uri][RDF.type] = feature_types(feature)
               #dataset.features[feature_uri][OT.acceptValue] = feature_values(feature)
               if feature_types(feature).include? OT.NumericFeature

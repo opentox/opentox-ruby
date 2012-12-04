@@ -466,7 +466,7 @@ module OpenTox
         features.sort!
 
         # prepare for subgraphs
-        have_substructures = features.collect{ |id| dataset.features[id][RDF.type].include? OT.Substructure}.compact.uniq
+        have_substructures = features.collect{ |id| (dataset.features[id][RDF.type] and dataset.features[id][RDF.type].include?(OT.Substructure))}.compact.uniq
         if have_substructures.size == 1 && have_substructures[0] 
           features_smarts = features.collect{ |id| "\"" + dataset.features[id][OT.smarts] + "\"" }
         end
@@ -501,7 +501,7 @@ module OpenTox
         feature_quoting = {}
         features.each_with_index { |f,idx|
           feature_quoting[f] = false
-          if dataset.features[f][RDF.type].size == 1 && dataset.features[f][RDF.type][0] == OT.NominalFeature
+          if dataset.features[f][RDF.type] && dataset.features[f][RDF.type].size == 1 && dataset.features[f][RDF.type][0] == OT.NominalFeature
             feature_quoting[f] = true
           end
         }
