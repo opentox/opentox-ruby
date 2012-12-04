@@ -150,7 +150,7 @@ module OpenTox
           
           # remember inchis
           inchis = params[:compounds].collect { |c_uri| 
-            URI.encode_www_form_component(OpenTox::Compound.new(c_uri).to_inchi)
+            OpenTox::Compound.new(c_uri).to_inchi
           }
 
           # Process compounds
@@ -159,8 +159,8 @@ module OpenTox
           obconversion.set_in_and_out_formats 'inchi', 'can'
 
           inchis.each_with_index { |inchi, c_idx| 
-            row = [inchis[c_idx]]
-            obconversion.read_string(obmol, URI.decode_www_form_component(inchi))
+            row = ["\"#{inchis[c_idx]}\""]
+            obconversion.read_string(obmol, inchi)
             ids.each { |name|
               if obmol.respond_to?(name.underscore)
                 val = eval("obmol.#{name.underscore}") if obmol.respond_to?(name.underscore) 
@@ -224,7 +224,7 @@ module OpenTox
           # remember inchis
           inchis = params[:compounds].collect { |c_uri| 
             cmpd = OpenTox::Compound.new(c_uri)
-            URI.encode_www_form_component(cmpd.to_inchi)
+            cmpd.to_inchi
           }
 
           # Process compounds
@@ -241,7 +241,7 @@ module OpenTox
               infile.flush
               s.new(infile.path, outfile_path) # runs joelib
                     
-              row = [inchis[c_idx]]
+              row = ["\"#{inchis[c_idx]}\""]
               ids.each_with_index do |k,i| # Fill row
                 re = Regexp.new(k)
                 open(outfile_path) do |f|
@@ -305,7 +305,7 @@ module OpenTox
           # remember inchis
           inchis = params[:compounds].collect { |c_uri| 
             cmpd = OpenTox::Compound.new(c_uri)
-            URI.encode_www_form_component(cmpd.to_inchi)
+            cmpd.to_inchi
           }
           begin
             # Process compounds
@@ -345,7 +345,7 @@ module OpenTox
           LOGGER.debug "Compounds 1-#{master.size-1}, #{master[0].size-1} entries"
           master.each_with_index { |row, idx|
             if idx != 0 # not alter headers
-              row[0] = inchis[idx-1]
+              row[0] = "\"#{inchis[idx-1]}\""
               row.collect! { |x| x.to_s == "null" ? nil : x }
             end
           }
