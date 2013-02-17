@@ -145,7 +145,7 @@ module OpenTox
                   @smi[id] = smiles
                   if ((not fminer_instance.nil?) and (not @weight_feature.nil?) and (@prediction_feature.feature_type == "classification"))
                     weight=entry[@weight_feature.uri][which_row[compound]].to_f # nil.to_f = 0
-                    raise "weights should be positive for id '#{id}' with weight '#{weight}'" unless weight>0.0
+                    raise "weights should be positive and >=1.0 for id '#{id}' with weight '#{weight}'" unless weight >= 1.0
                     fminer_instance.AddWeight(weight, id)
                   end
                   id += 1
