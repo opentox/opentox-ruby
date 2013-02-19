@@ -92,7 +92,7 @@ module OpenTox
           # set minfreq directly
           else
             if OpenTox::Algorithm.numeric? params[:min_frequency]
-              @minfreq=params[:min_frequency].to_f
+              @minfreq=params[:min_frequency].to_i
               LOGGER.debug "min_frequency #{@minfreq}"
             else
               bad_request=true
