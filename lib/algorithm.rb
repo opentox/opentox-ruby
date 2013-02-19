@@ -92,7 +92,7 @@ module OpenTox
           # set minfreq directly
           else
             if OpenTox::Algorithm.numeric? params[:min_frequency]
-              @minfreq=params[:min_frequency].to_i
+              @minfreq=params[:min_frequency].to_f
               LOGGER.debug "min_frequency #{@minfreq}"
             else
               bad_request=true
@@ -145,7 +145,7 @@ module OpenTox
                   @smi[id] = smiles
                   if ((not fminer_instance.nil?) and (not @weight_feature.nil?) and (@prediction_feature.feature_type == "classification"))
                     weight=entry[@weight_feature.uri][which_row[compound]].to_f # nil.to_f = 0
-                    raise "weights should be positive and >=1.0 for id '#{id}' with weight '#{weight}'" unless weight >= 1.0
+                    raise "weight '#{weight}' should be positive for id '#{id}'" unless weight >= 0.0
                     fminer_instance.AddWeight(weight, id)
                   end
                   id += 1
